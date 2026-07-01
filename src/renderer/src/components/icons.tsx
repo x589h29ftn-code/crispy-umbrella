@@ -11,6 +11,24 @@ const base = {
   strokeLinejoin: 'round' as const
 }
 
+export function IconMore({ size = 16, className }: IconProps): JSX.Element {
+  return (
+    <svg width={size} height={size} viewBox="0 0 24 24" className={className}>
+      {[5, 12, 19].map((x) => (
+        <circle key={x} cx={x} cy="12" r="1.7" fill="currentColor" />
+      ))}
+    </svg>
+  )
+}
+
+export function IconCheck({ size = 16, className }: IconProps): JSX.Element {
+  return (
+    <svg width={size} height={size} viewBox="0 0 24 24" className={className} {...base}>
+      <path d="M4 12.5l5 5L20 6" />
+    </svg>
+  )
+}
+
 export function IconRotate({ size = 16, className }: IconProps): JSX.Element {
   return (
     <svg width={size} height={size} viewBox="0 0 24 24" className={className} {...base}>

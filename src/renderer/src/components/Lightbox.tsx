@@ -29,6 +29,17 @@ export default function Lightbox(): JSX.Element | null {
   const [boxes, setBoxes] = useState<Record<string, SignatureVisualBox>>({})
   const [pageVisualSize, setPageVisualSize] = useState<{ width: number; height: number } | null>(null)
   const stageImgRef = useRef<HTMLImageElement>(null)
+  const dragOriginRef = useRef<{
+    kind: 'move' | 'resize'
+    placementId: string
+    startClientX: number
+    startClientY: number
+    startPivotVisualX: number
+    startPivotVisualY: number
+    startWidth: number
+    startHeight: number
+    rotateDeg: number
+  } | null>(null)
 
   const context = useMemo(() => {
     if (!lightbox.pageId) return null
@@ -65,12 +76,16 @@ export default function Lightbox(): JSX.Element | null {
     const source = sources.get(context.page.sourceId)
     if (!source) return
     const targetWidth = Math.round(Math.min(window.innerWidth * 0.8, 1400) * (window.devicePixelRatio || 1))
-    renderThumbnail(source, context.page.sourcePageIndex, context.page.rotation, targetWidth).then((url) => {
-      if (!cancelled) setImage(url)
-    })
-    getPageVisualSize(source, context.page.sourcePageIndex, context.page.rotation).then((size) => {
-      if (!cancelled) setPageVisualSize(size)
-    })
+    renderThumbnail(source, context.page.sourcePageIndex, context.page.rotation, targetWidth)
+      .then((url) => {
+        if (!cancelled) setImage(url)
+      })
+      .catch(() => undefined)
+    getPageVisualSize(source, context.page.sourcePageIndex, context.page.rotation)
+      .then((size) => {
+        if (!cancelled) setPageVisualSize(size)
+      })
+      .catch(() => undefined)
     return () => {
       cancelled = true
     }
@@ -89,9 +104,11 @@ export default function Lightbox(): JSX.Element | null {
         s.id,
         await getSignatureVisualBox(source, context.page.sourcePageIndex, context.page.rotation, s)
       ] as const)
-    ).then((entries) => {
-      if (!cancelled) setBoxes(Object.fromEntries(entries))
-    })
+    )
+      .then((entries) => {
+        if (!cancelled) setBoxes(Object.fromEntries(entries))
+      })
+      .catch(() => undefined)
     return () => {
       cancelled = true
     }
@@ -125,67 +142,72 @@ export default function Lightbox(): JSX.Element | null {
     addSignaturePlacement(context.page.id, placement)
   }
 
-  function startDrag(e: React.PointerEvent, placement: SignaturePlacement): void {
+  // Signature drag/resize uses pointer capture on the element itself rather than
+  // window-level listeners, so a mid-drag unmount (e.g. Escape closes the lightbox,
+  // or the button is released outside the app window) can never leave a dangling
+  // global listener behind — the browser releases capture automatically.
+  function beginDrag(e: React.PointerEvent<HTMLDivElement>, placement: SignaturePlacement, box: SignatureVisualBox): void {
     e.preventDefault()
     e.stopPropagation()
-    if (!source || !context) return
-    const pageId = context.page.id
-    const sourcePageIndex = context.page.sourcePageIndex
-    const deltaRotation = context.page.rotation
-    const startClientX = e.clientX
-    const startClientY = e.clientY
-    const box = boxes[placement.id]
-    if (!box) return
-    const startPivotVisualX = box.pivotX
-    const startPivotVisualY = box.pivotY
-
-    function onMove(ev: PointerEvent): void {
-      const dx = (ev.clientX - startClientX) / cssScale
-      const dy = (ev.clientY - startClientY) / cssScale
-      void visualPointToContentPoint(
-        source!,
-        sourcePageIndex,
-        deltaRotation,
-        startPivotVisualX + dx,
-        startPivotVisualY + dy
-      ).then(({ x, y }) => updateSignaturePlacement(pageId, placement.id, { x, y }))
+    e.currentTarget.setPointerCapture(e.pointerId)
+    dragOriginRef.current = {
+      kind: 'move',
+      placementId: placement.id,
+      startClientX: e.clientX,
+      startClientY: e.clientY,
+      startPivotVisualX: box.pivotX,
+      startPivotVisualY: box.pivotY,
+      startWidth: placement.width,
+      startHeight: placement.height,
+      rotateDeg: box.rotateDeg
     }
-    function onUp(): void {
-      window.removeEventListener('pointermove', onMove)
-      window.removeEventListener('pointerup', onUp)
-    }
-    window.addEventListener('pointermove', onMove)
-    window.addEventListener('pointerup', onUp)
   }
 
-  function startResize(e: React.PointerEvent, placement: SignaturePlacement, box: SignatureVisualBox): void {
+  function beginResize(e: React.PointerEvent<HTMLDivElement>, placement: SignaturePlacement, box: SignatureVisualBox): void {
     e.preventDefault()
     e.stopPropagation()
-    if (!context) return
-    const pageId = context.page.id
-    const startClientX = e.clientX
-    const startClientY = e.clientY
-    const theta = (box.rotateDeg * Math.PI) / 180
-    const cosT = Math.cos(theta)
-    const sinT = Math.sin(theta)
-    const startWidth = placement.width
-    const startHeight = placement.height
+    e.currentTarget.setPointerCapture(e.pointerId)
+    dragOriginRef.current = {
+      kind: 'resize',
+      placementId: placement.id,
+      startClientX: e.clientX,
+      startClientY: e.clientY,
+      startPivotVisualX: box.pivotX,
+      startPivotVisualY: box.pivotY,
+      startWidth: placement.width,
+      startHeight: placement.height,
+      rotateDeg: box.rotateDeg
+    }
+  }
 
-    function onMove(ev: PointerEvent): void {
-      const dxScreen = (ev.clientX - startClientX) / cssScale
-      const dyScreen = (ev.clientY - startClientY) / cssScale
-      const dxLocal = cosT * dxScreen + sinT * dyScreen
-      const dyLocal = -sinT * dxScreen + cosT * dyScreen
-      const width = Math.max(20, startWidth + dxLocal)
-      const height = Math.max(20, startHeight + dyLocal)
-      updateSignaturePlacement(pageId, placement.id, { width, height })
+  function onOverlayPointerMove(e: React.PointerEvent<HTMLDivElement>): void {
+    const origin = dragOriginRef.current
+    if (!origin || !source || !context) return
+    const dx = (e.clientX - origin.startClientX) / cssScale
+    const dy = (e.clientY - origin.startClientY) / cssScale
+
+    if (origin.kind === 'move') {
+      void visualPointToContentPoint(
+        source,
+        context.page.sourcePageIndex,
+        context.page.rotation,
+        origin.startPivotVisualX + dx,
+        origin.startPivotVisualY + dy
+      ).then(({ x, y }) => updateSignaturePlacement(context.page.id, origin.placementId, { x, y }))
+    } else {
+      const theta = (origin.rotateDeg * Math.PI) / 180
+      const dxLocal = Math.cos(theta) * dx + Math.sin(theta) * dy
+      const dyLocal = -Math.sin(theta) * dx + Math.cos(theta) * dy
+      updateSignaturePlacement(context.page.id, origin.placementId, {
+        width: Math.max(20, origin.startWidth + dxLocal),
+        height: Math.max(20, origin.startHeight + dyLocal)
+      })
     }
-    function onUp(): void {
-      window.removeEventListener('pointermove', onMove)
-      window.removeEventListener('pointerup', onUp)
-    }
-    window.addEventListener('pointermove', onMove)
-    window.addEventListener('pointerup', onUp)
+  }
+
+  function endDrag(e: React.PointerEvent<HTMLDivElement>): void {
+    if (e.currentTarget.hasPointerCapture(e.pointerId)) e.currentTarget.releasePointerCapture(e.pointerId)
+    dragOriginRef.current = null
   }
 
   return (
@@ -255,7 +277,9 @@ export default function Lightbox(): JSX.Element | null {
                     height: box.height * cssScale,
                     transform: `rotate(${box.rotateDeg}deg)`
                   }}
-                  onPointerDown={(e) => startDrag(e, placement)}
+                  onPointerDown={(e) => beginDrag(e, placement, box)}
+                  onPointerMove={onOverlayPointerMove}
+                  onPointerUp={endDrag}
                 >
                   <img src={placement.imageDataUrl} alt="Handtekening" draggable={false} />
                   <button
@@ -271,7 +295,9 @@ export default function Lightbox(): JSX.Element | null {
                   </button>
                   <div
                     className="signature-overlay__resize"
-                    onPointerDown={(e) => startResize(e, placement, box)}
+                    onPointerDown={(e) => beginResize(e, placement, box)}
+                    onPointerMove={onOverlayPointerMove}
+                    onPointerUp={endDrag}
                   />
                 </div>
               )

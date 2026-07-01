@@ -8,6 +8,8 @@ export interface LightboxState {
   pageId: string | null
 }
 
+const BLANK_SOURCE_ID = 'blank-page-source'
+
 export type Theme = 'dark' | 'light'
 
 const THEME_STORAGE_KEY = 'pdf-studio-theme'
@@ -173,11 +175,13 @@ export const useStudioStore = create<StudioState>((set, get) => ({
   },
 
   insertBlankPage: async (groupId) => {
-    const id = nanoid()
-    const source = await createBlankPageSource(id)
-    const page: PageRef = { id: nanoid(), sourceId: id, sourcePageIndex: 0, rotation: 0, signatures: [] }
+    // Every blank page is byte-identical, so all of them share one lazily-created
+    // SourceFile instead of re-parsing a fresh throwaway PDF through pdf.js each time.
+    let source = get().sources.get(BLANK_SOURCE_ID)
+    if (!source) source = await createBlankPageSource(BLANK_SOURCE_ID)
+    const page: PageRef = { id: nanoid(), sourceId: BLANK_SOURCE_ID, sourcePageIndex: 0, rotation: 0, signatures: [] }
     set((state) => ({
-      sources: new Map(state.sources).set(id, source),
+      sources: new Map(state.sources).set(BLANK_SOURCE_ID, source!),
       groups: state.groups.map((g) => (g.id === groupId ? { ...g, pages: [...g.pages, page] } : g))
     }))
   },

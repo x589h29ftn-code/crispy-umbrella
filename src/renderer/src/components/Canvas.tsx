@@ -18,6 +18,7 @@ export default function Canvas({ onScaleChange, registerZoomControls }: Props): 
   const activeGroupId = useStudioStore((s) => s.activeGroupId)
   const importFiles = useStudioStore((s) => s.importFiles)
   const createGroupWithPage = useStudioStore((s) => s.createGroupWithPage)
+  const reorderGroups = useStudioStore((s) => s.reorderGroups)
 
   const { viewportRef, contentRef, zoomBy, zoomTo } = usePanZoom(onScaleChange)
   const [animateRef] = useAutoAnimate<HTMLDivElement>({ duration: 180, easing: 'ease-out' })
@@ -47,12 +48,18 @@ export default function Canvas({ onScaleChange, registerZoomControls }: Props): 
       className="canvas-viewport"
       ref={viewportRef}
       onDragOver={(e) => {
-        if (e.dataTransfer.types.includes('Files') || useStudioStore.getState().dragPageId) e.preventDefault()
+        const { dragPageId, dragGroupId } = useStudioStore.getState()
+        if (e.dataTransfer.types.includes('Files') || dragPageId || dragGroupId) e.preventDefault()
       }}
       onDrop={(e) => {
         e.preventDefault()
         if (e.dataTransfer.types.includes('Files')) {
           void addDroppedDocuments(e.dataTransfer.files)
+          return
+        }
+        const { dragGroupId } = useStudioStore.getState()
+        if (dragGroupId) {
+          reorderGroups(dragGroupId, groups.length)
           return
         }
         const pageId = e.dataTransfer.getData('text/plain')

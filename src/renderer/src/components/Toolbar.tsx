@@ -56,13 +56,17 @@ export default function Toolbar({ zoomPct, onZoomIn, onZoomOut, onZoomReset }: P
     const file = e.target.files?.[0]
     e.target.value = ''
     if (!file) return
-    const { dataUrl, width, height } = await readImageFile(file)
-    setSignatureAsset({
-      dataUrl,
-      mimeType: file.type === 'image/jpeg' ? 'image/jpeg' : 'image/png',
-      naturalWidth: width,
-      naturalHeight: height
-    })
+    try {
+      const { dataUrl, width, height } = await readImageFile(file)
+      setSignatureAsset({
+        dataUrl,
+        mimeType: file.type === 'image/jpeg' ? 'image/jpeg' : 'image/png',
+        naturalWidth: width,
+        naturalHeight: height
+      })
+    } catch {
+      // Unreadable/corrupt image — leave any previously loaded signature in place.
+    }
   }
 
   async function maybeEncrypt(bytes: Uint8Array): Promise<Uint8Array> {
@@ -138,71 +142,80 @@ export default function Toolbar({ zoomPct, onZoomIn, onZoomOut, onZoomReset }: P
           {theme === 'dark' ? <IconSun size={15} /> : <IconMoon size={15} />}
         </button>
 
-        <input
-          ref={signatureInputRef}
-          type="file"
-          accept="image/png,image/jpeg"
-          style={{ display: 'none' }}
-          onChange={(e) => void handleSignatureFile(e)}
-        />
-        <button
-          type="button"
-          className={`pill-btn${signatureAsset ? ' pill-btn--active' : ''}`}
-          onClick={() => signatureInputRef.current?.click()}
-          title="Laad een afbeelding van je handtekening om op pagina's te plaatsen"
-        >
-          <IconSignature size={14} /> {signatureAsset ? 'Handtekening geladen' : 'Handtekening'}
-        </button>
-        {signatureAsset && (
-          <button
-            type="button"
-            className="icon-btn icon-btn--danger"
-            title="Handtekening wissen"
-            onClick={() => setSignatureAsset(null)}
-          >
-            <IconClose size={13} />
-          </button>
-        )}
+        <div className="toolbar__divider" />
 
-        <div className="toolbar__password">
+        <div className="toolbar__group">
+          <input
+            ref={signatureInputRef}
+            type="file"
+            accept="image/png,image/jpeg"
+            style={{ display: 'none' }}
+            onChange={(e) => void handleSignatureFile(e)}
+          />
           <button
             type="button"
-            className={`pill-btn${password ? ' pill-btn--active' : ''}`}
-            onClick={() => setShowPasswordField((v) => !v)}
-            title="Wachtwoord instellen voor geëxporteerde PDF's"
+            className={`pill-btn${signatureAsset ? ' pill-btn--active' : ''}`}
+            onClick={() => signatureInputRef.current?.click()}
+            title="Laad een afbeelding van je handtekening om op pagina's te plaatsen"
           >
-            <IconLock size={14} /> Wachtwoord
+            <IconSignature size={14} /> {signatureAsset ? 'Handtekening geladen' : 'Handtekening'}
           </button>
-          {showPasswordField && (
-            <input
-              type="password"
-              className="toolbar__password-input"
-              placeholder="Wachtwoord voor export"
-              value={password}
-              onChange={(e) => setPassword(e.target.value)}
-            />
+          {signatureAsset && (
+            <button
+              type="button"
+              className="icon-btn icon-btn--chrome icon-btn--danger"
+              title="Handtekening wissen"
+              onClick={() => setSignatureAsset(null)}
+            >
+              <IconClose size={13} />
+            </button>
           )}
+
+          <div className="toolbar__password">
+            <button
+              type="button"
+              className={`pill-btn${password ? ' pill-btn--active' : ''}`}
+              onClick={() => setShowPasswordField((v) => !v)}
+              title="Wachtwoord instellen voor geëxporteerde PDF's"
+            >
+              <IconLock size={14} /> Wachtwoord
+            </button>
+            {showPasswordField && (
+              <input
+                autoFocus
+                type="password"
+                className="toolbar__password-input"
+                placeholder="Wachtwoord voor export"
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+              />
+            )}
+          </div>
         </div>
 
-        <button type="button" className="pill-btn" onClick={() => void handleOpen()}>
-          <IconFolderOpen size={14} /> Openen
-        </button>
-        <button
-          type="button"
-          className="pill-btn"
-          disabled={!activeGroup || busy !== null}
-          onClick={() => void handleExportPdf()}
-        >
-          {busy === 'pdf' ? 'Bezig…' : 'Exporteer PDF'}
-        </button>
-        <button
-          type="button"
-          className="pill-btn pill-btn--primary"
-          disabled={!groups.length || busy !== null}
-          onClick={() => void handleExportZip()}
-        >
-          {busy === 'zip' ? 'Bezig…' : 'Exporteer zip'}
-        </button>
+        <div className="toolbar__divider" />
+
+        <div className="toolbar__group">
+          <button type="button" className="pill-btn" onClick={() => void handleOpen()}>
+            <IconFolderOpen size={14} /> Openen
+          </button>
+          <button
+            type="button"
+            className="pill-btn"
+            disabled={!activeGroup || busy !== null}
+            onClick={() => void handleExportPdf()}
+          >
+            {busy === 'pdf' ? 'Bezig…' : 'Exporteer PDF'}
+          </button>
+          <button
+            type="button"
+            className="pill-btn pill-btn--primary"
+            disabled={!groups.length || busy !== null}
+            onClick={() => void handleExportZip()}
+          >
+            {busy === 'zip' ? 'Bezig…' : 'Exporteer zip'}
+          </button>
+        </div>
       </div>
     </div>
   )

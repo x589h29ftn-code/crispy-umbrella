@@ -1,9 +1,10 @@
-import { useState } from 'react'
+import { useRef, useState } from 'react'
 import { useStudioStore } from '../store'
+import { useClickOutside } from '../hooks/useClickOutside'
 import type { DocGroup, SourceFile } from '../types'
 import PageThumb from './PageThumb'
 import AddTile from './AddTile'
-import { IconClose, IconGrip, IconHash, IconPlus, IconStamp } from './icons'
+import { IconCheck, IconClose, IconGrip, IconHash, IconMore, IconPlus, IconStamp } from './icons'
 
 interface Props {
   group: DocGroup
@@ -21,8 +22,17 @@ export default function GroupRow({ group, index, sources, isActive }: Props): JS
   const [slot, setSlot] = useState<Slot | null>(null)
   const [editing, setEditing] = useState(false)
   const [draft, setDraft] = useState(group.name)
+  const [menuOpen, setMenuOpen] = useState(false)
   const [showWatermarkEditor, setShowWatermarkEditor] = useState(false)
   const [watermarkDraft, setWatermarkDraft] = useState(group.watermark?.text ?? '')
+  const menuRef = useRef<HTMLDivElement>(null)
+
+  function closeMenu(): void {
+    setMenuOpen(false)
+    setShowWatermarkEditor(false)
+  }
+
+  useClickOutside(menuRef, menuOpen, closeMenu)
 
   const movePage = useStudioStore((s) => s.movePage)
   const addPagesToGroup = useStudioStore((s) => s.addPagesToGroup)
@@ -116,44 +126,95 @@ export default function GroupRow({ group, index, sources, isActive }: Props): JS
         <span className="group-row__count">
           {group.pages.length} {group.pages.length === 1 ? 'pagina' : "pagina's"}
         </span>
-        <div className="group-row__tools">
+        <div className="group-row__menu-wrap" ref={menuRef}>
           <button
             type="button"
-            className={`text-btn${group.watermark ? ' text-btn--active' : ''}`}
-            title="Watermerk toevoegen of bewerken"
+            className={`icon-btn icon-btn--chrome${menuOpen ? ' icon-btn--active' : ''}`}
+            title="Meer opties"
             onClick={(e) => {
               e.stopPropagation()
-              setShowWatermarkEditor((v) => !v)
+              setMenuOpen((v) => !v)
+              setShowWatermarkEditor(false)
             }}
           >
-            <IconStamp size={13} /> Watermerk
+            <IconMore size={14} />
           </button>
-          <button
-            type="button"
-            className={`text-btn${group.pageNumbers ? ' text-btn--active' : ''}`}
-            title="Paginanummers in- of uitschakelen"
-            onClick={(e) => {
-              e.stopPropagation()
-              toggleGroupPageNumbers(group.id)
-            }}
-          >
-            <IconHash size={13} />
-          </button>
-          <button
-            type="button"
-            className="text-btn"
-            title="Lege pagina toevoegen"
-            onClick={(e) => {
-              e.stopPropagation()
-              void insertBlankPage(group.id)
-            }}
-          >
-            <IconPlus size={13} /> Lege pagina
-          </button>
+          {menuOpen && (
+            <div className="dropdown-menu" onClick={(e) => e.stopPropagation()}>
+              {showWatermarkEditor ? (
+                <div className="dropdown-menu__editor">
+                  <input
+                    autoFocus
+                    type="text"
+                    placeholder="Watermerktekst, bv. CONCEPT"
+                    value={watermarkDraft}
+                    onChange={(e) => setWatermarkDraft(e.target.value)}
+                  />
+                  <div className="dropdown-menu__editor-actions">
+                    {group.watermark && (
+                      <button
+                        type="button"
+                        className="text-btn"
+                        onClick={() => {
+                          setGroupWatermark(group.id, null)
+                          setWatermarkDraft('')
+                          closeMenu()
+                        }}
+                      >
+                        Verwijderen
+                      </button>
+                    )}
+                    <button
+                      type="button"
+                      className="pill-btn pill-btn--primary"
+                      onClick={() => {
+                        if (watermarkDraft.trim())
+                          setGroupWatermark(group.id, { text: watermarkDraft.trim(), opacity: 0.25 })
+                        closeMenu()
+                      }}
+                    >
+                      Toepassen
+                    </button>
+                  </div>
+                </div>
+              ) : (
+                <>
+                  <button type="button" className="dropdown-menu__item" onClick={() => setShowWatermarkEditor(true)}>
+                    <IconStamp size={14} />
+                    Watermerk
+                    {group.watermark && <IconCheck size={13} className="dropdown-menu__check" />}
+                  </button>
+                  <button
+                    type="button"
+                    className="dropdown-menu__item"
+                    onClick={() => {
+                      toggleGroupPageNumbers(group.id)
+                      closeMenu()
+                    }}
+                  >
+                    <IconHash size={14} />
+                    Paginanummers
+                    {group.pageNumbers && <IconCheck size={13} className="dropdown-menu__check" />}
+                  </button>
+                  <button
+                    type="button"
+                    className="dropdown-menu__item"
+                    onClick={() => {
+                      void insertBlankPage(group.id)
+                      closeMenu()
+                    }}
+                  >
+                    <IconPlus size={14} />
+                    Lege pagina toevoegen
+                  </button>
+                </>
+              )}
+            </div>
+          )}
         </div>
         <button
           type="button"
-          className="icon-btn icon-btn--danger group-row__remove"
+          className="icon-btn icon-btn--chrome icon-btn--danger group-row__remove"
           title="Verwijder document"
           onClick={(e) => {
             e.stopPropagation()
@@ -163,40 +224,6 @@ export default function GroupRow({ group, index, sources, isActive }: Props): JS
           <IconClose size={13} />
         </button>
       </header>
-
-      {showWatermarkEditor && (
-        <div className="group-row__watermark-editor" onClick={(e) => e.stopPropagation()}>
-          <input
-            type="text"
-            placeholder="Watermerktekst, bv. CONCEPT"
-            value={watermarkDraft}
-            onChange={(e) => setWatermarkDraft(e.target.value)}
-          />
-          <button
-            type="button"
-            className="pill-btn"
-            onClick={() => {
-              if (watermarkDraft.trim()) setGroupWatermark(group.id, { text: watermarkDraft.trim(), opacity: 0.25 })
-              setShowWatermarkEditor(false)
-            }}
-          >
-            Toepassen
-          </button>
-          {group.watermark && (
-            <button
-              type="button"
-              className="pill-btn"
-              onClick={() => {
-                setGroupWatermark(group.id, null)
-                setWatermarkDraft('')
-                setShowWatermarkEditor(false)
-              }}
-            >
-              Verwijderen
-            </button>
-          )}
-        </div>
-      )}
 
       <div
         className="group-row__pages"

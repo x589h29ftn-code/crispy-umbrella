@@ -28,6 +28,7 @@ Gebouwd met Electron, Vite, TypeScript en React. PDF-weergave via [pdf.js](https
 - **Iconenset**: consistente lijn-iconen (`src/renderer/src/components/icons.tsx`) in plaats van tekst-glyphs zoals ⟳ en ✕.
 - **Licht/donker thema**: schakelaar in de werkbalk; volgt bij eerste start de systeeminstelling en onthoudt daarna je keuze.
 - **Micro-animaties**: documenten die vloeiend herschikken bij toevoegen/verwijderen/herordenen, een hover-lift op miniaturen, een vloeiende overgang bij het wisselen van pagina in het volledig scherm, en een filmstrip onderaan het volledig scherm om snel te bladeren.
+- **Rustigere, strakkere chrome**: de werkbalk is gegroepeerd met scheidingslijnen (weergave · handtekening/wachtwoord · openen/exporteren) in plaats van één lange rij knoppen; watermerk/paginanummers/lege pagina zitten achter een "⋯"-menu per document in plaats van altijd zichtbare knoppen; kaarten en dropdowns gebruiken zachte schaduwen in plaats van harde randen; knoppen zijn standaard randloos (ghost) met alleen "Exporteer zip" als opvallende primaire actie; een consistente 4/8/12/16px-spacingschaal en iets meer letter-spacing op kleine labels.
 
 ## Ontwikkelen
 

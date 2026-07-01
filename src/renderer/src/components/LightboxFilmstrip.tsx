@@ -19,9 +19,11 @@ export default function LightboxFilmstrip(): JSX.Element {
     flat.forEach(({ page }) => {
       const source: SourceFile | undefined = sources.get(page.sourceId)
       if (!source) return
-      renderThumbnail(source, page.sourcePageIndex, page.rotation, THUMB_WIDTH * 2).then((url) => {
-        if (!cancelled) setThumbs((prev) => (prev[page.id] ? prev : { ...prev, [page.id]: url }))
-      })
+      renderThumbnail(source, page.sourcePageIndex, page.rotation, THUMB_WIDTH * 2)
+        .then((url) => {
+          if (!cancelled) setThumbs((prev) => (prev[page.id] ? prev : { ...prev, [page.id]: url }))
+        })
+        .catch(() => undefined)
     })
     return () => {
       cancelled = true
