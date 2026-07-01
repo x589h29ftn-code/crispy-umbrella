@@ -1,7 +1,7 @@
 import { create } from 'zustand'
 import { nanoid } from 'nanoid'
-import { forgetSource, loadSourceFile } from './lib/pdfEngine'
-import type { DocGroup, PageRef, SourceFile } from './types'
+import { createBlankPageSource, forgetSource, loadSourceFile } from './lib/pdfEngine'
+import type { DocGroup, PageRef, SignatureAsset, SignaturePlacement, SourceFile, Watermark } from './types'
 
 export interface LightboxState {
   open: boolean
@@ -17,6 +17,7 @@ interface StudioState {
   isImporting: boolean
   dragPageId: string | null
   dragGroupId: string | null
+  signatureAsset: SignatureAsset | null
 
   setDragPageId: (id: string | null) => void
   setDragGroupId: (id: string | null) => void
@@ -24,16 +25,23 @@ interface StudioState {
   removeGroup: (groupId: string) => void
   importFiles: (files: { name: string; data: Uint8Array }[]) => Promise<void>
   addPagesToGroup: (groupId: string, files: { name: string; data: Uint8Array }[]) => Promise<void>
+  insertBlankPage: (groupId: string) => Promise<void>
   movePage: (pageId: string, toGroupId: string, toIndex: number) => void
   createGroupWithPage: (pageId: string) => void
   deletePage: (pageId: string) => void
   rotatePage: (pageId: string) => void
   renameGroup: (groupId: string, name: string) => void
+  setGroupWatermark: (groupId: string, watermark: Watermark | null) => void
+  toggleGroupPageNumbers: (groupId: string) => void
   setActiveGroup: (groupId: string) => void
   setZoom: (zoom: number | ((z: number) => number)) => void
   openLightbox: (pageId: string) => void
   closeLightbox: () => void
   stepLightbox: (direction: 1 | -1) => void
+  setSignatureAsset: (asset: SignatureAsset | null) => void
+  addSignaturePlacement: (pageId: string, placement: Omit<SignaturePlacement, 'id'>) => void
+  updateSignaturePlacement: (pageId: string, placementId: string, patch: Partial<SignaturePlacement>) => void
+  removeSignaturePlacement: (pageId: string, placementId: string) => void
 }
 
 function findPage(groups: DocGroup[], pageId: string): { group: DocGroup; index: number } | null {
@@ -61,6 +69,7 @@ export const useStudioStore = create<StudioState>((set, get) => ({
   isImporting: false,
   dragPageId: null,
   dragGroupId: null,
+  signatureAsset: null,
 
   setDragPageId: (id) => set({ dragPageId: id }),
   setDragGroupId: (id) => set({ dragGroupId: id }),
@@ -102,8 +111,11 @@ export const useStudioStore = create<StudioState>((set, get) => ({
             id: nanoid(),
             sourceId: id,
             sourcePageIndex: i,
-            rotation: 0
-          }))
+            rotation: 0,
+            signatures: []
+          })),
+          watermark: null,
+          pageNumbers: false
         })
       }
       set((state) => ({
@@ -127,7 +139,7 @@ export const useStudioStore = create<StudioState>((set, get) => ({
         const source = await loadSourceFile(file.name, file.data, id)
         sources.set(id, source)
         for (let i = 0; i < source.pageCount; i += 1) {
-          newPages.push({ id: nanoid(), sourceId: id, sourcePageIndex: i, rotation: 0 })
+          newPages.push({ id: nanoid(), sourceId: id, sourcePageIndex: i, rotation: 0, signatures: [] })
         }
       }
       set((state) => ({
@@ -137,6 +149,16 @@ export const useStudioStore = create<StudioState>((set, get) => ({
     } finally {
       set({ isImporting: false })
     }
+  },
+
+  insertBlankPage: async (groupId) => {
+    const id = nanoid()
+    const source = await createBlankPageSource(id)
+    const page: PageRef = { id: nanoid(), sourceId: id, sourcePageIndex: 0, rotation: 0, signatures: [] }
+    set((state) => ({
+      sources: new Map(state.sources).set(id, source),
+      groups: state.groups.map((g) => (g.id === groupId ? { ...g, pages: [...g.pages, page] } : g))
+    }))
   },
 
   movePage: (pageId, toGroupId, toIndex) => {
@@ -177,7 +199,9 @@ export const useStudioStore = create<StudioState>((set, get) => ({
       const newGroup: DocGroup = {
         id: nanoid(),
         name: nextGroupName(state.groups, 'Nieuw document'),
-        pages: [page]
+        pages: [page],
+        watermark: null,
+        pageNumbers: false
       }
       const groups = state.groups
         .map((g) => (g.id === fromGroup.id ? { ...g, pages: g.pages.filter((p) => p.id !== pageId) } : g))
@@ -210,6 +234,18 @@ export const useStudioStore = create<StudioState>((set, get) => ({
     }))
   },
 
+  setGroupWatermark: (groupId, watermark) => {
+    set((state) => ({
+      groups: state.groups.map((g) => (g.id === groupId ? { ...g, watermark } : g))
+    }))
+  },
+
+  toggleGroupPageNumbers: (groupId) => {
+    set((state) => ({
+      groups: state.groups.map((g) => (g.id === groupId ? { ...g, pageNumbers: !g.pageNumbers } : g))
+    }))
+  },
+
   setActiveGroup: (groupId) => set({ activeGroupId: groupId }),
 
   setZoom: (zoom) =>
@@ -229,6 +265,46 @@ export const useStudioStore = create<StudioState>((set, get) => ({
     const nextIdx = idx + direction
     if (nextIdx < 0 || nextIdx >= flat.length) return
     set({ lightbox: { open: true, pageId: flat[nextIdx].id } })
+  },
+
+  setSignatureAsset: (asset) => set({ signatureAsset: asset }),
+
+  addSignaturePlacement: (pageId, placement) => {
+    set((state) => ({
+      groups: state.groups.map((g) => ({
+        ...g,
+        pages: g.pages.map((p) =>
+          p.id === pageId ? { ...p, signatures: [...p.signatures, { ...placement, id: nanoid() }] } : p
+        )
+      }))
+    }))
+  },
+
+  updateSignaturePlacement: (pageId, placementId, patch) => {
+    set((state) => ({
+      groups: state.groups.map((g) => ({
+        ...g,
+        pages: g.pages.map((p) =>
+          p.id !== pageId
+            ? p
+            : {
+                ...p,
+                signatures: p.signatures.map((s) => (s.id === placementId ? { ...s, ...patch } : s))
+              }
+        )
+      }))
+    }))
+  },
+
+  removeSignaturePlacement: (pageId, placementId) => {
+    set((state) => ({
+      groups: state.groups.map((g) => ({
+        ...g,
+        pages: g.pages.map((p) =>
+          p.id !== pageId ? p : { ...p, signatures: p.signatures.filter((s) => s.id !== placementId) }
+        )
+      }))
+    }))
   }
 }))
 

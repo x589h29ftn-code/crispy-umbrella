@@ -1,7 +1,10 @@
 import * as pdfjsLib from 'pdfjs-dist'
 import pdfWorkerUrl from 'pdfjs-dist/build/pdf.worker.min.mjs?url'
-import { PDFDocument, degrees } from 'pdf-lib'
-import type { DocGroup, PageRef, SourceFile } from '../types'
+import { PDFDocument, PDFFont, PDFImage, PDFPage, StandardFonts, degrees, rgb } from 'pdf-lib'
+import type { DocGroup, PageRef, SignaturePlacement, SourceFile } from '../types'
+
+const A4_WIDTH = 595.28
+const A4_HEIGHT = 841.89
 
 pdfjsLib.GlobalWorkerOptions.workerSrc = pdfWorkerUrl
 
@@ -49,21 +52,148 @@ export async function loadSourceFile(name: string, data: Uint8Array, id: string)
   return source
 }
 
-export async function renderThumbnail(
+export async function createBlankPageSource(id: string): Promise<SourceFile> {
+  const doc = await PDFDocument.create()
+  doc.addPage([A4_WIDTH, A4_HEIGHT])
+  const data = await doc.save()
+  return loadSourceFile('Lege pagina', data, id)
+}
+
+type PdfJsPage = Awaited<ReturnType<PdfJsDoc['getPage']>>
+
+/**
+ * pdf.js's `getViewport({ rotation })` treats `rotation` as the *absolute*
+ * display rotation, defaulting to the page's own inherent `/Rotate` when
+ * omitted — it does not add to it. Our `PageRef.rotation` only tracks the
+ * extra rotation the user applied on top of that, so every viewport lookup
+ * must combine the two explicitly to render correctly for source PDFs that
+ * already carry their own rotation (e.g. scanned documents).
+ */
+async function getPageWithTotalRotation(
+  source: SourceFile,
+  pageIndex: number,
+  deltaRotation: number
+): Promise<{ page: PdfJsPage; totalRotation: number }> {
+  const doc = await getPdfJsDocument(source)
+  const page = await doc.getPage(pageIndex + 1)
+  return { page, totalRotation: (page.rotate + deltaRotation) % 360 }
+}
+
+async function getScale1Viewport(
+  source: SourceFile,
+  pageIndex: number,
+  deltaRotation: number
+): Promise<ReturnType<PdfJsPage['getViewport']>> {
+  const { page, totalRotation } = await getPageWithTotalRotation(source, pageIndex, deltaRotation)
+  return page.getViewport({ scale: 1, rotation: totalRotation })
+}
+
+/**
+ * Degrees (pdf-lib's counter-clockwise convention) that content drawn in a
+ * page's native (unrotated) coordinate space must be pre-rotated by so that
+ * it appears upright once a viewer applies the page's display rotation.
+ * Derived from pdf.js's own viewport transform rather than a hand-derived
+ * rotation matrix, so it can't disagree with how pdf.js renders the page.
+ */
+function computeRotationCompensationDegrees(
+  viewport: { convertToPdfPoint(x: number, y: number): number[] }
+): number {
+  const [ox, oy] = viewport.convertToPdfPoint(0, 0)
+  const [rx, ry] = viewport.convertToPdfPoint(10, 0)
+  return (Math.atan2(ry - oy, rx - ox) * 180) / Math.PI
+}
+
+/** The page's on-screen size (in points, i.e. CSS pixels at 100% zoom) for the given rotation. */
+export async function getPageVisualSize(
+  source: SourceFile,
+  pageIndex: number,
+  deltaRotation: number
+): Promise<{ width: number; height: number }> {
+  const viewport = await getScale1Viewport(source, pageIndex, deltaRotation)
+  return { width: viewport.width, height: viewport.height }
+}
+
+/** Used while dragging an existing placement: keeps its size, moves its anchor point. */
+export async function visualPointToContentPoint(
+  source: SourceFile,
+  pageIndex: number,
+  deltaRotation: number,
+  visualX: number,
+  visualY: number
+): Promise<{ x: number; y: number }> {
+  const viewport = await getScale1Viewport(source, pageIndex, deltaRotation)
+  const [x, y] = viewport.convertToPdfPoint(visualX, visualY)
+  return { x, y }
+}
+
+/**
+ * Converts a signature rectangle expressed relative to the currently
+ * displayed (rotated) page image into a page-content-space rectangle that
+ * stays physically anchored to the page regardless of later rotation.
+ */
+export async function visualRectToSignaturePlacement(
   source: SourceFile,
   pageIndex: number,
   rotation: number,
+  visual: { xPct: number; yPct: number; wPct: number; hPct: number },
+  imageDataUrl: string
+): Promise<Omit<SignaturePlacement, 'id'>> {
+  const viewport = await getScale1Viewport(source, pageIndex, rotation)
+  const pivotVisualX = visual.xPct * viewport.width
+  const pivotVisualY = (visual.yPct + visual.hPct) * viewport.height
+  const [x, y] = viewport.convertToPdfPoint(pivotVisualX, pivotVisualY)
+  return {
+    imageDataUrl,
+    x,
+    y,
+    width: visual.wPct * viewport.width,
+    height: visual.hPct * viewport.height
+  }
+}
+
+export interface SignatureVisualBox {
+  pivotX: number
+  pivotY: number
+  width: number
+  height: number
+  rotateDeg: number
+}
+
+/** Inverse of {@link visualRectToSignaturePlacement}, recomputed live from the current rotation. */
+export async function getSignatureVisualBox(
+  source: SourceFile,
+  pageIndex: number,
+  rotation: number,
+  placement: SignaturePlacement
+): Promise<SignatureVisualBox> {
+  const viewport = await getScale1Viewport(source, pageIndex, rotation)
+  const rotateContentDeg = computeRotationCompensationDegrees(viewport)
+  const rad = (rotateContentDeg * Math.PI) / 180
+
+  const [pvx, pvy] = viewport.convertToViewportPoint(placement.x, placement.y)
+  const [rvx, rvy] = viewport.convertToViewportPoint(
+    placement.x + 10 * Math.cos(rad),
+    placement.y + 10 * Math.sin(rad)
+  )
+  const rotateDeg = (Math.atan2(rvy - pvy, rvx - pvx) * 180) / Math.PI
+
+  return { pivotX: pvx, pivotY: pvy, width: placement.width, height: placement.height, rotateDeg }
+}
+
+export async function renderThumbnail(
+  source: SourceFile,
+  pageIndex: number,
+  deltaRotation: number,
   targetWidth: number
 ): Promise<string> {
-  const cacheKey = `${source.id}::${pageIndex}::${rotation}::${targetWidth}`
+  const cacheKey = `${source.id}::${pageIndex}::${deltaRotation}::${targetWidth}`
   const cached = thumbCache.get(cacheKey)
   if (cached) return cached
 
-  const doc = await getPdfJsDocument(source)
-  const page = await doc.getPage(pageIndex + 1)
-  const baseViewport = page.getViewport({ scale: 1, rotation })
+  const { page, totalRotation } = await getPageWithTotalRotation(source, pageIndex, deltaRotation)
+  const baseViewport = page.getViewport({ scale: 1, rotation: totalRotation })
   const scale = targetWidth / baseViewport.width
-  const viewport = page.getViewport({ scale, rotation })
+  const viewport = page.getViewport({ scale, rotation: totalRotation })
 
   const canvas = document.createElement('canvas')
   canvas.width = Math.max(1, Math.round(viewport.width))
@@ -77,12 +207,21 @@ export async function renderThumbnail(
   return dataUrl
 }
 
-async function buildPdf(source: { pages: PageRef[] }, sources: Map<string, SourceFile>): Promise<Uint8Array> {
+function dataUrlToBytes(dataUrl: string): { mime: string; bytes: Uint8Array } {
+  const match = /^data:([^;]+);base64,(.+)$/.exec(dataUrl)
+  if (!match) throw new Error('Ongeldige data-URL')
+  const binary = atob(match[2])
+  const bytes = new Uint8Array(binary.length)
+  for (let i = 0; i < binary.length; i += 1) bytes[i] = binary.charCodeAt(i)
+  return { mime: match[1], bytes }
+}
+
+async function buildPdf(group: DocGroup, sources: Map<string, SourceFile>): Promise<Uint8Array> {
   const out = await PDFDocument.create()
   const byDoc = new Map<string, number[]>()
   const order: { sourceId: string; localIndex: number; page: PageRef }[] = []
 
-  source.pages.forEach((page) => {
+  group.pages.forEach((page) => {
     const list = byDoc.get(page.sourceId) ?? []
     list.push(page.sourcePageIndex)
     byDoc.set(page.sourceId, list)
@@ -98,46 +237,79 @@ async function buildPdf(source: { pages: PageRef[] }, sources: Map<string, Sourc
     copiedByDoc.set(sourceId, copied)
   }
 
-  for (const { sourceId, localIndex, page } of order) {
+  const font = group.watermark || group.pageNumbers ? await out.embedFont(StandardFonts.Helvetica) : null
+  const embeddedImages = new Map<string, PDFImage>()
+  const total = order.length
+
+  for (let i = 0; i < order.length; i += 1) {
+    const { sourceId, localIndex, page } = order[i]
     const copied = copiedByDoc.get(sourceId)
-    if (!copied) continue
+    const src = sources.get(sourceId)
+    if (!copied || !src) continue
     const copiedPage = copied[localIndex]
     const totalRotation = (copiedPage.getRotation().angle + page.rotation) % 360
     copiedPage.setRotation(degrees(totalRotation))
+
+    for (const signature of page.signatures) {
+      let embedded = embeddedImages.get(signature.imageDataUrl)
+      if (!embedded) {
+        const { mime, bytes } = dataUrlToBytes(signature.imageDataUrl)
+        embedded = mime === 'image/jpeg' || mime === 'image/jpg' ? await out.embedJpg(bytes) : await out.embedPng(bytes)
+        embeddedImages.set(signature.imageDataUrl, embedded)
+      }
+      const viewport = await getScale1Viewport(src, page.sourcePageIndex, page.rotation)
+      const rotateDeg = computeRotationCompensationDegrees(viewport)
+      copiedPage.drawImage(embedded, {
+        x: signature.x,
+        y: signature.y,
+        width: signature.width,
+        height: signature.height,
+        rotate: degrees(rotateDeg)
+      })
+    }
+
+    if (group.watermark && font) {
+      drawWatermark(copiedPage, group.watermark.text, group.watermark.opacity, font)
+    }
+    if (group.pageNumbers && font) {
+      drawPageNumber(copiedPage, i + 1, total, font)
+    }
+
     out.addPage(copiedPage)
   }
 
   return out.save()
 }
 
+function drawWatermark(page: PDFPage, text: string, opacity: number, font: PDFFont): void {
+  const { width, height } = page.getSize()
+  const size = Math.min(width, height) / Math.max(8, text.length * 0.6)
+  const textWidth = font.widthOfTextAtSize(text, size)
+  page.drawText(text, {
+    x: width / 2 - textWidth / 2,
+    y: height / 2,
+    size,
+    font,
+    color: rgb(0.5, 0.5, 0.5),
+    opacity: Math.max(0, Math.min(1, opacity)),
+    rotate: degrees(45)
+  })
+}
+
+function drawPageNumber(page: PDFPage, pageNumber: number, total: number, font: PDFFont): void {
+  const { width } = page.getSize()
+  const label = `${pageNumber} / ${total}`
+  const size = 9
+  const textWidth = font.widthOfTextAtSize(label, size)
+  page.drawText(label, {
+    x: width / 2 - textWidth / 2,
+    y: 18,
+    size,
+    font,
+    color: rgb(0.35, 0.35, 0.35)
+  })
+}
+
 export async function exportGroupToPdf(group: DocGroup, sources: Map<string, SourceFile>): Promise<Uint8Array> {
   return buildPdf(group, sources)
-}
-
-export async function exportAllToZip(
-  groups: DocGroup[],
-  sources: Map<string, SourceFile>
-): Promise<Uint8Array> {
-  const { zipSync } = await import('fflate')
-  const files: Record<string, Uint8Array> = {}
-  const usedNames = new Set<string>()
-
-  for (const group of groups) {
-    if (!group.pages.length) continue
-    const bytes = await buildPdf(group, sources)
-    let fileName = `${sanitizeFileName(group.name)}.pdf`
-    let n = 2
-    while (usedNames.has(fileName)) {
-      fileName = `${sanitizeFileName(group.name)} (${n}).pdf`
-      n += 1
-    }
-    usedNames.add(fileName)
-    files[fileName] = bytes
-  }
-
-  return zipSync(files, { level: 6 })
-}
-
-function sanitizeFileName(name: string): string {
-  return name.replace(/[\\/:*?"<>|]/g, '_').trim() || 'document'
 }

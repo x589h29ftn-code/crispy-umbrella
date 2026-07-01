@@ -20,15 +20,20 @@ export default function GroupRow({ group, index, sources, isActive }: Props): JS
   const [slot, setSlot] = useState<Slot | null>(null)
   const [editing, setEditing] = useState(false)
   const [draft, setDraft] = useState(group.name)
+  const [showWatermarkEditor, setShowWatermarkEditor] = useState(false)
+  const [watermarkDraft, setWatermarkDraft] = useState(group.watermark?.text ?? '')
 
   const movePage = useStudioStore((s) => s.movePage)
   const addPagesToGroup = useStudioStore((s) => s.addPagesToGroup)
+  const insertBlankPage = useStudioStore((s) => s.insertBlankPage)
   const renameGroup = useStudioStore((s) => s.renameGroup)
   const removeGroup = useStudioStore((s) => s.removeGroup)
   const reorderGroups = useStudioStore((s) => s.reorderGroups)
   const setActiveGroup = useStudioStore((s) => s.setActiveGroup)
   const setDragGroupId = useStudioStore((s) => s.setDragGroupId)
   const dragGroupId = useStudioStore((s) => s.dragGroupId)
+  const setGroupWatermark = useStudioStore((s) => s.setGroupWatermark)
+  const toggleGroupPageNumbers = useStudioStore((s) => s.toggleGroupPageNumbers)
 
   const targetIndex = (): number => {
     if (!slot) return group.pages.length
@@ -109,6 +114,41 @@ export default function GroupRow({ group, index, sources, isActive }: Props): JS
         <span className="group-row__count">
           {group.pages.length} {group.pages.length === 1 ? 'pagina' : "pagina's"}
         </span>
+        <div className="group-row__tools">
+          <button
+            type="button"
+            className={`text-btn${group.watermark ? ' text-btn--active' : ''}`}
+            title="Watermerk toevoegen of bewerken"
+            onClick={(e) => {
+              e.stopPropagation()
+              setShowWatermarkEditor((v) => !v)
+            }}
+          >
+            Watermerk
+          </button>
+          <button
+            type="button"
+            className={`text-btn${group.pageNumbers ? ' text-btn--active' : ''}`}
+            title="Paginanummers in- of uitschakelen"
+            onClick={(e) => {
+              e.stopPropagation()
+              toggleGroupPageNumbers(group.id)
+            }}
+          >
+            #
+          </button>
+          <button
+            type="button"
+            className="text-btn"
+            title="Lege pagina toevoegen"
+            onClick={(e) => {
+              e.stopPropagation()
+              void insertBlankPage(group.id)
+            }}
+          >
+            + Lege pagina
+          </button>
+        </div>
         <button
           type="button"
           className="icon-btn icon-btn--danger group-row__remove"
@@ -121,6 +161,40 @@ export default function GroupRow({ group, index, sources, isActive }: Props): JS
           ✕
         </button>
       </header>
+
+      {showWatermarkEditor && (
+        <div className="group-row__watermark-editor" onClick={(e) => e.stopPropagation()}>
+          <input
+            type="text"
+            placeholder="Watermerktekst, bv. CONCEPT"
+            value={watermarkDraft}
+            onChange={(e) => setWatermarkDraft(e.target.value)}
+          />
+          <button
+            type="button"
+            className="pill-btn"
+            onClick={() => {
+              if (watermarkDraft.trim()) setGroupWatermark(group.id, { text: watermarkDraft.trim(), opacity: 0.25 })
+              setShowWatermarkEditor(false)
+            }}
+          >
+            Toepassen
+          </button>
+          {group.watermark && (
+            <button
+              type="button"
+              className="pill-btn"
+              onClick={() => {
+                setGroupWatermark(group.id, null)
+                setWatermarkDraft('')
+                setShowWatermarkEditor(false)
+              }}
+            >
+              Verwijderen
+            </button>
+          )}
+        </div>
+      )}
 
       <div
         className="group-row__pages"

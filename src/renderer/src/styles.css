@@ -76,7 +76,28 @@ body {
 
 .toolbar__actions {
   display: flex;
+  align-items: center;
   gap: 8px;
+}
+
+.toolbar__password {
+  position: relative;
+  display: flex;
+  align-items: center;
+}
+
+.toolbar__password-input {
+  position: absolute;
+  top: calc(100% + 6px);
+  right: 0;
+  width: 200px;
+  background: var(--panel-2);
+  border: 1px solid var(--accent);
+  border-radius: 6px;
+  color: var(--text);
+  padding: 7px 10px;
+  font-size: 13px;
+  z-index: 10;
 }
 
 .pill-btn {
@@ -107,6 +128,11 @@ body {
 
 .pill-btn--primary:hover:not(:disabled) {
   background: #3f7be0;
+}
+
+.pill-btn--active {
+  border-color: var(--accent);
+  color: var(--accent);
 }
 
 /* Canvas */
@@ -229,8 +255,56 @@ body {
   color: var(--text-dim);
 }
 
-.group-row__remove {
+.group-row__tools {
+  display: flex;
+  gap: 6px;
   margin-left: auto;
+}
+
+.group-row__remove {
+  margin-left: 4px;
+}
+
+.text-btn {
+  background: transparent;
+  border: 1px solid var(--border);
+  color: var(--text-dim);
+  border-radius: 999px;
+  padding: 4px 10px;
+  font-size: 11px;
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.text-btn:hover {
+  color: var(--text);
+  border-color: var(--text-dim);
+}
+
+.text-btn--active {
+  color: var(--accent);
+  border-color: var(--accent);
+}
+
+.group-row__watermark-editor {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: -4px 0 12px;
+  padding: 8px 10px;
+  background: var(--panel-2);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+}
+
+.group-row__watermark-editor input {
+  flex: 1;
+  background: transparent;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  color: var(--text);
+  padding: 6px 8px;
+  font-size: 13px;
 }
 
 .group-row__pages {
@@ -410,13 +484,72 @@ body {
   display: flex;
 }
 
-.lightbox__stage img {
+.lightbox__page-wrap {
+  position: relative;
+  display: inline-flex;
+}
+
+.lightbox__page-wrap img {
   max-width: 82vw;
   max-height: 86vh;
   width: auto;
   height: auto;
   box-shadow: 0 12px 40px rgba(0, 0, 0, 0.5);
   border-radius: 4px;
+  display: block;
+}
+
+.lightbox__tray {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 4px 10px 4px 4px;
+  background: var(--panel-2);
+  border: 1px solid var(--border);
+  border-radius: 999px;
+}
+
+.lightbox__tray img {
+  width: 32px;
+  height: 32px;
+  object-fit: contain;
+  background: #fff;
+  border-radius: 4px;
+  cursor: grab;
+}
+
+.signature-overlay {
+  position: absolute;
+  transform-origin: 0% 100%;
+  cursor: grab;
+}
+
+.signature-overlay img {
+  width: 100%;
+  height: 100%;
+  display: block;
+  pointer-events: none;
+}
+
+.signature-overlay:hover {
+  outline: 1px dashed var(--accent);
+}
+
+.signature-overlay__remove {
+  position: absolute;
+  top: -10px;
+  right: -10px;
+}
+
+.signature-overlay__resize {
+  position: absolute;
+  right: -6px;
+  bottom: -6px;
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  background: var(--accent);
+  cursor: nwse-resize;
 }
 
 .lightbox__loading {

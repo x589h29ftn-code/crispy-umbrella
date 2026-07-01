@@ -14,7 +14,13 @@ Gebouwd met Electron, Vite, TypeScript en React. PDF-weergave via [pdf.js](https
 - **Documenten hernoemen of verwijderen**: dubbelklik op de naam om te hernoemen; kruisje in de titelbalk om te verwijderen.
 - **In-/uitzoomen**: knoppen in de werkbalk, Ctrl/Cmd+scrollen, of pinch-zoom; slepen op de achtergrond om te pannen.
 - **Volledig scherm**: klik op een miniatuur voor een grote weergave; blader met de pijltjestoetsen of de pijlknoppen door alle pagina's van het hele project.
+- **Lege pagina invoegen**: knop in de documenttitelbalk voegt een lege A4-pagina toe.
+- **Watermerk en paginanummers**: per document in- of uit te schakelen via de titelbalk; worden bij export op elke pagina getekend.
+- **Handtekening plaatsen**: laad een afbeelding (PNG/JPEG) via de werkbalk, sleep hem in het volledig-scherm vanuit de tray op de pagina, en versleep of vergroot/verklein hem daarna. De handtekening blijft aan de pagina "vastzitten": roteer je de pagina later, dan roteert de handtekening gewoon mee.
+- **Wachtwoord op export**: vul een wachtwoord in via de werkbalk om de geëxporteerde PDF('s) met dat wachtwoord te beveiligen (AES, via [muhammara](https://github.com/julianhille/MuhammaraJS)).
 - **Exporteren**: "Exporteer PDF" slaat het actieve document op als los PDF-bestand; "Exporteer zip" bundelt alle documenten als aparte PDF's in één zip-bestand.
+
+> Watermerk en paginanummers worden voor de eenvoud niet rotatiegecorrigeerd getekend (prima leesbaar, maar bij een 90°/270°-gedraaide pagina staan ze niet per se aan de "onderkant" zoals je op het scherm ziet). Handtekeningen zijn wél volledig rotatiecorrect: dat is uitgebreid getest, ook op gedraaide pagina's. Bijsnijden (crop) is bewust nog niet toegevoegd.
 
 ## Ontwikkelen
 
@@ -38,7 +44,9 @@ npm run build:mac
 npm run build:linux
 ```
 
-> **Let op:** dit is gebouwd en getypecheckt in een sandbox zonder toegang tot GitHub-releases, waardoor het Electron-binary hier niet gedownload kon worden om de app zelf te draaien. De volledige broncode is wél getypecheckt (`npm run typecheck`) en de renderer-bundel is succesvol gebouwd en in een browser functioneel getest (drag & drop, samenvoegen/splitsen van pagina's, roteren, zoomen, volledig-scherm navigatie en PDF/zip-export zijn allemaal geverifieerd). `npm install` en `npm run dev`/`build:win` werken normaal op een gewone ontwikkelmachine of in CI met internettoegang.
+> **Let op:** dit is gebouwd en getypecheckt in een sandbox zonder toegang tot GitHub-releases, waardoor het Electron-binary hier niet gedownload kon worden om de app zelf te draaien. De volledige broncode is wél getypecheckt (`npm run typecheck`) en de renderer-bundel is succesvol gebouwd en in een browser functioneel getest: drag & drop, samenvoegen/splitsen/roteren/verwijderen van pagina's, zoomen, volledig-scherm navigatie, lege pagina invoegen, watermerk/paginanummers, handtekening plaatsen (ook op gedraaide pagina's, end-to-end via export en heropenen geverifieerd), en PDF/zip-export. De wachtwoordbeveiliging (`muhammara`) is apart geverifieerd door de main-process module direct aan te roepen. `npm install` en `npm run dev`/`build:win` werken normaal op een gewone ontwikkelmachine of in CI met internettoegang.
+>
+> `muhammara` is een native Node-module (Apache-2.0) die tijdens `npm install` een platform-specifieke prebuilt binary ophaalt. Dat vereiste in deze sandbox toegang tot GitHub-releases die normaal niet beschikbaar is — het lukte hier onverwacht toch, maar reken erop dat dit gewoon werkt op een normale ontwikkelmachine of CI. `npm run build:win`/`electron-builder install-app-deps` zorgt dat de juiste Electron-ABI-variant wordt gebruikt.
 
 ## Projectstructuur
 
