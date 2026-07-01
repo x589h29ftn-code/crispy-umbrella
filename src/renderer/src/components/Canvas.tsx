@@ -1,6 +1,8 @@
-import { useEffect } from 'react'
+import { useEffect, useMemo } from 'react'
+import { useAutoAnimate } from '@formkit/auto-animate/react'
 import { useStudioStore } from '../store'
 import { usePanZoom } from '../hooks/usePanZoom'
+import { mergeRefs } from '../lib/mergeRefs'
 import GroupRow from './GroupRow'
 import AddTile from './AddTile'
 import EmptyState from './EmptyState'
@@ -18,6 +20,8 @@ export default function Canvas({ onScaleChange, registerZoomControls }: Props): 
   const createGroupWithPage = useStudioStore((s) => s.createGroupWithPage)
 
   const { viewportRef, contentRef, zoomBy, zoomTo } = usePanZoom(onScaleChange)
+  const [animateRef] = useAutoAnimate<HTMLDivElement>({ duration: 180, easing: 'ease-out' })
+  const contentNodeRef = useMemo(() => mergeRefs(contentRef, animateRef), [contentRef, animateRef])
 
   useEffect(() => {
     registerZoomControls({ zoomBy, zoomTo })
@@ -55,7 +59,7 @@ export default function Canvas({ onScaleChange, registerZoomControls }: Props): 
         if (pageId) createGroupWithPage(pageId)
       }}
     >
-      <div className="canvas-content" ref={contentRef}>
+      <div className="canvas-content" ref={contentNodeRef}>
         {groups.map((group, i) => (
           <GroupRow key={group.id} group={group} index={i} sources={sources} isActive={group.id === activeGroupId} />
         ))}

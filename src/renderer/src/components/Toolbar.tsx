@@ -2,6 +2,7 @@ import { useRef, useState } from 'react'
 import { useStudioStore } from '../store'
 import { exportGroupToPdf } from '../lib/pdfEngine'
 import { zipSync } from 'fflate'
+import { IconClose, IconFolderOpen, IconLock, IconMinus, IconMoon, IconPlus, IconSignature, IconSun } from './icons'
 
 interface Props {
   zoomPct: number
@@ -36,6 +37,8 @@ export default function Toolbar({ zoomPct, onZoomIn, onZoomOut, onZoomReset }: P
   const importFiles = useStudioStore((s) => s.importFiles)
   const signatureAsset = useStudioStore((s) => s.signatureAsset)
   const setSignatureAsset = useStudioStore((s) => s.setSignatureAsset)
+  const theme = useStudioStore((s) => s.theme)
+  const toggleTheme = useStudioStore((s) => s.toggleTheme)
   const [busy, setBusy] = useState<string | null>(null)
   const [showPasswordField, setShowPasswordField] = useState(false)
   const [password, setPassword] = useState('')
@@ -114,18 +117,27 @@ export default function Toolbar({ zoomPct, onZoomIn, onZoomOut, onZoomReset }: P
       </div>
 
       <div className="toolbar__zoom">
-        <button type="button" className="pill-btn" onClick={onZoomOut} title="Uitzoomen">
-          −
+        <button type="button" className="pill-btn pill-btn--icon" onClick={onZoomOut} title="Uitzoomen">
+          <IconMinus size={14} />
         </button>
         <button type="button" className="toolbar__zoom-pct" onClick={onZoomReset} title="Zoom herstellen (100%)">
           {zoomPct}%
         </button>
-        <button type="button" className="pill-btn" onClick={onZoomIn} title="Inzoomen">
-          +
+        <button type="button" className="pill-btn pill-btn--icon" onClick={onZoomIn} title="Inzoomen">
+          <IconPlus size={14} />
         </button>
       </div>
 
       <div className="toolbar__actions">
+        <button
+          type="button"
+          className="pill-btn pill-btn--icon"
+          onClick={toggleTheme}
+          title={theme === 'dark' ? 'Licht thema' : 'Donker thema'}
+        >
+          {theme === 'dark' ? <IconSun size={15} /> : <IconMoon size={15} />}
+        </button>
+
         <input
           ref={signatureInputRef}
           type="file"
@@ -139,7 +151,7 @@ export default function Toolbar({ zoomPct, onZoomIn, onZoomOut, onZoomReset }: P
           onClick={() => signatureInputRef.current?.click()}
           title="Laad een afbeelding van je handtekening om op pagina's te plaatsen"
         >
-          {signatureAsset ? 'Handtekening geladen' : 'Handtekening'}
+          <IconSignature size={14} /> {signatureAsset ? 'Handtekening geladen' : 'Handtekening'}
         </button>
         {signatureAsset && (
           <button
@@ -148,7 +160,7 @@ export default function Toolbar({ zoomPct, onZoomIn, onZoomOut, onZoomReset }: P
             title="Handtekening wissen"
             onClick={() => setSignatureAsset(null)}
           >
-            ✕
+            <IconClose size={13} />
           </button>
         )}
 
@@ -159,7 +171,7 @@ export default function Toolbar({ zoomPct, onZoomIn, onZoomOut, onZoomReset }: P
             onClick={() => setShowPasswordField((v) => !v)}
             title="Wachtwoord instellen voor geëxporteerde PDF's"
           >
-            Wachtwoord
+            <IconLock size={14} /> Wachtwoord
           </button>
           {showPasswordField && (
             <input
@@ -173,7 +185,7 @@ export default function Toolbar({ zoomPct, onZoomIn, onZoomOut, onZoomReset }: P
         </div>
 
         <button type="button" className="pill-btn" onClick={() => void handleOpen()}>
-          Openen
+          <IconFolderOpen size={14} /> Openen
         </button>
         <button
           type="button"

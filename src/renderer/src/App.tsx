@@ -7,8 +7,13 @@ import { useStudioStore } from './store'
 export default function App(): JSX.Element {
   const [zoomPct, setZoomPct] = useState(100)
   const controlsRef = useRef<{ zoomBy: (f: number) => void; zoomTo: (s: number) => void } | null>(null)
+  const theme = useStudioStore((s) => s.theme)
 
   useEffect(() => window.api.onFilesOpened((files) => void useStudioStore.getState().importFiles(files)), [])
+
+  useEffect(() => {
+    document.documentElement.setAttribute('data-theme', theme)
+  }, [theme])
 
   const onScaleChange = useCallback((scale: number) => {
     setZoomPct(Math.round(scale * 100))

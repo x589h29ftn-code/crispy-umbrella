@@ -3,6 +3,7 @@ import { useStudioStore } from '../store'
 import type { DocGroup, SourceFile } from '../types'
 import PageThumb from './PageThumb'
 import AddTile from './AddTile'
+import { IconClose, IconGrip, IconHash, IconPlus, IconStamp } from './icons'
 
 interface Props {
   group: DocGroup
@@ -80,6 +81,7 @@ export default function GroupRow({ group, index, sources, isActive }: Props): JS
         }}
         onDragEnd={() => setDragGroupId(null)}
       >
+        <IconGrip size={14} className="group-row__grip" />
         <span className="group-row__number">{String(index + 1).padStart(2, '0')}</span>
         {editing ? (
           <input
@@ -124,7 +126,7 @@ export default function GroupRow({ group, index, sources, isActive }: Props): JS
               setShowWatermarkEditor((v) => !v)
             }}
           >
-            Watermerk
+            <IconStamp size={13} /> Watermerk
           </button>
           <button
             type="button"
@@ -135,7 +137,7 @@ export default function GroupRow({ group, index, sources, isActive }: Props): JS
               toggleGroupPageNumbers(group.id)
             }}
           >
-            #
+            <IconHash size={13} />
           </button>
           <button
             type="button"
@@ -146,7 +148,7 @@ export default function GroupRow({ group, index, sources, isActive }: Props): JS
               void insertBlankPage(group.id)
             }}
           >
-            + Lege pagina
+            <IconPlus size={13} /> Lege pagina
           </button>
         </div>
         <button
@@ -158,7 +160,7 @@ export default function GroupRow({ group, index, sources, isActive }: Props): JS
             removeGroup(group.id)
           }}
         >
-          ✕
+          <IconClose size={13} />
         </button>
       </header>
 

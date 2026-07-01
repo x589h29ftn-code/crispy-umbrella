@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import { IconUpload } from './icons'
 
 interface Props {
   onBrowse: () => void
@@ -23,7 +24,9 @@ export default function EmptyState({ onBrowse, onFilesDropped }: Props): JSX.Ele
         if (e.dataTransfer.types.includes('Files')) onFilesDropped(e.dataTransfer.files)
       }}
     >
-      <div className="empty-state__icon">↓</div>
+      <div className="empty-state__icon">
+        <IconUpload size={28} />
+      </div>
       <h2>Zet bestanden hier neer</h2>
       <p>Sleep een of meer PDF-bestanden hierheen om te beginnen</p>
       <button type="button" className="pill-btn" onClick={onBrowse}>

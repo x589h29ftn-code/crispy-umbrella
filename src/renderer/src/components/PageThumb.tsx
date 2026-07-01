@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import { renderThumbnail } from '../lib/pdfEngine'
 import { useStudioStore } from '../store'
 import type { PageRef, SourceFile } from '../types'
+import { IconClose, IconRotate } from './icons'
 
 const BASE_WIDTH = 190
 
@@ -70,7 +71,7 @@ export default function PageThumb({ page, source, index, onDragOverSlot }: Props
               rotatePage(page.id)
             }}
           >
-            ⟳
+            <IconRotate size={13} />
           </button>
           <button
             type="button"
@@ -81,7 +82,7 @@ export default function PageThumb({ page, source, index, onDragOverSlot }: Props
               deletePage(page.id)
             }}
           >
-            ✕
+            <IconClose size={13} />
           </button>
         </div>
         <span className="page-thumb__index">{index + 1}</span>

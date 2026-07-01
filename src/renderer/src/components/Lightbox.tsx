@@ -9,6 +9,8 @@ import {
 } from '../lib/pdfEngine'
 import { useStudioStore } from '../store'
 import type { SignaturePlacement } from '../types'
+import { IconChevronLeft, IconChevronRight, IconClose, IconRotate } from './icons'
+import LightboxFilmstrip from './LightboxFilmstrip'
 
 const DEFAULT_SIGNATURE_WIDTH_PCT = 0.28
 
@@ -208,10 +210,10 @@ export default function Lightbox(): JSX.Element | null {
           </div>
         )}
         <button type="button" className="icon-btn" onClick={() => rotatePage(context.page.id)} title="Roteer">
-          ⟳
+          <IconRotate size={14} />
         </button>
         <button type="button" className="icon-btn" onClick={closeLightbox} title="Sluiten (Esc)">
-          ✕
+          <IconClose size={14} />
         </button>
       </div>
 
@@ -225,13 +227,14 @@ export default function Lightbox(): JSX.Element | null {
         }}
         aria-label="Vorige pagina"
       >
-        ‹
+        <IconChevronLeft size={22} />
       </button>
 
       <div className="lightbox__stage" onClick={(e) => e.stopPropagation()}>
         {image ? (
           <div
-            className="lightbox__page-wrap"
+            key={context.page.id}
+            className="lightbox__page-wrap lightbox__page-wrap--enter"
             onDragOver={(e) => {
               if (signatureAsset) e.preventDefault()
             }}
@@ -264,7 +267,7 @@ export default function Lightbox(): JSX.Element | null {
                       removeSignaturePlacement(context.page.id, placement.id)
                     }}
                   >
-                    ✕
+                    <IconClose size={11} />
                   </button>
                   <div
                     className="signature-overlay__resize"
@@ -289,8 +292,10 @@ export default function Lightbox(): JSX.Element | null {
         }}
         aria-label="Volgende pagina"
       >
-        ›
+        <IconChevronRight size={22} />
       </button>
+
+      <LightboxFilmstrip />
     </div>
   )
 }

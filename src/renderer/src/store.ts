@@ -8,6 +8,16 @@ export interface LightboxState {
   pageId: string | null
 }
 
+export type Theme = 'dark' | 'light'
+
+const THEME_STORAGE_KEY = 'pdf-studio-theme'
+
+function getInitialTheme(): Theme {
+  const stored = window.localStorage.getItem(THEME_STORAGE_KEY)
+  if (stored === 'light' || stored === 'dark') return stored
+  return window.matchMedia?.('(prefers-color-scheme: light)').matches ? 'light' : 'dark'
+}
+
 interface StudioState {
   sources: Map<string, SourceFile>
   groups: DocGroup[]
@@ -18,7 +28,9 @@ interface StudioState {
   dragPageId: string | null
   dragGroupId: string | null
   signatureAsset: SignatureAsset | null
+  theme: Theme
 
+  toggleTheme: () => void
   setDragPageId: (id: string | null) => void
   setDragGroupId: (id: string | null) => void
   reorderGroups: (groupId: string, toIndex: number) => void
@@ -70,6 +82,15 @@ export const useStudioStore = create<StudioState>((set, get) => ({
   dragPageId: null,
   dragGroupId: null,
   signatureAsset: null,
+  theme: getInitialTheme(),
+
+  toggleTheme: () => {
+    set((state) => {
+      const theme: Theme = state.theme === 'dark' ? 'light' : 'dark'
+      window.localStorage.setItem(THEME_STORAGE_KEY, theme)
+      return { theme }
+    })
+  },
 
   setDragPageId: (id) => set({ dragPageId: id }),
   setDragGroupId: (id) => set({ dragGroupId: id }),

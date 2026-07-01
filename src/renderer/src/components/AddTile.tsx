@@ -1,3 +1,5 @@
+import { IconPlus } from './icons'
+
 interface Props {
   label: string
   onClick: () => void
@@ -20,7 +22,9 @@ export default function AddTile({ label, onClick, onFilesDropped, compact }: Pro
         onFilesDropped?.(e.dataTransfer.files)
       }}
     >
-      <span className="add-tile__plus">+</span>
+      <span className="add-tile__plus">
+        <IconPlus size={20} />
+      </span>
       <span>{label}</span>
     </div>
   )
