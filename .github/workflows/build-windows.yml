@@ -21,7 +21,10 @@ jobs:
         run: npm ci
 
       - name: Build Windows installer and portable exe
-        run: npm run build:win
+        # --publish never: electron-builder auto-publishes when it detects CI,
+        # which fails without a GH_TOKEN; the upload-artifact step below is our
+        # distribution channel instead.
+        run: npm run build:win -- --publish never
 
       - name: Upload installer artifact
         uses: actions/upload-artifact@v4
