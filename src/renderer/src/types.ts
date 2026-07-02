@@ -15,7 +15,7 @@ export interface SignaturePlacement {
   height: number
 }
 
-export type AnnotationFont = 'helvetica' | 'times' | 'courier'
+export type AnnotationFont = 'arial' | 'opensans' | 'helvetica' | 'times' | 'courier'
 
 export interface HighlightAnnotation {
   id: string
@@ -42,7 +42,17 @@ export interface TextAnnotation {
   color: string
 }
 
-export type Annotation = HighlightAnnotation | TextAnnotation
+export interface InkAnnotation {
+  id: string
+  type: 'ink'
+  /** Freehand stroke, PDF points in unrotated media-box space (rotation-invariant). */
+  points: { x: number; y: number }[]
+  color: string
+  /** Stroke width in PDF points. */
+  strokeWidth: number
+}
+
+export type Annotation = HighlightAnnotation | TextAnnotation | InkAnnotation
 
 export interface PageRef {
   id: string

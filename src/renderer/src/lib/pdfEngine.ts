@@ -1,6 +1,15 @@
 import * as pdfjsLib from 'pdfjs-dist'
 import pdfWorkerUrl from 'pdfjs-dist/build/pdf.worker.min.mjs?url'
-import { BlendMode, PDFDocument, PDFFont, PDFImage, PDFPage, StandardFonts, degrees, rgb } from '@cantoo/pdf-lib'
+import { BlendMode, LineCapStyle, PDFDocument, PDFFont, PDFImage, PDFPage, StandardFonts, degrees, rgb } from '@cantoo/pdf-lib'
+import fontkit from '@pdf-lib/fontkit'
+import arialRegularUrl from '../assets/fonts/LiberationSans-Regular.ttf?url'
+import arialBoldUrl from '../assets/fonts/LiberationSans-Bold.ttf?url'
+import arialItalicUrl from '../assets/fonts/LiberationSans-Italic.ttf?url'
+import arialBoldItalicUrl from '../assets/fonts/LiberationSans-BoldItalic.ttf?url'
+import openSansRegularUrl from '../assets/fonts/OpenSans-Regular.ttf?url'
+import openSansBoldUrl from '../assets/fonts/OpenSans-Bold.ttf?url'
+import openSansItalicUrl from '../assets/fonts/OpenSans-Italic.ttf?url'
+import openSansBoldItalicUrl from '../assets/fonts/OpenSans-BoldItalic.ttf?url'
 import type { AnnotationFont, DocGroup, PageRef, SignaturePlacement, SourceFile, TextAnnotation } from '../types'
 
 const A4_WIDTH = 595.28
@@ -142,6 +151,34 @@ export async function visualPointToContentPoint(
   const viewport = await getScale1Viewport(source, pageIndex, deltaRotation)
   const [x, y] = viewport.convertToPdfPoint(visualX, visualY)
   return { x, y }
+}
+
+/** Bulk variant of {@link visualPointToContentPoint} for freehand strokes. */
+export async function visualPointsToContentPoints(
+  source: SourceFile,
+  pageIndex: number,
+  deltaRotation: number,
+  points: { x: number; y: number }[]
+): Promise<{ x: number; y: number }[]> {
+  const viewport = await getScale1Viewport(source, pageIndex, deltaRotation)
+  return points.map((p) => {
+    const [x, y] = viewport.convertToPdfPoint(p.x, p.y)
+    return { x, y }
+  })
+}
+
+/** Inverse of {@link visualPointsToContentPoints}: content-space points to on-screen (visual) points. */
+export async function contentPointsToVisualPoints(
+  source: SourceFile,
+  pageIndex: number,
+  deltaRotation: number,
+  points: { x: number; y: number }[]
+): Promise<{ x: number; y: number }[]> {
+  const viewport = await getScale1Viewport(source, pageIndex, deltaRotation)
+  return points.map((p) => {
+    const [x, y] = viewport.convertToViewportPoint(p.x, p.y)
+    return { x, y }
+  })
 }
 
 /**
@@ -296,30 +333,54 @@ export function textAnnotationBlockHeight(annotation: TextAnnotation): number {
   return textAnnotationLines(annotation).length * annotation.size * TEXT_LINE_HEIGHT
 }
 
-// [regular, bold, italic, bold-italic] per family, indexed by bold + 2*italic.
-const FONT_VARIANTS: Record<AnnotationFont, [StandardFonts, StandardFonts, StandardFonts, StandardFonts]> = {
-  helvetica: [
-    StandardFonts.Helvetica,
-    StandardFonts.HelveticaBold,
-    StandardFonts.HelveticaOblique,
-    StandardFonts.HelveticaBoldOblique
-  ],
-  times: [
-    StandardFonts.TimesRoman,
-    StandardFonts.TimesRomanBold,
-    StandardFonts.TimesRomanItalic,
-    StandardFonts.TimesRomanBoldItalic
-  ],
-  courier: [
-    StandardFonts.Courier,
-    StandardFonts.CourierBold,
-    StandardFonts.CourierOblique,
-    StandardFonts.CourierBoldOblique
-  ]
+/**
+ * Font source per family: PDF standard-14 names, or TTF asset URLs for the
+ * embedded families (Arial ships as Liberation Sans — metrically identical,
+ * SIL-licensed — and Open Sans as itself). [regular, bold, italic, bold-italic],
+ * indexed by bold + 2*italic.
+ */
+type FontVariants = [string, string, string, string]
+const FONT_VARIANTS: Record<AnnotationFont, { kind: 'standard' | 'embedded'; variants: FontVariants }> = {
+  arial: {
+    kind: 'embedded',
+    variants: [arialRegularUrl, arialBoldUrl, arialItalicUrl, arialBoldItalicUrl]
+  },
+  opensans: {
+    kind: 'embedded',
+    variants: [openSansRegularUrl, openSansBoldUrl, openSansItalicUrl, openSansBoldItalicUrl]
+  },
+  helvetica: {
+    kind: 'standard',
+    variants: [
+      StandardFonts.Helvetica,
+      StandardFonts.HelveticaBold,
+      StandardFonts.HelveticaOblique,
+      StandardFonts.HelveticaBoldOblique
+    ]
+  },
+  times: {
+    kind: 'standard',
+    variants: [
+      StandardFonts.TimesRoman,
+      StandardFonts.TimesRomanBold,
+      StandardFonts.TimesRomanItalic,
+      StandardFonts.TimesRomanBoldItalic
+    ]
+  },
+  courier: {
+    kind: 'standard',
+    variants: [
+      StandardFonts.Courier,
+      StandardFonts.CourierBold,
+      StandardFonts.CourierOblique,
+      StandardFonts.CourierBoldOblique
+    ]
+  }
 }
 
-function annotationFontName(annotation: TextAnnotation): StandardFonts {
-  return FONT_VARIANTS[annotation.font][(annotation.bold ? 1 : 0) + (annotation.italic ? 2 : 0)]
+function annotationFontSource(annotation: TextAnnotation): { kind: 'standard' | 'embedded'; ref: string } {
+  const family = FONT_VARIANTS[annotation.font]
+  return { kind: family.kind, ref: family.variants[(annotation.bold ? 1 : 0) + (annotation.italic ? 2 : 0)] }
 }
 
 function hexToRgb(hex: string): ReturnType<typeof rgb> {
@@ -359,16 +420,30 @@ async function buildPdf(group: DocGroup, sources: Map<string, SourceFile>): Prom
     copiedByDoc.set(sourceId, copied)
   }
 
-  const fontCache = new Map<StandardFonts, Promise<PDFFont>>()
-  function getFont(name: StandardFonts): Promise<PDFFont> {
-    let cached = fontCache.get(name)
+  const fontCache = new Map<string, Promise<PDFFont>>()
+  let fontkitRegistered = false
+  function getFont(source: { kind: 'standard' | 'embedded'; ref: string }): Promise<PDFFont> {
+    let cached = fontCache.get(source.ref)
     if (!cached) {
-      cached = out.embedFont(name)
-      fontCache.set(name, cached)
+      if (source.kind === 'standard') {
+        cached = out.embedFont(source.ref as StandardFonts)
+      } else {
+        if (!fontkitRegistered) {
+          out.registerFontkit(fontkit)
+          fontkitRegistered = true
+        }
+        cached = fetch(source.ref)
+          .then((res) => res.arrayBuffer())
+          .then((bytes) => out.embedFont(bytes, { subset: true }))
+      }
+      fontCache.set(source.ref, cached)
     }
     return cached
   }
-  const font = group.watermark || group.pageNumbers ? await getFont(StandardFonts.Helvetica) : null
+  const font =
+    group.watermark || group.pageNumbers
+      ? await getFont({ kind: 'standard', ref: StandardFonts.Helvetica })
+      : null
   const embeddedImages = new Map<string, PDFImage>()
   const total = order.length
 
@@ -414,8 +489,24 @@ async function buildPdf(group: DocGroup, sources: Map<string, SourceFile>): Prom
           rotate: degrees(rotateDeg),
           blendMode: BlendMode.Multiply
         })
+      } else if (annotation.type === 'ink') {
+        if (annotation.points.length >= 2) {
+          // Points are stored in content space, so the stroke is anchored to the
+          // page physically — no rotation compensation needed. drawSvgPath maps
+          // SVG y-down onto page y-up, hence the negated y coordinates.
+          const d = annotation.points
+            .map((p, i) => `${i === 0 ? 'M' : 'L'} ${p.x},${-p.y}`)
+            .join(' ')
+          copiedPage.drawSvgPath(d, {
+            x: 0,
+            y: 0,
+            borderColor: hexToRgb(annotation.color),
+            borderWidth: annotation.strokeWidth,
+            borderLineCap: LineCapStyle.Round
+          })
+        }
       } else {
-        const textFont = await getFont(annotationFontName(annotation))
+        const textFont = await getFont(annotationFontSource(annotation))
         const lines = textAnnotationLines(annotation)
         const lineHeight = annotation.size * TEXT_LINE_HEIGHT
         // (annotation.x, annotation.y) is the block's bottom-left pivot in content

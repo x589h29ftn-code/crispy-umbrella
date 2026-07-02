@@ -58,6 +58,29 @@ export default function Canvas({ onScaleChange, registerZoomControls }: Props): 
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
+  // On the first import into an empty canvas, zoom in so the thumbnails are
+  // immediately readable (fit the widest row to the window), instead of
+  // requiring a manual zoom + pan.
+  const hadGroupsRef = useRef(false)
+  useEffect(() => {
+    const hasGroups = groups.length > 0
+    if (hasGroups && !hadGroupsRef.current) {
+      // Measure after the row entry animation (180ms) so offsetWidth is final.
+      const timer = window.setTimeout(() => {
+        const viewport = viewportRef.current
+        const content = contentRef.current
+        if (!viewport || !content) return
+        const fit = (viewport.clientWidth - 2 * CONTENT_MARGIN) / Math.max(1, content.offsetWidth)
+        zoomTo(Math.min(2.2, Math.max(1, fit)))
+      }, 240)
+      hadGroupsRef.current = hasGroups
+      return () => window.clearTimeout(timer)
+    }
+    hadGroupsRef.current = hasGroups
+    return undefined
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [groups.length])
+
   // Horizontal scrollbar: appears when the (zoomed) content is wider than the
   // viewport, mirroring the pan-x of the d3-zoom transform.
   const scaledWidth = sizes.contentW * transform.k + 2 * CONTENT_MARGIN

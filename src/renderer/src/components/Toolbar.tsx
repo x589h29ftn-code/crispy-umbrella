@@ -26,6 +26,7 @@ interface Props {
   onZoomIn: () => void
   onZoomOut: () => void
   onZoomReset: () => void
+  onZoomTo: (scale: number) => void
 }
 
 const SIDEBAR_STORAGE_KEY = 'pdf-studio-sidebar-collapsed'
@@ -45,7 +46,7 @@ function readImageFile(file: File): Promise<{ dataUrl: string; width: number; he
   })
 }
 
-export default function Toolbar({ zoomPct, onZoomIn, onZoomOut, onZoomReset }: Props): JSX.Element {
+export default function Toolbar({ zoomPct, onZoomIn, onZoomOut, onZoomReset, onZoomTo }: Props): JSX.Element {
   const groups = useStudioStore((s) => s.groups)
   const activeGroupId = useStudioStore((s) => s.activeGroupId)
   const importFiles = useStudioStore((s) => s.importFiles)
@@ -164,6 +165,19 @@ export default function Toolbar({ zoomPct, onZoomIn, onZoomOut, onZoomReset }: P
           <IconPlus size={14} />
         </button>
       </div>
+
+      {!collapsed && (
+        <input
+          type="range"
+          className="sidebar__zoom-slider"
+          min={25}
+          max={300}
+          step={5}
+          value={Math.min(300, Math.max(25, zoomPct))}
+          title="Zoom"
+          onChange={(e) => onZoomTo(Number(e.target.value) / 100)}
+        />
+      )}
 
       <div className="sidebar__divider" />
 

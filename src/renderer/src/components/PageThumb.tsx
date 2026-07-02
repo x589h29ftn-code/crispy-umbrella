@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
 import {
+  contentPointsToVisualPoints,
   getPageVisualSize,
   getPlacementVisualBox,
   renderThumbnail,
@@ -27,8 +28,9 @@ function useThumbResolutionScale(): number {
 
 interface Decorations {
   pageWidth: number
+  pageHeight: number
   signatures: { placement: SignaturePlacement; box: SignatureVisualBox }[]
-  annotations: { annotation: Annotation; box: SignatureVisualBox }[]
+  annotations: { annotation: Annotation; box: SignatureVisualBox | null; points: { x: number; y: number }[] | null }[]
 }
 
 /** Signature/annotation overlays so placed items are visible on the small thumbnail too. */
@@ -50,17 +52,27 @@ function useDecorations(page: PageRef, source: SourceFile | undefined): Decorati
         }))
       )
       const annotations = await Promise.all(
-        page.annotations.map(async (annotation) => ({
-          annotation,
-          box: await getPlacementVisualBox(source, page.sourcePageIndex, page.rotation, {
-            x: annotation.x,
-            y: annotation.y,
-            width: annotation.type === 'highlight' ? annotation.width : 0,
-            height: annotation.type === 'highlight' ? annotation.height : textAnnotationBlockHeight(annotation)
-          })
-        }))
+        page.annotations.map(async (annotation) => {
+          if (annotation.type === 'ink') {
+            return {
+              annotation,
+              box: null,
+              points: await contentPointsToVisualPoints(source, page.sourcePageIndex, page.rotation, annotation.points)
+            }
+          }
+          return {
+            annotation,
+            points: null,
+            box: await getPlacementVisualBox(source, page.sourcePageIndex, page.rotation, {
+              x: annotation.x,
+              y: annotation.y,
+              width: annotation.type === 'highlight' ? annotation.width : 0,
+              height: annotation.type === 'highlight' ? annotation.height : textAnnotationBlockHeight(annotation)
+            })
+          }
+        })
       )
-      if (!cancelled) setDecorations({ pageWidth: size.width, signatures, annotations })
+      if (!cancelled) setDecorations({ pageWidth: size.width, pageHeight: size.height, signatures, annotations })
     })().catch(() => undefined)
     return () => {
       cancelled = true
@@ -160,8 +172,28 @@ export default function PageThumb({ page, source, index }: Props): JSX.Element {
         )}
         {thumb && decorations && (
           <div className="page-thumb__decorations">
-            {decorations.annotations.map(({ annotation, box }) =>
-              annotation.type === 'highlight' ? (
+            {decorations.annotations.map(({ annotation, box, points }) =>
+              annotation.type === 'ink' ? (
+                points && points.length >= 2 ? (
+                  <svg
+                    key={annotation.id}
+                    className="page-decoration page-decoration--ink"
+                    style={{ left: 0, top: 0 }}
+                    width={decorations.pageWidth * decorScale}
+                    height={decorations.pageHeight * decorScale}
+                    viewBox={`0 0 ${decorations.pageWidth} ${decorations.pageHeight}`}
+                  >
+                    <polyline
+                      points={points.map((p) => `${p.x},${p.y}`).join(' ')}
+                      fill="none"
+                      stroke={annotation.color}
+                      strokeWidth={annotation.strokeWidth}
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                    />
+                  </svg>
+                ) : null
+              ) : annotation.type === 'highlight' && box ? (
                 <div
                   key={annotation.id}
                   className="page-decoration page-decoration--highlight"
@@ -175,7 +207,7 @@ export default function PageThumb({ page, source, index }: Props): JSX.Element {
                     opacity: annotation.opacity
                   }}
                 />
-              ) : (
+              ) : annotation.type === 'text' && box ? (
                 <div
                   key={annotation.id}
                   className="page-decoration page-decoration--text"
@@ -193,7 +225,7 @@ export default function PageThumb({ page, source, index }: Props): JSX.Element {
                 >
                   {annotation.text}
                 </div>
-              )
+              ) : null
             )}
             {decorations.signatures.map(({ placement, box }) => (
               <img

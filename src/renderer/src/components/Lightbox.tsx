@@ -1,11 +1,13 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { nanoid } from 'nanoid'
 import {
+  contentPointsToVisualPoints,
   getPageVisualSize,
   getPlacementVisualBox,
   renderThumbnail,
   textAnnotationBlockHeight,
   TEXT_LINE_HEIGHT,
+  visualPointsToContentPoints,
   visualPointToContentPoint,
   visualRectToContentRect,
   visualRectToSignaturePlacement,
@@ -15,19 +17,31 @@ import {
   ANNOTATION_FONT_CSS,
   ANNOTATION_FONT_LABELS,
   HIGHLIGHT_COLORS,
+  INK_WIDTHS,
   TEXT_COLORS
 } from '../lib/annotationStyle'
 import { useStudioStore } from '../store'
 import { usePressDrag } from '../hooks/usePressDrag'
 import { useClickOutside } from '../hooks/useClickOutside'
-import type { Annotation, AnnotationFont, HighlightAnnotation, SignaturePlacement, TextAnnotation } from '../types'
+import type {
+  Annotation,
+  AnnotationFont,
+  HighlightAnnotation,
+  InkAnnotation,
+  SignaturePlacement,
+  TextAnnotation
+} from '../types'
 import {
   IconChevronDown,
   IconChevronLeft,
   IconChevronRight,
   IconClose,
   IconCursor,
+  IconEraser,
   IconHighlighter,
+  IconMinus,
+  IconPen,
+  IconPlus,
   IconRotate,
   IconType
 } from './icons'
@@ -35,8 +49,9 @@ import LightboxFilmstrip from './LightboxFilmstrip'
 
 const DEFAULT_SIGNATURE_WIDTH_PCT = 0.28
 const MIN_HIGHLIGHT_SIZE_PX = 5
+const MAX_PAGE_ZOOM = 5
 
-type EditMode = 'view' | 'highlight' | 'text'
+type EditMode = 'view' | 'highlight' | 'text' | 'draw' | 'erase'
 
 interface DragTarget {
   kind: 'move' | 'resize'
@@ -49,6 +64,8 @@ interface DragTarget {
   startWidth: number
   startHeight: number
   rotateDeg: number
+  /** Set when moving an ink stroke: its points (content space) at gesture start. */
+  inkStartPoints?: { x: number; y: number }[]
 }
 
 interface TextEditorState {
@@ -81,16 +98,27 @@ export default function Lightbox(): JSX.Element | null {
   const [image, setImage] = useState<string | null>(null)
   const [boxes, setBoxes] = useState<Record<string, SignatureVisualBox>>({})
   const [annoBoxes, setAnnoBoxes] = useState<Record<string, SignatureVisualBox>>({})
+  const [inkVisual, setInkVisual] = useState<Record<string, { x: number; y: number }[]>>({})
   const [pageVisualSize, setPageVisualSize] = useState<{ width: number; height: number } | null>(null)
   const stageImgRef = useRef<HTMLImageElement>(null)
+  const stageRef = useRef<HTMLDivElement>(null)
   const dragOriginRef = useRef<DragTarget | null>(null)
+
+  // Zoom & pan of the opened page itself
+  const [pageZoom, setPageZoom] = useState(1)
+  const [pagePan, setPagePan] = useState({ x: 0, y: 0 })
+  const panDragRef = useRef<{ startClientX: number; startClientY: number; startX: number; startY: number } | null>(
+    null
+  )
 
   // Editing menu state
   const [mode, setMode] = useState<EditMode>('view')
   const [selectedAnnotationId, setSelectedAnnotationId] = useState<string | null>(null)
   const [highlightColor, setHighlightColor] = useState(HIGHLIGHT_COLORS[0])
   const [highlightOpacity, setHighlightOpacity] = useState(0.4)
-  const [textFont, setTextFont] = useState<AnnotationFont>('helvetica')
+  const [inkColor, setInkColor] = useState(HIGHLIGHT_COLORS[1])
+  const [inkWidth, setInkWidth] = useState(INK_WIDTHS[1])
+  const [textFont, setTextFont] = useState<AnnotationFont>('arial')
   const [textSize, setTextSize] = useState(16)
   const [textBold, setTextBold] = useState(false)
   const [textItalic, setTextItalic] = useState(false)
@@ -102,6 +130,8 @@ export default function Lightbox(): JSX.Element | null {
   textEditorRef.current = textEditor
   const [band, setBand] = useState<{ x1: number; y1: number; x2: number; y2: number } | null>(null)
   const bandRef = useRef<{ x1: number; y1: number } | null>(null)
+  const [liveStroke, setLiveStroke] = useState<{ x: number; y: number }[] | null>(null)
+  const liveStrokeRef = useRef<{ x: number; y: number }[] | null>(null)
   const [sigPickerOpen, setSigPickerOpen] = useState(false)
   const sigPickerRef = useRef<HTMLDivElement>(null)
   useClickOutside(sigPickerRef, sigPickerOpen, () => setSigPickerOpen(false))
@@ -150,11 +180,15 @@ export default function Lightbox(): JSX.Element | null {
   const selectedAnnotation =
     (selectedAnnotationId && context?.page.annotations.find((a) => a.id === selectedAnnotationId)) || null
 
-  // Reset edit state when navigating to another page or closing.
+  // Reset edit & zoom state when navigating to another page or closing.
   useEffect(() => {
     setSelectedAnnotationId(null)
     setTextEditor(null)
     setBand(null)
+    setLiveStroke(null)
+    liveStrokeRef.current = null
+    setPageZoom(1)
+    setPagePan({ x: 0, y: 0 })
   }, [lightbox.pageId])
 
   useEffect(() => {
@@ -181,6 +215,32 @@ export default function Lightbox(): JSX.Element | null {
     if (lightbox.open) window.addEventListener('keydown', onKey)
     return () => window.removeEventListener('keydown', onKey)
   }, [lightbox.open, closeLightbox, stepLightbox, mode, textEditor, selectedAnnotationId, context, removeAnnotation])
+
+  // Ctrl+wheel zooms the page, plain wheel pans when zoomed in.
+  useEffect(() => {
+    const stage = stageRef.current
+    if (!stage || !lightbox.open) return
+    const onWheel = (e: WheelEvent): void => {
+      if (e.ctrlKey || e.metaKey) {
+        e.preventDefault()
+        setPageZoom((z) => Math.min(MAX_PAGE_ZOOM, Math.max(1, z * (e.deltaY < 0 ? 1.15 : 1 / 1.15))))
+      } else {
+        setPageZoom((z) => {
+          if (z > 1) {
+            e.preventDefault()
+            setPagePan((p) => ({ x: p.x - e.deltaX, y: p.y - e.deltaY }))
+          }
+          return z
+        })
+      }
+    }
+    stage.addEventListener('wheel', onWheel, { passive: false })
+    return () => stage.removeEventListener('wheel', onWheel)
+  }, [lightbox.open])
+
+  useEffect(() => {
+    if (pageZoom <= 1) setPagePan({ x: 0, y: 0 })
+  }, [pageZoom])
 
   useEffect(() => {
     let cancelled = false
@@ -211,10 +271,13 @@ export default function Lightbox(): JSX.Element | null {
     if (!context) {
       setBoxes({})
       setAnnoBoxes({})
+      setInkVisual({})
       return
     }
     const source = sources.get(context.page.sourceId)
     if (!source) return
+    const boxAnnotations = context.page.annotations.filter((a) => a.type !== 'ink')
+    const inkAnnotations = context.page.annotations.filter((a): a is InkAnnotation => a.type === 'ink')
     Promise.all([
       Promise.all(
         context.page.signatures.map(async (s) => [
@@ -223,21 +286,28 @@ export default function Lightbox(): JSX.Element | null {
         ] as const)
       ),
       Promise.all(
-        context.page.annotations.map(async (a) => [
+        boxAnnotations.map(async (a) => [
           a.id,
           await getPlacementVisualBox(source, context.page.sourcePageIndex, context.page.rotation, {
-            x: a.x,
-            y: a.y,
+            x: (a as HighlightAnnotation | TextAnnotation).x,
+            y: (a as HighlightAnnotation | TextAnnotation).y,
             width: a.type === 'highlight' ? a.width : 0,
-            height: a.type === 'highlight' ? a.height : textAnnotationBlockHeight(a)
+            height: a.type === 'highlight' ? a.height : textAnnotationBlockHeight(a as TextAnnotation)
           })
+        ] as const)
+      ),
+      Promise.all(
+        inkAnnotations.map(async (a) => [
+          a.id,
+          await contentPointsToVisualPoints(source, context.page.sourcePageIndex, context.page.rotation, a.points)
         ] as const)
       )
     ])
-      .then(([sigEntries, annoEntries]) => {
+      .then(([sigEntries, annoEntries, inkEntries]) => {
         if (cancelled) return
         setBoxes(Object.fromEntries(sigEntries))
         setAnnoBoxes(Object.fromEntries(annoEntries))
+        setInkVisual(Object.fromEntries(inkEntries))
       })
       .catch(() => undefined)
     return () => {
@@ -248,21 +318,28 @@ export default function Lightbox(): JSX.Element | null {
   if (!lightbox.open || !context) return null
 
   const source = sources.get(context.page.sourceId)
-  const cssScale =
+  // layoutScale positions overlays *inside* the (possibly zoom-transformed)
+  // page wrap; screenScale converts pointer client-coordinates to page units
+  // and therefore includes the page zoom.
+  const layoutScale =
     pageVisualSize && stageImgRef.current ? stageImgRef.current.clientWidth / pageVisualSize.width : 1
+  const screenScale =
+    pageVisualSize && stageImgRef.current
+      ? stageImgRef.current.getBoundingClientRect().width / pageVisualSize.width
+      : 1
 
   function stagePointToVisual(clientX: number, clientY: number): { x: number; y: number } | null {
     if (!stageImgRef.current) return null
     const rect = stageImgRef.current.getBoundingClientRect()
-    return { x: (clientX - rect.left) / cssScale, y: (clientY - rect.top) / cssScale }
+    return { x: (clientX - rect.left) / screenScale, y: (clientY - rect.top) / screenScale }
   }
 
   async function placeSignatureAt(clientX: number, clientY: number): Promise<void> {
     if (!activeSignature || !source || !context || !stageImgRef.current || !pageVisualSize) return
     const rect = stageImgRef.current.getBoundingClientRect()
     if (clientX < rect.left || clientX > rect.right || clientY < rect.top || clientY > rect.bottom) return
-    const dropVisualX = (clientX - rect.left) / cssScale
-    const dropVisualY = (clientY - rect.top) / cssScale
+    const dropVisualX = (clientX - rect.left) / screenScale
+    const dropVisualY = (clientY - rect.top) / screenScale
     const wPct = DEFAULT_SIGNATURE_WIDTH_PCT
     const aspect = activeSignature.naturalHeight / activeSignature.naturalWidth
     const hPct = (wPct * pageVisualSize.width * aspect) / pageVisualSize.height
@@ -284,15 +361,16 @@ export default function Lightbox(): JSX.Element | null {
   // rather than window-level listeners, so a mid-drag unmount can never leave a
   // dangling global listener behind — the browser releases capture automatically.
   function beginDrag(
-    e: React.PointerEvent<HTMLDivElement>,
+    e: React.PointerEvent<Element>,
     type: 'signature' | 'annotation',
     kind: 'move' | 'resize',
     targetId: string,
-    box: SignatureVisualBox
+    box: SignatureVisualBox,
+    inkStartPoints?: { x: number; y: number }[]
   ): void {
     e.preventDefault()
     e.stopPropagation()
-    e.currentTarget.setPointerCapture(e.pointerId)
+    ;(e.currentTarget as Element).setPointerCapture(e.pointerId)
     markHistory() // one undo step per gesture, not per pointermove
     dragOriginRef.current = {
       kind,
@@ -304,16 +382,34 @@ export default function Lightbox(): JSX.Element | null {
       startPivotVisualY: box.pivotY,
       startWidth: box.width,
       startHeight: box.height,
-      rotateDeg: box.rotateDeg
+      rotateDeg: box.rotateDeg,
+      inkStartPoints
     }
   }
 
-  function onOverlayPointerMove(e: React.PointerEvent<HTMLDivElement>): void {
+  function onOverlayPointerMove(e: React.PointerEvent<Element>): void {
     const origin = dragOriginRef.current
     if (!origin || !source || !context) return
-    const dx = (e.clientX - origin.startClientX) / cssScale
-    const dy = (e.clientY - origin.startClientY) / cssScale
+    const dx = (e.clientX - origin.startClientX) / screenScale
+    const dy = (e.clientY - origin.startClientY) / screenScale
     const pageId = context.page.id
+
+    if (origin.kind === 'move' && origin.inkStartPoints) {
+      // Translate the whole stroke: convert the pivot before/after to content
+      // space and shift every point by the same content-space delta.
+      const startPoints = origin.inkStartPoints
+      void visualPointsToContentPoints(source, context.page.sourcePageIndex, context.page.rotation, [
+        { x: origin.startPivotVisualX, y: origin.startPivotVisualY },
+        { x: origin.startPivotVisualX + dx, y: origin.startPivotVisualY + dy }
+      ]).then(([from, to]) => {
+        const ddx = to.x - from.x
+        const ddy = to.y - from.y
+        updateAnnotation(pageId, origin.targetId, {
+          points: startPoints.map((p) => ({ x: p.x + ddx, y: p.y + ddy }))
+        })
+      })
+      return
+    }
 
     if (origin.kind === 'move') {
       void visualPointToContentPoint(
@@ -339,68 +435,136 @@ export default function Lightbox(): JSX.Element | null {
     }
   }
 
-  function endDrag(e: React.PointerEvent<HTMLDivElement>): void {
-    if (e.currentTarget.hasPointerCapture(e.pointerId)) e.currentTarget.releasePointerCapture(e.pointerId)
+  function endDrag(e: React.PointerEvent<Element>): void {
+    const el = e.currentTarget as Element
+    if (el.hasPointerCapture(e.pointerId)) el.releasePointerCapture(e.pointerId)
     dragOriginRef.current = null
   }
 
-  // --- Highlight rubber band ---
+  // --- Stage pointer handling: highlight band, freehand stroke, panning ---
   function onStagePointerDown(e: React.PointerEvent<HTMLDivElement>): void {
-    if (mode !== 'highlight' || e.button !== 0) return
-    if (!stageImgRef.current) return
+    if (e.button !== 0 || !stageImgRef.current) return
     const rect = stageImgRef.current.getBoundingClientRect()
-    if (e.clientX < rect.left || e.clientX > rect.right || e.clientY < rect.top || e.clientY > rect.bottom) return
-    e.preventDefault()
-    e.currentTarget.setPointerCapture(e.pointerId)
-    const x = e.clientX - rect.left
-    const y = e.clientY - rect.top
-    bandRef.current = { x1: x, y1: y }
-    setBand({ x1: x, y1: y, x2: x, y2: y })
+    const inside =
+      e.clientX >= rect.left && e.clientX <= rect.right && e.clientY >= rect.top && e.clientY <= rect.bottom
+
+    if (mode === 'highlight' && inside) {
+      e.preventDefault()
+      e.currentTarget.setPointerCapture(e.pointerId)
+      const point = stagePointToVisual(e.clientX, e.clientY)!
+      bandRef.current = { x1: point.x, y1: point.y }
+      setBand({ x1: point.x, y1: point.y, x2: point.x, y2: point.y })
+      return
+    }
+
+    if (mode === 'draw' && inside) {
+      e.preventDefault()
+      e.currentTarget.setPointerCapture(e.pointerId)
+      const point = stagePointToVisual(e.clientX, e.clientY)!
+      liveStrokeRef.current = [point]
+      setLiveStroke([point])
+      return
+    }
+
+    if (mode === 'view' && pageZoom > 1) {
+      // Pan the zoomed page by dragging empty page area.
+      e.preventDefault()
+      e.currentTarget.setPointerCapture(e.pointerId)
+      panDragRef.current = {
+        startClientX: e.clientX,
+        startClientY: e.clientY,
+        startX: pagePan.x,
+        startY: pagePan.y
+      }
+    }
   }
 
   function onStagePointerMove(e: React.PointerEvent<HTMLDivElement>): void {
-    if (!bandRef.current || !stageImgRef.current) return
-    const rect = stageImgRef.current.getBoundingClientRect()
-    const x = Math.min(rect.width, Math.max(0, e.clientX - rect.left))
-    const y = Math.min(rect.height, Math.max(0, e.clientY - rect.top))
-    setBand({ x1: bandRef.current.x1, y1: bandRef.current.y1, x2: x, y2: y })
+    if (bandRef.current && pageVisualSize) {
+      const point = stagePointToVisual(e.clientX, e.clientY)
+      if (!point) return
+      const x = Math.min(pageVisualSize.width, Math.max(0, point.x))
+      const y = Math.min(pageVisualSize.height, Math.max(0, point.y))
+      setBand({ x1: bandRef.current.x1, y1: bandRef.current.y1, x2: x, y2: y })
+      return
+    }
+    if (liveStrokeRef.current && pageVisualSize) {
+      const point = stagePointToVisual(e.clientX, e.clientY)
+      if (!point) return
+      const x = Math.min(pageVisualSize.width, Math.max(0, point.x))
+      const y = Math.min(pageVisualSize.height, Math.max(0, point.y))
+      const points = liveStrokeRef.current
+      const last = points[points.length - 1]
+      if (Math.hypot(x - last.x, y - last.y) >= 1.2) {
+        liveStrokeRef.current = [...points, { x, y }]
+        setLiveStroke(liveStrokeRef.current)
+      }
+      return
+    }
+    const pan = panDragRef.current
+    if (pan) {
+      setPagePan({ x: pan.startX + (e.clientX - pan.startClientX), y: pan.startY + (e.clientY - pan.startClientY) })
+    }
   }
 
   function onStagePointerUp(e: React.PointerEvent<HTMLDivElement>): void {
     if (e.currentTarget.hasPointerCapture(e.pointerId)) e.currentTarget.releasePointerCapture(e.pointerId)
-    const start = bandRef.current
-    bandRef.current = null
-    if (!start || !band || !source || !context || !pageVisualSize) {
+    panDragRef.current = null
+
+    if (bandRef.current) {
+      const start = bandRef.current
+      bandRef.current = null
+      const finished = band
       setBand(null)
+      if (!start || !finished || !source || !context || !pageVisualSize) return
+      const left = Math.min(finished.x1, finished.x2)
+      const top = Math.min(finished.y1, finished.y2)
+      const width = Math.abs(finished.x2 - finished.x1)
+      const height = Math.abs(finished.y2 - finished.y1)
+      if (width * screenScale < MIN_HIGHLIGHT_SIZE_PX || height * screenScale < MIN_HIGHLIGHT_SIZE_PX) return
+
+      const visual = {
+        xPct: left / pageVisualSize.width,
+        yPct: top / pageVisualSize.height,
+        wPct: width / pageVisualSize.width,
+        hPct: height / pageVisualSize.height
+      }
+      const pageId = context.page.id
+      void visualRectToContentRect(source, context.page.sourcePageIndex, context.page.rotation, visual).then(
+        (rect) => {
+          const annotation: HighlightAnnotation = {
+            id: nanoid(),
+            type: 'highlight',
+            ...rect,
+            color: highlightColor,
+            opacity: highlightOpacity
+          }
+          addAnnotation(pageId, annotation)
+          setSelectedAnnotationId(annotation.id)
+        }
+      )
       return
     }
-    const left = Math.min(band.x1, band.x2)
-    const top = Math.min(band.y1, band.y2)
-    const width = Math.abs(band.x2 - band.x1)
-    const height = Math.abs(band.y2 - band.y1)
-    setBand(null)
-    if (width < MIN_HIGHLIGHT_SIZE_PX || height < MIN_HIGHLIGHT_SIZE_PX) return
 
-    const visual = {
-      xPct: left / cssScale / pageVisualSize.width,
-      yPct: top / cssScale / pageVisualSize.height,
-      wPct: width / cssScale / pageVisualSize.width,
-      hPct: height / cssScale / pageVisualSize.height
-    }
-    const pageId = context.page.id
-    void visualRectToContentRect(source, context.page.sourcePageIndex, context.page.rotation, visual).then(
-      (rect) => {
-        const annotation: HighlightAnnotation = {
-          id: nanoid(),
-          type: 'highlight',
-          ...rect,
-          color: highlightColor,
-          opacity: highlightOpacity
+    if (liveStrokeRef.current) {
+      const stroke = liveStrokeRef.current
+      liveStrokeRef.current = null
+      setLiveStroke(null)
+      if (!source || !context || stroke.length < 2) return
+      const pageId = context.page.id
+      void visualPointsToContentPoints(source, context.page.sourcePageIndex, context.page.rotation, stroke).then(
+        (points) => {
+          const annotation: InkAnnotation = {
+            id: nanoid(),
+            type: 'ink',
+            points,
+            color: inkColor,
+            strokeWidth: inkWidth
+          }
+          addAnnotation(pageId, annotation)
         }
-        addAnnotation(pageId, annotation)
-        setSelectedAnnotationId(annotation.id)
-      }
-    )
+      )
+    }
   }
 
   // --- Text placement & editing ---
@@ -493,6 +657,13 @@ export default function Lightbox(): JSX.Element | null {
     }
   }
 
+  function applyInkPatch(patch: Partial<InkAnnotation>): void {
+    if (context && selectedAnnotation?.type === 'ink') {
+      markHistory()
+      updateAnnotation(context.page.id, selectedAnnotation.id, patch)
+    }
+  }
+
   function applyTextPatch(patch: Partial<TextAnnotation>): void {
     if (context && selectedAnnotation?.type === 'text') {
       markHistory()
@@ -503,6 +674,8 @@ export default function Lightbox(): JSX.Element | null {
   const shownHighlightColor = selectedAnnotation?.type === 'highlight' ? selectedAnnotation.color : highlightColor
   const shownHighlightOpacity =
     selectedAnnotation?.type === 'highlight' ? selectedAnnotation.opacity : highlightOpacity
+  const shownInkColor = selectedAnnotation?.type === 'ink' ? selectedAnnotation.color : inkColor
+  const shownInkWidth = selectedAnnotation?.type === 'ink' ? selectedAnnotation.strokeWidth : inkWidth
   const shownTextFont = selectedAnnotation?.type === 'text' ? selectedAnnotation.font : textFont
   const shownTextSize = selectedAnnotation?.type === 'text' ? selectedAnnotation.size : textSize
   const shownTextBold = selectedAnnotation?.type === 'text' ? selectedAnnotation.bold : textBold
@@ -510,26 +683,104 @@ export default function Lightbox(): JSX.Element | null {
   const shownTextColor = selectedAnnotation?.type === 'text' ? selectedAnnotation.color : textColor
 
   const showHighlightControls = mode === 'highlight' || selectedAnnotation?.type === 'highlight'
+  const showInkControls = mode === 'draw' || selectedAnnotation?.type === 'ink'
   const showTextControls = mode === 'text' || selectedAnnotation?.type === 'text'
 
+  const overlaysPassive = mode !== 'view' && mode !== 'erase'
+
+  function inkOverlay(annotation: InkAnnotation): JSX.Element | null {
+    const points = inkVisual[annotation.id]
+    if (!points || points.length < 2 || !pageVisualSize) return null
+    const isSelected = annotation.id === selectedAnnotationId
+    const path = points.map((p) => `${p.x},${p.y}`).join(' ')
+    const xs = points.map((p) => p.x)
+    const ys = points.map((p) => p.y)
+    const bounds = {
+      minX: Math.min(...xs),
+      minY: Math.min(...ys),
+      maxX: Math.max(...xs),
+      maxY: Math.max(...ys)
+    }
+    function eraseHit(e: React.PointerEvent): void {
+      if (mode === 'erase' && (e.buttons & 1 || e.type === 'pointerdown')) {
+        e.stopPropagation()
+        removeAnnotation(context!.page.id, annotation.id)
+        if (annotation.id === selectedAnnotationId) setSelectedAnnotationId(null)
+      }
+    }
+    return (
+      <svg
+        key={annotation.id}
+        className="ink-overlay"
+        width={pageVisualSize.width * layoutScale}
+        height={pageVisualSize.height * layoutScale}
+        viewBox={`0 0 ${pageVisualSize.width} ${pageVisualSize.height}`}
+      >
+        {isSelected && (
+          <rect
+            x={bounds.minX - 4}
+            y={bounds.minY - 4}
+            width={bounds.maxX - bounds.minX + 8}
+            height={bounds.maxY - bounds.minY + 8}
+            className="ink-overlay__selection"
+          />
+        )}
+        <polyline points={path} fill="none" stroke={annotation.color} strokeWidth={annotation.strokeWidth} strokeLinecap="round" strokeLinejoin="round" />
+        <polyline
+          points={path}
+          fill="none"
+          stroke="transparent"
+          strokeWidth={Math.max(12, annotation.strokeWidth + 8)}
+          className={`ink-overlay__hit${overlaysPassive ? ' ink-overlay__hit--passive' : ''}${mode === 'erase' ? ' ink-overlay__hit--erase' : ''}`}
+          onPointerDown={(e) => {
+            if (mode === 'erase') {
+              eraseHit(e)
+              return
+            }
+            setSelectedAnnotationId(annotation.id)
+            beginDrag(
+              e,
+              'annotation',
+              'move',
+              annotation.id,
+              {
+                pivotX: bounds.minX,
+                pivotY: bounds.maxY,
+                width: bounds.maxX - bounds.minX,
+                height: bounds.maxY - bounds.minY,
+                rotateDeg: 0
+              },
+              annotation.points
+            )
+          }}
+          onPointerEnter={eraseHit}
+          onPointerMove={onOverlayPointerMove}
+          onPointerUp={endDrag}
+          onClick={(e) => e.stopPropagation()}
+        />
+      </svg>
+    )
+  }
+
   function annotationOverlay(annotation: Annotation): JSX.Element | null {
+    if (annotation.type === 'ink') return inkOverlay(annotation)
     const box = annoBoxes[annotation.id]
     if (!box) return null
     const isSelected = annotation.id === selectedAnnotationId
     const common = {
-      left: box.pivotX * cssScale,
-      top: (box.pivotY - box.height) * cssScale,
+      left: box.pivotX * layoutScale,
+      top: (box.pivotY - box.height) * layoutScale,
       transform: `rotate(${box.rotateDeg}deg)`
     }
     return (
       <div
         key={annotation.id}
         className={`annotation-overlay${isSelected ? ' annotation-overlay--selected' : ''}${
-          mode !== 'view' ? ' annotation-overlay--passive' : ''
+          overlaysPassive || mode === 'erase' ? ' annotation-overlay--passive' : ''
         }`}
         style={
           annotation.type === 'highlight'
-            ? { ...common, width: box.width * cssScale, height: box.height * cssScale }
+            ? { ...common, width: box.width * layoutScale, height: box.height * layoutScale }
             : common
         }
         onPointerDown={(e) => {
@@ -555,7 +806,7 @@ export default function Lightbox(): JSX.Element | null {
             style={{
               color: annotation.color,
               fontFamily: ANNOTATION_FONT_CSS[annotation.font],
-              fontSize: annotation.size * cssScale,
+              fontSize: annotation.size * layoutScale,
               lineHeight: TEXT_LINE_HEIGHT,
               fontWeight: annotation.bold ? 700 : 400,
               fontStyle: annotation.italic ? 'italic' : 'normal'
@@ -592,6 +843,19 @@ export default function Lightbox(): JSX.Element | null {
       </div>
     )
   }
+
+  const wrapModeClass =
+    mode === 'highlight'
+      ? ' lightbox__page-wrap--highlighting'
+      : mode === 'text'
+        ? ' lightbox__page-wrap--texting'
+        : mode === 'draw'
+          ? ' lightbox__page-wrap--drawing'
+          : mode === 'erase'
+            ? ' lightbox__page-wrap--erasing'
+            : pageZoom > 1
+              ? ' lightbox__page-wrap--pannable'
+              : ''
 
   return (
     <div className="lightbox" onClick={closeLightbox}>
@@ -634,6 +898,17 @@ export default function Lightbox(): JSX.Element | null {
           </button>
           <button
             type="button"
+            className={`editbar__mode${mode === 'draw' ? ' editbar__mode--active' : ''}`}
+            onClick={() => {
+              setMode((m) => (m === 'draw' ? 'view' : 'draw'))
+              setSelectedAnnotationId(null)
+            }}
+            title="Tekenen: schrijf of teken vrij op de pagina"
+          >
+            <IconPen size={14} /> Tekenen
+          </button>
+          <button
+            type="button"
             className={`editbar__mode${mode === 'text' ? ' editbar__mode--active' : ''}`}
             onClick={() => {
               setMode((m) => (m === 'text' ? 'view' : 'text'))
@@ -642,6 +917,17 @@ export default function Lightbox(): JSX.Element | null {
             title="Tekst toevoegen: klik op de pagina"
           >
             <IconType size={14} /> Tekst
+          </button>
+          <button
+            type="button"
+            className={`editbar__mode${mode === 'erase' ? ' editbar__mode--active' : ''}`}
+            onClick={() => {
+              setMode((m) => (m === 'erase' ? 'view' : 'erase'))
+              setSelectedAnnotationId(null)
+            }}
+            title="Gum: klik op een getekende lijn om hem te verwijderen"
+          >
+            <IconEraser size={14} /> Gum
           </button>
         </div>
 
@@ -677,6 +963,41 @@ export default function Lightbox(): JSX.Element | null {
               />
               <span>{Math.round(shownHighlightOpacity * 100)}%</span>
             </label>
+          </div>
+        )}
+
+        {showInkControls && (
+          <div className="editbar__group">
+            <div className="editbar__swatches">
+              {HIGHLIGHT_COLORS.map((color) => (
+                <button
+                  key={color}
+                  type="button"
+                  className={`editbar__swatch${shownInkColor === color ? ' editbar__swatch--active' : ''}`}
+                  style={{ background: color }}
+                  title={color}
+                  onClick={() => {
+                    setInkColor(color)
+                    applyInkPatch({ color })
+                  }}
+                />
+              ))}
+            </div>
+            <div className="editbar__widths" title="Lijndikte">
+              {INK_WIDTHS.map((width) => (
+                <button
+                  key={width}
+                  type="button"
+                  className={`editbar__width${shownInkWidth === width ? ' editbar__width--active' : ''}`}
+                  onClick={() => {
+                    setInkWidth(width)
+                    applyInkPatch({ strokeWidth: width })
+                  }}
+                >
+                  <span style={{ width: 4 + width * 2, height: 4 + width * 2 }} />
+                </button>
+              ))}
+            </div>
           </div>
         )}
 
@@ -753,6 +1074,33 @@ export default function Lightbox(): JSX.Element | null {
 
         <div className="editbar__spacer" />
 
+        <div className="editbar__group editbar__zoom" title="Zoom op de pagina (of Ctrl+scrollen)">
+          <button
+            type="button"
+            className="editbar__toggle"
+            onClick={() => setPageZoom((z) => Math.max(1, z / 1.25))}
+            title="Uitzoomen op pagina"
+          >
+            <IconMinus size={13} />
+          </button>
+          <button
+            type="button"
+            className="editbar__zoom-pct"
+            onClick={() => setPageZoom(1)}
+            title="Zoom herstellen"
+          >
+            {Math.round(pageZoom * 100)}%
+          </button>
+          <button
+            type="button"
+            className="editbar__toggle"
+            onClick={() => setPageZoom((z) => Math.min(MAX_PAGE_ZOOM, z * 1.25))}
+            title="Inzoomen op pagina"
+          >
+            <IconPlus size={13} />
+          </button>
+        </div>
+
         {activeSignature ? (
           <div className="editbar__signature" ref={sigPickerRef}>
             <div className="lightbox__tray" title="Houd ingedrukt en sleep naar de pagina om te plaatsen" {...trayDrag}>
@@ -805,107 +1153,127 @@ export default function Lightbox(): JSX.Element | null {
         <IconChevronLeft size={22} />
       </button>
 
-      <div className="lightbox__stage" onClick={(e) => e.stopPropagation()}>
+      <div className="lightbox__stage" ref={stageRef} onClick={(e) => e.stopPropagation()}>
         {image ? (
           <div
-            key={context.page.id}
-            className={`lightbox__page-wrap lightbox__page-wrap--enter${
-              mode === 'highlight' ? ' lightbox__page-wrap--highlighting' : ''
-            }${mode === 'text' ? ' lightbox__page-wrap--texting' : ''}`}
-            onPointerDown={onStagePointerDown}
-            onPointerMove={onStagePointerMove}
-            onPointerUp={onStagePointerUp}
-            onClick={onStageClick}
+            className="lightbox__zoomframe"
+            style={{ transform: `translate(${pagePan.x}px, ${pagePan.y}px) scale(${pageZoom})` }}
           >
-            <img ref={stageImgRef} src={image} alt={context.group.name} draggable={false} />
-            {context.page.annotations.map((annotation) => annotationOverlay(annotation))}
-            {context.page.signatures.map((placement: SignaturePlacement) => {
-              const box = boxes[placement.id]
-              if (!box) return null
-              return (
-                <div
-                  key={placement.id}
-                  className={`signature-overlay${mode !== 'view' ? ' annotation-overlay--passive' : ''}`}
-                  style={{
-                    left: box.pivotX * cssScale,
-                    top: (box.pivotY - box.height) * cssScale,
-                    width: box.width * cssScale,
-                    height: box.height * cssScale,
-                    transform: `rotate(${box.rotateDeg}deg)`
-                  }}
-                  onPointerDown={(e) => beginDrag(e, 'signature', 'move', placement.id, box)}
-                  onPointerMove={onOverlayPointerMove}
-                  onPointerUp={endDrag}
-                >
-                  <img src={placement.imageDataUrl} alt="Handtekening" draggable={false} />
-                  <button
-                    type="button"
-                    className="icon-btn icon-btn--danger signature-overlay__remove"
-                    onPointerDown={(e) => e.stopPropagation()}
-                    onClick={(e) => {
-                      e.stopPropagation()
-                      removeSignaturePlacement(context.page.id, placement.id)
-                    }}
-                  >
-                    <IconClose size={11} />
-                  </button>
+            <div
+              key={context.page.id}
+              className={`lightbox__page-wrap lightbox__page-wrap--enter${wrapModeClass}`}
+              onPointerDown={onStagePointerDown}
+              onPointerMove={onStagePointerMove}
+              onPointerUp={onStagePointerUp}
+              onClick={onStageClick}
+            >
+              <img ref={stageImgRef} src={image} alt={context.group.name} draggable={false} />
+              {context.page.annotations.map((annotation) => annotationOverlay(annotation))}
+              {context.page.signatures.map((placement: SignaturePlacement) => {
+                const box = boxes[placement.id]
+                if (!box) return null
+                return (
                   <div
-                    className="signature-overlay__resize"
-                    onPointerDown={(e) => beginDrag(e, 'signature', 'resize', placement.id, box)}
+                    key={placement.id}
+                    className={`signature-overlay${overlaysPassive || mode === 'erase' ? ' annotation-overlay--passive' : ''}`}
+                    style={{
+                      left: box.pivotX * layoutScale,
+                      top: (box.pivotY - box.height) * layoutScale,
+                      width: box.width * layoutScale,
+                      height: box.height * layoutScale,
+                      transform: `rotate(${box.rotateDeg}deg)`
+                    }}
+                    onPointerDown={(e) => beginDrag(e, 'signature', 'move', placement.id, box)}
                     onPointerMove={onOverlayPointerMove}
                     onPointerUp={endDrag}
-                  />
-                </div>
-              )
-            })}
-            {band && (
-              <div
-                className="highlight-band"
-                style={{
-                  left: Math.min(band.x1, band.x2),
-                  top: Math.min(band.y1, band.y2),
-                  width: Math.abs(band.x2 - band.x1),
-                  height: Math.abs(band.y2 - band.y1),
-                  background: shownHighlightColor,
-                  opacity: shownHighlightOpacity
-                }}
-              />
-            )}
-            {textEditor && (
-              <div
-                className="text-editor"
-                style={{ left: textEditor.visualX * cssScale, top: textEditor.visualY * cssScale }}
-                onPointerDown={(e) => e.stopPropagation()}
-                onClick={(e) => e.stopPropagation()}
-              >
-                <textarea
-                  autoFocus
-                  value={textEditor.value}
-                  placeholder="Typ tekst…"
+                  >
+                    <img src={placement.imageDataUrl} alt="Handtekening" draggable={false} />
+                    <button
+                      type="button"
+                      className="icon-btn icon-btn--danger signature-overlay__remove"
+                      onPointerDown={(e) => e.stopPropagation()}
+                      onClick={(e) => {
+                        e.stopPropagation()
+                        removeSignaturePlacement(context.page.id, placement.id)
+                      }}
+                    >
+                      <IconClose size={11} />
+                    </button>
+                    <div
+                      className="signature-overlay__resize"
+                      onPointerDown={(e) => beginDrag(e, 'signature', 'resize', placement.id, box)}
+                      onPointerMove={onOverlayPointerMove}
+                      onPointerUp={endDrag}
+                    />
+                  </div>
+                )
+              })}
+              {band && (
+                <div
+                  className="highlight-band"
                   style={{
-                    color: shownTextColor,
-                    fontFamily: ANNOTATION_FONT_CSS[shownTextFont],
-                    fontSize: shownTextSize * cssScale,
-                    lineHeight: TEXT_LINE_HEIGHT,
-                    fontWeight: shownTextBold ? 700 : 400,
-                    fontStyle: shownTextItalic ? 'italic' : 'normal'
+                    left: Math.min(band.x1, band.x2) * layoutScale,
+                    top: Math.min(band.y1, band.y2) * layoutScale,
+                    width: Math.abs(band.x2 - band.x1) * layoutScale,
+                    height: Math.abs(band.y2 - band.y1) * layoutScale,
+                    background: shownHighlightColor,
+                    opacity: shownHighlightOpacity
                   }}
-                  onChange={(e) => setTextEditor({ ...textEditor, value: e.target.value })}
-                  onKeyDown={(e) => {
-                    if (e.key === 'Enter' && !e.shiftKey) {
-                      e.preventDefault()
-                      void commitTextEditor()
-                    }
-                    if (e.key === 'Escape') {
-                      e.stopPropagation()
-                      setTextEditor(null)
-                    }
-                  }}
-                  onBlur={() => void commitTextEditor()}
                 />
-                <div className="text-editor__hint">Enter = plaatsen · Shift+Enter = nieuwe regel</div>
-              </div>
-            )}
+              )}
+              {liveStroke && liveStroke.length >= 2 && pageVisualSize && (
+                <svg
+                  className="ink-overlay ink-overlay--live"
+                  width={pageVisualSize.width * layoutScale}
+                  height={pageVisualSize.height * layoutScale}
+                  viewBox={`0 0 ${pageVisualSize.width} ${pageVisualSize.height}`}
+                >
+                  <polyline
+                    points={liveStroke.map((p) => `${p.x},${p.y}`).join(' ')}
+                    fill="none"
+                    stroke={inkColor}
+                    strokeWidth={inkWidth}
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                  />
+                </svg>
+              )}
+              {textEditor && (
+                <div
+                  className="text-editor"
+                  style={{ left: textEditor.visualX * layoutScale, top: textEditor.visualY * layoutScale }}
+                  onPointerDown={(e) => e.stopPropagation()}
+                  onClick={(e) => e.stopPropagation()}
+                >
+                  <textarea
+                    autoFocus
+                    value={textEditor.value}
+                    placeholder="Typ tekst…"
+                    style={{
+                      color: shownTextColor,
+                      fontFamily: ANNOTATION_FONT_CSS[shownTextFont],
+                      fontSize: shownTextSize * layoutScale,
+                      lineHeight: TEXT_LINE_HEIGHT,
+                      fontWeight: shownTextBold ? 700 : 400,
+                      fontStyle: shownTextItalic ? 'italic' : 'normal'
+                    }}
+                    onChange={(e) => setTextEditor({ ...textEditor, value: e.target.value })}
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter' && !e.shiftKey) {
+                        e.preventDefault()
+                        void commitTextEditor()
+                      }
+                      if (e.key === 'Escape') {
+                        e.stopPropagation()
+                        setTextEditor(null)
+                      }
+                    }}
+                    onBlur={() => void commitTextEditor()}
+                  />
+                  <div className="text-editor__hint">Enter = plaatsen · Shift+Enter = nieuwe regel</div>
+                </div>
+              )}
+            </div>
           </div>
         ) : (
           <div className="lightbox__loading" />

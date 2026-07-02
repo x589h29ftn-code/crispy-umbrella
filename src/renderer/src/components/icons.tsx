@@ -229,6 +229,23 @@ export function IconType({ size = 16, className }: IconProps): JSX.Element {
   )
 }
 
+export function IconPen({ size = 16, className }: IconProps): JSX.Element {
+  return (
+    <svg width={size} height={size} viewBox="0 0 24 24" className={className} {...base}>
+      <path d="M4 20c4-1 4.5-2.2 5-4.5.4-1.8 1.6-2.8 3-2.5s2 1.7 1.5 3c-.8 2.2.5 3 2.5 2s3-2.5 4-5c1.2-3-.5-6.5-3.5-7.5S10 6 8.5 9 4 20 4 20z" />
+    </svg>
+  )
+}
+
+export function IconEraser({ size = 16, className }: IconProps): JSX.Element {
+  return (
+    <svg width={size} height={size} viewBox="0 0 24 24" className={className} {...base}>
+      <path d="M7.5 20l-4-4a1.5 1.5 0 0 1 0-2.1l8.9-8.9a1.5 1.5 0 0 1 2.1 0l5 5a1.5 1.5 0 0 1 0 2.1L11.5 20z" />
+      <path d="M6.5 11l6.5 6.5M7.5 20H20" />
+    </svg>
+  )
+}
+
 export function IconCursor({ size = 16, className }: IconProps): JSX.Element {
   return (
     <svg width={size} height={size} viewBox="0 0 24 24" className={className} {...base}>

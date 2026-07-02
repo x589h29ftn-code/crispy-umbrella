@@ -1797,3 +1797,115 @@ button.group-row__date:hover {
 .lightbox__page-wrap img {
   max-height: 78vh;
 }
+
+/* ---------- Zoomslider in het zijmenu ---------- */
+.sidebar__zoom-slider {
+  width: calc(100% - 16px);
+  margin: 2px 8px 4px;
+  accent-color: var(--accent);
+  cursor: pointer;
+}
+
+/* ---------- Zoom & pan in het volledig scherm ---------- */
+.lightbox__zoomframe {
+  display: inline-flex;
+  transform-origin: 50% 50%;
+}
+
+.lightbox__page-wrap--pannable,
+.lightbox__page-wrap--pannable img {
+  cursor: grab;
+}
+
+.editbar__zoom-pct {
+  min-width: 44px;
+  background: transparent;
+  border: none;
+  color: rgba(255, 255, 255, 0.8);
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+  cursor: pointer;
+}
+
+/* ---------- Tekenen & gum ---------- */
+.lightbox__page-wrap--drawing,
+.lightbox__page-wrap--drawing img {
+  cursor: crosshair;
+  touch-action: none;
+}
+
+.lightbox__page-wrap--erasing,
+.lightbox__page-wrap--erasing img {
+  cursor: cell;
+}
+
+.ink-overlay {
+  position: absolute;
+  left: 0;
+  top: 0;
+  overflow: visible;
+  pointer-events: none;
+}
+
+.ink-overlay__hit {
+  pointer-events: stroke;
+  cursor: grab;
+}
+
+.ink-overlay__hit--passive {
+  pointer-events: none;
+}
+
+.ink-overlay__hit--erase {
+  pointer-events: stroke;
+  cursor: cell;
+}
+
+.ink-overlay--live {
+  pointer-events: none;
+}
+
+.ink-overlay__selection {
+  fill: none;
+  stroke: var(--accent);
+  stroke-width: 1.2;
+  stroke-dasharray: 4 3;
+  vector-effect: non-scaling-stroke;
+}
+
+.editbar__widths {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.editbar__width {
+  width: 26px;
+  height: 26px;
+  border-radius: var(--radius-sm);
+  border: none;
+  background: transparent;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  padding: 0;
+}
+
+.editbar__width span {
+  display: block;
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.85);
+}
+
+.editbar__width:hover {
+  background: rgba(255, 255, 255, 0.12);
+}
+
+.editbar__width--active {
+  background: var(--accent);
+}
+
+.page-decoration--ink {
+  overflow: visible;
+}
