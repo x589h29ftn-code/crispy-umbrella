@@ -4,6 +4,7 @@ import Canvas from './components/Canvas'
 import Lightbox from './components/Lightbox'
 import Toasts from './components/Toasts'
 import PasswordDialog from './components/PasswordDialog'
+import SelectionBar from './components/SelectionBar'
 import { exportAllZip } from './lib/exportActions'
 import { useStudioStore } from './store'
 
@@ -81,6 +82,7 @@ export default function App(): JSX.Element {
       />
       <Canvas onScaleChange={onScaleChange} registerZoomControls={registerZoomControls} />
       <Lightbox />
+      <SelectionBar />
       <PasswordDialog />
       <Toasts />
     </div>

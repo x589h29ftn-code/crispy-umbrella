@@ -21,6 +21,7 @@ Gebouwd met Electron, Vite, TypeScript en React. PDF-weergave via [pdf.js](https
 - **Beveiligde PDF's openen**: importeer je een PDF mét wachtwoord, dan verschijnt een wachtwoord-prompt (met nette foutmelding bij een onjuist wachtwoord); het bestand wordt ontsleuteld ingeladen.
 - **Ongedaan maken / opnieuw**: Ctrl+Z / Ctrl+Y (of Ctrl+Shift+Z) voor alle bewerkingen — verplaatsen, verwijderen, roteren, watermerk, handtekeningen, importeren — plus knoppen in de werkbalk.
 - **Meerdere pagina's selecteren**: Ctrl+klik om pagina's aan de selectie toe te voegen, Shift+klik voor een bereik. Sleep één geselecteerde pagina en de hele selectie verhuist mee; Delete verwijdert, R roteert en Ctrl+D dupliceert de selectie; Esc wist de selectie.
+- **Selectiebalk**: zodra je pagina's selecteert verschijnt onderin een zwevende actiebalk met roteren (linksom én rechtsom), dupliceren, verwijderen en selectie wissen — zoals in de meeste PDF-pakketten.
 - **Sneltoetsen**: Ctrl+O openen, Ctrl+E alles exporteren als zip, naast bovenstaande selectie- en undo-sneltoetsen.
 - **Meldingen**: geslaagde exports en fouten (onleesbaar bestand, mislukte export, overgeslagen beveiligd bestand) verschijnen als toast rechtsonder.
 - **Exporteren**: "Exporteer PDF" slaat het actieve document op als los PDF-bestand; "Exporteer zip" bundelt alle documenten als aparte PDF's in één zip-bestand.

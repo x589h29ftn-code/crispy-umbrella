@@ -38,6 +38,43 @@ export function IconRotate({ size = 16, className }: IconProps): JSX.Element {
   )
 }
 
+export function IconRotateLeft({ size = 16, className }: IconProps): JSX.Element {
+  return (
+    <svg width={size} height={size} viewBox="0 0 24 24" className={className} {...base}>
+      <path d="M3 12a9 9 0 1 0 9-9c-2.52 0-4.93 1-6.74 2.74L3 8" />
+      <path d="M3 3v5h5" />
+    </svg>
+  )
+}
+
+export function IconRotateRight({ size = 16, className }: IconProps): JSX.Element {
+  return (
+    <svg width={size} height={size} viewBox="0 0 24 24" className={className} {...base}>
+      <path d="M21 12a9 9 0 1 1-9-9c2.52 0 4.93 1 6.74 2.74L21 8" />
+      <path d="M21 3v5h-5" />
+    </svg>
+  )
+}
+
+export function IconDuplicate({ size = 16, className }: IconProps): JSX.Element {
+  return (
+    <svg width={size} height={size} viewBox="0 0 24 24" className={className} {...base}>
+      <rect x="8" y="8" width="12" height="12" rx="2" />
+      <path d="M16 4H6a2 2 0 0 0-2 2v10" />
+    </svg>
+  )
+}
+
+export function IconTrash({ size = 16, className }: IconProps): JSX.Element {
+  return (
+    <svg width={size} height={size} viewBox="0 0 24 24" className={className} {...base}>
+      <path d="M4 7h16M9 7V5a1.5 1.5 0 0 1 1.5-1.5h3A1.5 1.5 0 0 1 15 5v2" />
+      <path d="M6.5 7l1 12.2A1.8 1.8 0 0 0 9.3 20.8h5.4a1.8 1.8 0 0 0 1.8-1.6L17.5 7" />
+      <path d="M10 11v6M14 11v6" />
+    </svg>
+  )
+}
+
 export function IconUndo({ size = 16, className }: IconProps): JSX.Element {
   return (
     <svg width={size} height={size} viewBox="0 0 24 24" className={className} {...base}>

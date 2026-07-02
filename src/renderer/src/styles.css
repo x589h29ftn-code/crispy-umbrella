@@ -1016,3 +1016,52 @@ body {
   justify-content: flex-end;
   gap: var(--space-2);
 }
+
+/* Selection action bar */
+.selection-bar {
+  position: fixed;
+  left: 50%;
+  bottom: var(--space-5);
+  transform: translateX(-50%);
+  display: flex;
+  align-items: center;
+  gap: var(--space-1);
+  padding: var(--space-1) var(--space-2);
+  background: var(--panel);
+  border-radius: 999px;
+  box-shadow: var(--shadow-lg);
+  z-index: 90;
+  animation: selection-bar-in 0.15s ease;
+}
+
+@keyframes selection-bar-in {
+  from {
+    opacity: 0;
+    transform: translateX(-50%) translateY(10px);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(-50%) translateY(0);
+  }
+}
+
+.selection-bar__count {
+  font-size: 12.5px;
+  color: var(--text-dim);
+  padding: 0 var(--space-2);
+  white-space: nowrap;
+  font-variant-numeric: tabular-nums;
+}
+
+.selection-bar__divider {
+  width: 1px;
+  height: 18px;
+  background: var(--border);
+  margin: 0 var(--space-1);
+  flex-shrink: 0;
+}
+
+.selection-bar__danger:hover:not(:disabled) {
+  background: var(--accent-tint);
+  color: var(--danger);
+}

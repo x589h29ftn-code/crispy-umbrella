@@ -74,7 +74,7 @@ interface StudioState {
   movePages: (pageIds: string[], toGroupId: string, toIndex: number) => void
   createGroupWithPages: (pageIds: string[]) => void
   deletePages: (pageIds: string[]) => void
-  rotatePages: (pageIds: string[]) => void
+  rotatePages: (pageIds: string[], delta?: 90 | -90) => void
   duplicatePages: (pageIds: string[]) => void
   renameGroup: (groupId: string, name: string) => void
   setGroupWatermark: (groupId: string, watermark: Watermark | null) => void
@@ -413,7 +413,7 @@ export const useStudioStore = create<StudioState>((set, get) => ({
     })
   },
 
-  rotatePages: (pageIds) => {
+  rotatePages: (pageIds, delta = 90) => {
     if (!pageIds.length) return
     get().markHistory()
     set((state) => {
@@ -422,7 +422,7 @@ export const useStudioStore = create<StudioState>((set, get) => ({
         groups: state.groups.map((g) => ({
           ...g,
           pages: g.pages.map((p) =>
-            idSet.has(p.id) ? { ...p, rotation: (((p.rotation + 90) % 360) as PageRef['rotation']) } : p
+            idSet.has(p.id) ? { ...p, rotation: (((p.rotation + delta + 360) % 360) as PageRef['rotation']) } : p
           )
         }))
       }
