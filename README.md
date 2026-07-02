@@ -8,11 +8,11 @@ Gebouwd met Electron, Vite, TypeScript en React. PDF-weergave via [pdf.js](https
 
 - **Slepen en neerzetten**: PDF-bestanden ergens in het venster loslaten om ze te importeren.
 - **Miniaturen per document**: elk geïmporteerd bestand wordt een documentgroep met al zijn pagina's als miniaturen op een rij.
-- **Pagina's verplaatsen**: sleep een pagina naar een andere plek in hetzelfde document, naar een ander document (samenvoegen), of naar een lege plek op het canvas (splitsen → nieuw document).
-- **Documenten herordenen**: sleep de titelbalk van een document om de volgorde te wijzigen.
+- **Pagina's verplaatsen**: houd de muis ingedrukt op een miniatuur en sleep — een live voorbeeld volgt de cursor, een blauwe lijn toont de invoegplek, en pagina's schuiven met een animatie op hun plek. Binnen hetzelfde document, naar een ander document (samenvoegen), of naar een lege plek op het canvas (splitsen → nieuw document). Escape annuleert een sleep.
+- **Documenten herordenen**: sleep de titelbalk van een document om de volgorde te wijzigen (zelfde ingedrukt-houden-gebaar).
 - **Pagina's verwijderen of roteren**: knoppen verschijnen bij het aanwijzen van een miniatuur.
 - **Documenten hernoemen of verwijderen**: dubbelklik op de naam om te hernoemen; kruisje in de titelbalk om te verwijderen.
-- **In-/uitzoomen**: knoppen in de werkbalk, Ctrl/Cmd+scrollen, of pinch-zoom; slepen op de achtergrond om te pannen.
+- **In-/uitzoomen**: knoppen in de werkbalk, Ctrl/Cmd+scrollen, of pinch-zoom; slepen op de achtergrond om te pannen. Miniaturen worden bij inzoomen op hogere resolutie opnieuw gerenderd zodat ze scherp blijven, en een zwevende "Origineel"-knop rechtsonder brengt je terug naar 100%.
 - **Volledig scherm**: klik op een miniatuur voor een grote weergave; blader met de pijltjestoetsen of de pijlknoppen door alle pagina's van het hele project.
 - **Lege pagina invoegen**: knop in de documenttitelbalk voegt een lege A4-pagina toe.
 - **Watermerk en paginanummers**: per document in- of uit te schakelen via de titelbalk; worden bij export op elke pagina getekend.

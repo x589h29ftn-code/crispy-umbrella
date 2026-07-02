@@ -198,6 +198,24 @@ export async function getSignatureVisualBox(
   return { pivotX: pvx, pivotY: pvy, width: placement.width, height: placement.height, rotateDeg }
 }
 
+// Bulk imports fire a render per page at once; a bounded queue keeps the
+// pdf.js worker responsive and avoids machine-dependent failures under load.
+const MAX_CONCURRENT_RENDERS = 4
+let activeRenders = 0
+const renderWaiters: (() => void)[] = []
+
+async function acquireRenderSlot(): Promise<void> {
+  if (activeRenders >= MAX_CONCURRENT_RENDERS) {
+    await new Promise<void>((resolve) => renderWaiters.push(resolve))
+  }
+  activeRenders += 1
+}
+
+function releaseRenderSlot(): void {
+  activeRenders -= 1
+  renderWaiters.shift()?.()
+}
+
 export async function renderThumbnail(
   source: SourceFile,
   pageIndex: number,
@@ -208,6 +226,29 @@ export async function renderThumbnail(
   const cached = thumbCache.get(cacheKey)
   if (cached) return cached
 
+  let lastError: unknown
+  for (let attempt = 0; attempt < 3; attempt += 1) {
+    if (attempt > 0) await new Promise((r) => setTimeout(r, 300 * attempt))
+    await acquireRenderSlot()
+    try {
+      const dataUrl = await renderThumbnailOnce(source, pageIndex, deltaRotation, targetWidth)
+      thumbCache.set(cacheKey, dataUrl)
+      return dataUrl
+    } catch (error) {
+      lastError = error
+    } finally {
+      releaseRenderSlot()
+    }
+  }
+  throw lastError
+}
+
+async function renderThumbnailOnce(
+  source: SourceFile,
+  pageIndex: number,
+  deltaRotation: number,
+  targetWidth: number
+): Promise<string> {
   const { page, totalRotation } = await getPageWithTotalRotation(source, pageIndex, deltaRotation)
   const baseViewport = page.getViewport({ scale: 1, rotation: totalRotation })
   const scale = targetWidth / baseViewport.width
@@ -221,7 +262,8 @@ export async function renderThumbnail(
 
   await page.render({ canvasContext: ctx, viewport }).promise
   const dataUrl = canvas.toDataURL('image/png')
-  thumbCache.set(cacheKey, dataUrl)
+  canvas.width = 0
+  canvas.height = 0
   return dataUrl
 }
 

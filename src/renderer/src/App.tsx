@@ -6,6 +6,7 @@ import Toasts from './components/Toasts'
 import PasswordDialog from './components/PasswordDialog'
 import SelectionBar from './components/SelectionBar'
 import { exportAllZip } from './lib/exportActions'
+import { cancelDrag, isDragActive } from './lib/dragController'
 import { useStudioStore } from './store'
 
 function isTypingTarget(target: EventTarget | null): boolean {
@@ -53,6 +54,8 @@ export default function App(): JSX.Element {
         state.deletePages([...state.selectedPageIds])
       } else if (key === 'r' && !mod && !state.lightbox.open) {
         state.rotatePages([...state.selectedPageIds])
+      } else if (e.key === 'Escape' && isDragActive()) {
+        cancelDrag()
       } else if (e.key === 'Escape' && !state.lightbox.open) {
         state.clearSelection()
       }

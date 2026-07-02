@@ -1,4 +1,4 @@
-import { useEffect, useMemo } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { useAutoAnimate } from '@formkit/auto-animate/react'
 import { useStudioStore } from '../store'
 import { usePanZoom } from '../hooks/usePanZoom'
@@ -17,10 +17,19 @@ export default function Canvas({ onScaleChange, registerZoomControls }: Props): 
   const sources = useStudioStore((s) => s.sources)
   const activeGroupId = useStudioStore((s) => s.activeGroupId)
   const importFiles = useStudioStore((s) => s.importFiles)
-  const createGroupWithPages = useStudioStore((s) => s.createGroupWithPages)
-  const reorderGroups = useStudioStore((s) => s.reorderGroups)
+  const canvasDropActive = useStudioStore((s) => s.dropTarget?.type === 'canvas')
+  const [scalePct, setScalePct] = useState(100)
 
-  const { viewportRef, contentRef, zoomBy, zoomTo } = usePanZoom(onScaleChange)
+  const handleScaleChange = useMemo(
+    () => (scale: number) => {
+      setScalePct(Math.round(scale * 100))
+      useStudioStore.getState().setCanvasScale(scale)
+      onScaleChange(scale)
+    },
+    [onScaleChange]
+  )
+
+  const { viewportRef, contentRef, zoomBy, zoomTo } = usePanZoom(handleScaleChange)
   const [animateRef] = useAutoAnimate<HTMLDivElement>({ duration: 180, easing: 'ease-out' })
   const contentNodeRef = useMemo(() => mergeRefs(contentRef, animateRef), [contentRef, animateRef])
 
@@ -45,31 +54,27 @@ export default function Canvas({ onScaleChange, registerZoomControls }: Props): 
 
   return (
     <div
-      className="canvas-viewport"
+      className={`canvas-viewport${canvasDropActive ? ' canvas-viewport--drop' : ''}`}
       ref={viewportRef}
       onDragOver={(e) => {
-        const { dragPageIds, dragGroupId } = useStudioStore.getState()
-        if (e.dataTransfer.types.includes('Files') || dragPageIds || dragGroupId) e.preventDefault()
+        if (e.dataTransfer.types.includes('Files')) e.preventDefault()
       }}
       onDrop={(e) => {
+        if (!e.dataTransfer.types.includes('Files')) return
         e.preventDefault()
-        if (e.dataTransfer.types.includes('Files')) {
-          void addDroppedDocuments(e.dataTransfer.files)
-          return
-        }
-        const { dragPageIds, dragGroupId } = useStudioStore.getState()
-        if (dragGroupId) {
-          reorderGroups(dragGroupId, groups.length)
-          return
-        }
-        const pageId = e.dataTransfer.getData('text/plain')
-        const ids = dragPageIds ?? (pageId ? [pageId] : [])
-        if (ids.length) createGroupWithPages(ids)
+        void addDroppedDocuments(e.dataTransfer.files)
       }}
     >
       <div className="canvas-content" ref={contentNodeRef}>
         {groups.map((group, i) => (
-          <GroupRow key={group.id} group={group} index={i} sources={sources} isActive={group.id === activeGroupId} />
+          <GroupRow
+            key={group.id}
+            group={group}
+            index={i}
+            isLast={i === groups.length - 1}
+            sources={sources}
+            isActive={group.id === activeGroupId}
+          />
         ))}
         {groups.length > 0 && (
           <AddTile
@@ -83,6 +88,12 @@ export default function Canvas({ onScaleChange, registerZoomControls }: Props): 
 
       {groups.length === 0 && (
         <EmptyState onBrowse={() => void pickAndAddDocuments()} onFilesDropped={addDroppedDocuments} />
+      )}
+
+      {Math.abs(scalePct - 100) > 1 && (
+        <button type="button" className="zoom-reset-btn" onClick={() => zoomTo(1)} title="Terug naar origineel formaat">
+          {scalePct}% · Origineel
+        </button>
       )}
     </div>
   )

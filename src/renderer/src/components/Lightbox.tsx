@@ -8,6 +8,7 @@ import {
   type SignatureVisualBox
 } from '../lib/pdfEngine'
 import { useStudioStore } from '../store'
+import { usePressDrag } from '../hooks/usePressDrag'
 import type { SignaturePlacement } from '../types'
 import { IconChevronLeft, IconChevronRight, IconClose, IconRotate } from './icons'
 import LightboxFilmstrip from './LightboxFilmstrip'
@@ -41,6 +42,28 @@ export default function Lightbox(): JSX.Element | null {
     startHeight: number
     rotateDeg: number
   } | null>(null)
+
+  // Dragging the signature out of the tray onto the page, with pointer events
+  // and a live ghost (HTML5 drag was unreliable in Electron).
+  const [trayGhost, setTrayGhost] = useState<{ x: number; y: number } | null>(null)
+  const trayPosRef = useRef<{ x: number; y: number } | null>(null)
+  const placeSignatureAtRef = useRef<((x: number, y: number) => Promise<void>) | null>(null)
+  const trayDrag = usePressDrag({
+    onStart: (e) => {
+      trayPosRef.current = { x: e.clientX, y: e.clientY }
+      setTrayGhost(trayPosRef.current)
+    },
+    onMove: (x, y) => {
+      trayPosRef.current = { x, y }
+      setTrayGhost({ x, y })
+    },
+    onEnd: () => {
+      const pos = trayPosRef.current
+      setTrayGhost(null)
+      if (pos) void placeSignatureAtRef.current?.(pos.x, pos.y)
+    },
+    onCancel: () => setTrayGhost(null)
+  })
 
   const context = useMemo(() => {
     if (!lightbox.pageId) return null
@@ -121,12 +144,12 @@ export default function Lightbox(): JSX.Element | null {
   const cssScale =
     pageVisualSize && stageImgRef.current ? stageImgRef.current.clientWidth / pageVisualSize.width : 1
 
-  async function handleTrayDrop(e: React.DragEvent<HTMLDivElement>): Promise<void> {
-    e.preventDefault()
+  async function placeSignatureAt(clientX: number, clientY: number): Promise<void> {
     if (!signatureAsset || !source || !context || !stageImgRef.current || !pageVisualSize) return
     const rect = stageImgRef.current.getBoundingClientRect()
-    const dropVisualX = (e.clientX - rect.left) / cssScale
-    const dropVisualY = (e.clientY - rect.top) / cssScale
+    if (clientX < rect.left || clientX > rect.right || clientY < rect.top || clientY > rect.bottom) return
+    const dropVisualX = (clientX - rect.left) / cssScale
+    const dropVisualY = (clientY - rect.top) / cssScale
     const wPct = DEFAULT_SIGNATURE_WIDTH_PCT
     const aspect = signatureAsset.naturalHeight / signatureAsset.naturalWidth
     const hPct = (wPct * pageVisualSize.width * aspect) / pageVisualSize.height
@@ -142,6 +165,7 @@ export default function Lightbox(): JSX.Element | null {
     )
     addSignaturePlacement(context.page.id, placement)
   }
+  placeSignatureAtRef.current = placeSignatureAt
 
   // Signature drag/resize uses pointer capture on the element itself rather than
   // window-level listeners, so a mid-drag unmount (e.g. Escape closes the lightbox,
@@ -224,13 +248,8 @@ export default function Lightbox(): JSX.Element | null {
         )}
         <div className="lightbox__spacer" />
         {signatureAsset && (
-          <div className="lightbox__tray" title="Sleep naar de pagina om te plaatsen">
-            <img
-              src={signatureAsset.dataUrl}
-              alt="Handtekening"
-              draggable
-              onDragStart={(e) => e.dataTransfer.setData('text/plain', 'signature')}
-            />
+          <div className="lightbox__tray" title="Houd ingedrukt en sleep naar de pagina om te plaatsen" {...trayDrag}>
+            <img src={signatureAsset.dataUrl} alt="Handtekening" draggable={false} />
             <span>Sleep om te plaatsen</span>
           </div>
         )}
@@ -257,14 +276,7 @@ export default function Lightbox(): JSX.Element | null {
 
       <div className="lightbox__stage" onClick={(e) => e.stopPropagation()}>
         {image ? (
-          <div
-            key={context.page.id}
-            className="lightbox__page-wrap lightbox__page-wrap--enter"
-            onDragOver={(e) => {
-              if (signatureAsset) e.preventDefault()
-            }}
-            onDrop={(e) => void handleTrayDrop(e)}
-          >
+          <div key={context.page.id} className="lightbox__page-wrap lightbox__page-wrap--enter">
             <img ref={stageImgRef} src={image} alt={context.group.name} draggable={false} />
             {context.page.signatures.map((placement) => {
               const box = boxes[placement.id]
@@ -325,6 +337,15 @@ export default function Lightbox(): JSX.Element | null {
       </button>
 
       <LightboxFilmstrip />
+
+      {trayGhost && signatureAsset && (
+        <img
+          src={signatureAsset.dataUrl}
+          alt=""
+          className="signature-drag-ghost"
+          style={{ left: trayGhost.x, top: trayGhost.y }}
+        />
+      )}
     </div>
   )
 }

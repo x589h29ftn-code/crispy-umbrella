@@ -1,6 +1,9 @@
 import { useRef, useState } from 'react'
+import { useAutoAnimate } from '@formkit/auto-animate/react'
 import { useStudioStore } from '../store'
 import { useClickOutside } from '../hooks/useClickOutside'
+import { usePressDrag } from '../hooks/usePressDrag'
+import { beginGroupDrag, cancelDrag, finishDrag, updateDrag } from '../lib/dragController'
 import type { DocGroup, SourceFile } from '../types'
 import PageThumb from './PageThumb'
 import AddTile from './AddTile'
@@ -9,13 +12,9 @@ import { IconCalendar, IconCheck, IconClose, IconGrip, IconHash, IconMore, IconP
 interface Props {
   group: DocGroup
   index: number
+  isLast: boolean
   sources: Map<string, SourceFile>
   isActive: boolean
-}
-
-interface Slot {
-  index: number
-  edge: 'before' | 'after'
 }
 
 function formatDutchDate(isoDate: string): string {
@@ -23,14 +22,14 @@ function formatDutchDate(isoDate: string): string {
   return `${day}-${month}-${year}`
 }
 
-export default function GroupRow({ group, index, sources, isActive }: Props): JSX.Element {
-  const [slot, setSlot] = useState<Slot | null>(null)
+export default function GroupRow({ group, index, isLast, sources, isActive }: Props): JSX.Element {
   const [editing, setEditing] = useState(false)
   const [draft, setDraft] = useState(group.name)
   const [menuView, setMenuView] = useState<'closed' | 'menu' | 'watermark' | 'date'>('closed')
   const [watermarkDraft, setWatermarkDraft] = useState(group.watermark?.text ?? '')
   const [dateDraft, setDateDraft] = useState(group.documentDate ?? '')
   const menuRef = useRef<HTMLDivElement>(null)
+  const [animatePagesRef] = useAutoAnimate<HTMLDivElement>({ duration: 160, easing: 'ease-out' })
 
   function closeMenu(): void {
     setMenuView('closed')
@@ -38,23 +37,35 @@ export default function GroupRow({ group, index, sources, isActive }: Props): JS
 
   useClickOutside(menuRef, menuView !== 'closed', closeMenu)
 
-  const movePages = useStudioStore((s) => s.movePages)
   const addPagesToGroup = useStudioStore((s) => s.addPagesToGroup)
   const insertBlankPage = useStudioStore((s) => s.insertBlankPage)
   const renameGroup = useStudioStore((s) => s.renameGroup)
   const removeGroup = useStudioStore((s) => s.removeGroup)
-  const reorderGroups = useStudioStore((s) => s.reorderGroups)
   const setActiveGroup = useStudioStore((s) => s.setActiveGroup)
-  const setDragGroupId = useStudioStore((s) => s.setDragGroupId)
   const dragGroupId = useStudioStore((s) => s.dragGroupId)
   const setGroupWatermark = useStudioStore((s) => s.setGroupWatermark)
   const toggleGroupPageNumbers = useStudioStore((s) => s.toggleGroupPageNumbers)
   const setGroupDocumentDate = useStudioStore((s) => s.setGroupDocumentDate)
 
-  const targetIndex = (): number => {
-    if (!slot) return group.pages.length
-    return slot.edge === 'before' ? slot.index : slot.index + 1
-  }
+  // Encoded drop indicator position for this row: page index * 2 (+1 for the
+  // "after" edge), or -1 when the drag isn't targeting this document.
+  const dropSlot = useStudioStore((s) =>
+    s.dropTarget?.type === 'slot' && s.dropTarget.groupId === group.id
+      ? s.dropTarget.index * 2 + (s.dropTarget.edge === 'after' ? 1 : 0)
+      : -1
+  )
+  const dropBefore = useStudioStore((s) => s.groupDropIndex === index)
+  const dropAfter = useStudioStore((s) => isLast && s.groupDropIndex === index + 1)
+
+  const headerDrag = usePressDrag({
+    ignoreSelector: 'button, input, .dropdown-menu',
+    onStart: (e) => {
+      beginGroupDrag(group.id, group.name, e.clientX, e.clientY)
+    },
+    onMove: updateDrag,
+    onEnd: finishDrag,
+    onCancel: cancelDrag
+  })
 
   async function pickAndAddPages(): Promise<void> {
     const files = await window.api.openPdfs()
@@ -72,30 +83,12 @@ export default function GroupRow({ group, index, sources, isActive }: Props): JS
 
   return (
     <section
-      className={`group-row${isActive ? ' group-row--active' : ''}${dragGroupId === group.id ? ' group-row--dragging' : ''}`}
+      className={`group-row${isActive ? ' group-row--active' : ''}${dragGroupId === group.id ? ' group-row--dragging' : ''}${dropBefore ? ' group-row--drop-before' : ''}${dropAfter ? ' group-row--drop-after' : ''}`}
+      data-group-id={group.id}
+      data-group-index={index}
       onClick={() => setActiveGroup(group.id)}
-      onDragOver={(e) => {
-        if (dragGroupId && dragGroupId !== group.id) e.preventDefault()
-      }}
-      onDrop={(e) => {
-        if (!dragGroupId || dragGroupId === group.id) return
-        e.preventDefault()
-        e.stopPropagation()
-        const rect = e.currentTarget.getBoundingClientRect()
-        const before = e.clientY - rect.top < rect.height / 2
-        reorderGroups(dragGroupId, before ? index : index + 1)
-      }}
     >
-      <header
-        className="group-row__header"
-        draggable
-        onDragStart={(e) => {
-          e.dataTransfer.effectAllowed = 'move'
-          e.dataTransfer.setData('text/plain', group.id)
-          setDragGroupId(group.id)
-        }}
-        onDragEnd={() => setDragGroupId(null)}
-      >
+      <header className="group-row__header" {...headerDrag}>
         <IconGrip size={14} className="group-row__grip" />
         <span className="group-row__number">{String(index + 1).padStart(2, '0')}</span>
         {editing ? (
@@ -192,12 +185,7 @@ export default function GroupRow({ group, index, sources, isActive }: Props): JS
                   <label className="dropdown-menu__editor-label">
                     Documentdatum (aanmaak- en wijzigingsdatum van het PDF-bestand bij export)
                   </label>
-                  <input
-                    autoFocus
-                    type="date"
-                    value={dateDraft}
-                    onChange={(e) => setDateDraft(e.target.value)}
-                  />
+                  <input autoFocus type="date" value={dateDraft} onChange={(e) => setDateDraft(e.target.value)} />
                   <div className="dropdown-menu__editor-actions">
                     {group.documentDate && (
                       <button
@@ -281,42 +269,22 @@ export default function GroupRow({ group, index, sources, isActive }: Props): JS
 
       <div
         className="group-row__pages"
+        ref={animatePagesRef}
         onDragOver={(e) => {
-          if (e.dataTransfer.types.includes('Files')) {
-            e.preventDefault()
-            return
-          }
-          e.preventDefault()
-          if (!slot) setSlot({ index: group.pages.length - 1, edge: 'after' })
-        }}
-        onDragLeave={(e) => {
-          if (e.currentTarget === e.target) setSlot(null)
+          if (e.dataTransfer.types.includes('Files')) e.preventDefault()
         }}
         onDrop={(e) => {
+          if (!e.dataTransfer.types.includes('Files')) return
           e.preventDefault()
           e.stopPropagation()
-          if (e.dataTransfer.types.includes('Files')) {
-            void addDroppedFiles(e.dataTransfer.files)
-            setSlot(null)
-            return
-          }
-          const dragIds = useStudioStore.getState().dragPageIds
-          const pageId = e.dataTransfer.getData('text/plain')
-          const ids = dragIds ?? (pageId ? [pageId] : [])
-          if (ids.length) movePages(ids, group.id, targetIndex())
-          setSlot(null)
+          void addDroppedFiles(e.dataTransfer.files)
         }}
       >
         {group.pages.map((page, i) => (
           <div key={page.id} className="group-row__slot">
-            {slot && slot.index === i && slot.edge === 'before' && <div className="drop-indicator" />}
-            <PageThumb
-              page={page}
-              source={sources.get(page.sourceId)}
-              index={i}
-              onDragOverSlot={(idx, edge) => setSlot({ index: idx, edge })}
-            />
-            {slot && slot.index === i && slot.edge === 'after' && <div className="drop-indicator" />}
+            {dropSlot === i * 2 && <div className="drop-indicator" />}
+            <PageThumb page={page} source={sources.get(page.sourceId)} index={i} />
+            {dropSlot === i * 2 + 1 && <div className="drop-indicator" />}
           </div>
         ))}
         <AddTile label="Pagina toevoegen" onClick={() => void pickAndAddPages()} onFilesDropped={addDroppedFiles} />

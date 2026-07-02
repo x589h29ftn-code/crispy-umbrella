@@ -19,6 +19,10 @@ export interface PasswordRequest {
   attempt: number
 }
 
+export type DropTarget =
+  | { type: 'slot'; groupId: string; index: number; edge: 'before' | 'after' }
+  | { type: 'canvas' }
+
 const BLANK_SOURCE_ID = 'blank-page-source'
 const HISTORY_LIMIT = 50
 
@@ -51,6 +55,9 @@ interface StudioState {
   passwordRequest: PasswordRequest | null
   busyExport: 'pdf' | 'zip' | null
   exportPassword: string
+  canvasScale: number
+  dropTarget: DropTarget | null
+  groupDropIndex: number | null
 
   toggleTheme: () => void
   markHistory: () => void
@@ -64,6 +71,9 @@ interface StudioState {
   submitPassword: (password: string | null) => void
   setBusyExport: (busy: 'pdf' | 'zip' | null) => void
   setExportPassword: (password: string) => void
+  setCanvasScale: (scale: number) => void
+  setDropTarget: (target: DropTarget | null) => void
+  setGroupDropIndex: (index: number | null) => void
   setDragPageIds: (ids: string[] | null) => void
   setDragGroupId: (id: string | null) => void
   reorderGroups: (groupId: string, toIndex: number) => void
@@ -169,6 +179,9 @@ export const useStudioStore = create<StudioState>((set, get) => ({
   passwordRequest: null,
   busyExport: null,
   exportPassword: '',
+  canvasScale: 1,
+  dropTarget: null,
+  groupDropIndex: null,
 
   toggleTheme: () => {
     set((state) => {
@@ -257,6 +270,9 @@ export const useStudioStore = create<StudioState>((set, get) => ({
 
   setBusyExport: (busy) => set({ busyExport: busy }),
   setExportPassword: (password) => set({ exportPassword: password }),
+  setCanvasScale: (scale) => set({ canvasScale: scale }),
+  setDropTarget: (target) => set({ dropTarget: target }),
+  setGroupDropIndex: (index) => set({ groupDropIndex: index }),
   setDragPageIds: (ids) => set({ dragPageIds: ids }),
   setDragGroupId: (id) => set({ dragGroupId: id }),
 

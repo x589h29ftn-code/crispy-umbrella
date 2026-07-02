@@ -24,6 +24,10 @@ export function usePanZoom(onScaleChange: (scale: number) => void): PanZoomHandl
       .filter((event: Event) => {
         if (event.type === 'wheel') return (event as WheelEvent).ctrlKey || (event as WheelEvent).metaKey
         if (event.type === 'dblclick') return false
+        // Thumbnails and document headers have their own pointer-based drag;
+        // panning should only start from empty canvas.
+        const target = event.target as HTMLElement | null
+        if (target?.closest('.page-thumb, .group-row__header, .dropdown-menu, button, input')) return false
         return !(event as MouseEvent).button
       })
       .on('zoom', (event: D3ZoomEvent<HTMLDivElement, unknown>) => {
