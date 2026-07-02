@@ -1,8 +1,15 @@
 import { useRef, useState } from 'react'
+import { nanoid } from 'nanoid'
 import { useStudioStore } from '../store'
+import { useClickOutside } from '../hooks/useClickOutside'
 import { exportActivePdf, exportAllZip } from '../lib/exportActions'
 import {
+  IconArchive,
+  IconCheck,
+  IconChevronLeft,
+  IconChevronRight,
   IconClose,
+  IconDownload,
   IconFolderOpen,
   IconLock,
   IconMinus,
@@ -20,6 +27,8 @@ interface Props {
   onZoomOut: () => void
   onZoomReset: () => void
 }
+
+const SIDEBAR_STORAGE_KEY = 'pdf-studio-sidebar-collapsed'
 
 function readImageFile(file: File): Promise<{ dataUrl: string; width: number; height: number }> {
   return new Promise((resolve, reject) => {
@@ -40,8 +49,11 @@ export default function Toolbar({ zoomPct, onZoomIn, onZoomOut, onZoomReset }: P
   const groups = useStudioStore((s) => s.groups)
   const activeGroupId = useStudioStore((s) => s.activeGroupId)
   const importFiles = useStudioStore((s) => s.importFiles)
-  const signatureAsset = useStudioStore((s) => s.signatureAsset)
-  const setSignatureAsset = useStudioStore((s) => s.setSignatureAsset)
+  const signatureAssets = useStudioStore((s) => s.signatureAssets)
+  const activeSignatureId = useStudioStore((s) => s.activeSignatureId)
+  const addSignatureAsset = useStudioStore((s) => s.addSignatureAsset)
+  const removeSignatureAsset = useStudioStore((s) => s.removeSignatureAsset)
+  const setActiveSignature = useStudioStore((s) => s.setActiveSignature)
   const theme = useStudioStore((s) => s.theme)
   const toggleTheme = useStudioStore((s) => s.toggleTheme)
   const canUndo = useStudioStore((s) => s.past.length > 0)
@@ -52,10 +64,24 @@ export default function Toolbar({ zoomPct, onZoomIn, onZoomOut, onZoomReset }: P
   const exportPassword = useStudioStore((s) => s.exportPassword)
   const setExportPassword = useStudioStore((s) => s.setExportPassword)
   const [showPasswordField, setShowPasswordField] = useState(false)
+  const [sigMenuOpen, setSigMenuOpen] = useState(false)
+  const [collapsed, setCollapsed] = useState(() => window.localStorage.getItem(SIDEBAR_STORAGE_KEY) === '1')
   const signatureInputRef = useRef<HTMLInputElement>(null)
+  const sigMenuRef = useRef<HTMLDivElement>(null)
+  const passwordRef = useRef<HTMLDivElement>(null)
+
+  useClickOutside(sigMenuRef, sigMenuOpen, () => setSigMenuOpen(false))
+  useClickOutside(passwordRef, showPasswordField, () => setShowPasswordField(false))
 
   const pageTotal = groups.reduce((n, g) => n + g.pages.length, 0)
   const activeGroup = groups.find((g) => g.id === activeGroupId) ?? groups[0]
+
+  function toggleCollapsed(): void {
+    setCollapsed((v) => {
+      window.localStorage.setItem(SIDEBAR_STORAGE_KEY, v ? '0' : '1')
+      return !v
+    })
+  }
 
   async function handleOpen(): Promise<void> {
     const files = await window.api.openPdfs()
@@ -68,7 +94,9 @@ export default function Toolbar({ zoomPct, onZoomIn, onZoomOut, onZoomReset }: P
     if (!file) return
     try {
       const { dataUrl, width, height } = await readImageFile(file)
-      setSignatureAsset({
+      addSignatureAsset({
+        id: nanoid(),
+        name: file.name.replace(/\.(png|jpe?g)$/i, ''),
         dataUrl,
         mimeType: file.type === 'image/jpeg' ? 'image/jpeg' : 'image/png',
         naturalWidth: width,
@@ -79,17 +107,30 @@ export default function Toolbar({ zoomPct, onZoomIn, onZoomOut, onZoomReset }: P
     }
   }
 
+  const summary =
+    groups.length === 0
+      ? 'Geen documenten'
+      : `${groups.length} ${groups.length === 1 ? 'document' : 'documenten'} · ${pageTotal} ${
+          pageTotal === 1 ? 'pagina' : "pagina's"
+        }`
+
   return (
-    <div className="toolbar">
-      <div className="toolbar__summary">
-        {groups.length === 0
-          ? 'Geen documenten'
-          : `${groups.length} ${groups.length === 1 ? 'document' : 'documenten'} · ${pageTotal} ${
-              pageTotal === 1 ? 'pagina' : "pagina's"
-            }`}
+    <aside className={`sidebar${collapsed ? ' sidebar--collapsed' : ''}`}>
+      <div className="sidebar__top">
+        {!collapsed && <span className="sidebar__title">PDF Studio</span>}
+        <button
+          type="button"
+          className="icon-btn icon-btn--chrome sidebar__collapse"
+          onClick={toggleCollapsed}
+          title={collapsed ? 'Menu uitklappen' : 'Menu inklappen'}
+        >
+          {collapsed ? <IconChevronRight size={15} /> : <IconChevronLeft size={15} />}
+        </button>
       </div>
 
-      <div className="toolbar__group">
+      {!collapsed && <div className="sidebar__summary">{summary}</div>}
+
+      <div className="sidebar__row">
         <button
           type="button"
           className="pill-btn pill-btn--icon"
@@ -110,104 +151,146 @@ export default function Toolbar({ zoomPct, onZoomIn, onZoomOut, onZoomReset }: P
         </button>
       </div>
 
-      <div className="toolbar__zoom">
+      <div className="sidebar__row">
         <button type="button" className="pill-btn pill-btn--icon" onClick={onZoomOut} title="Uitzoomen">
           <IconMinus size={14} />
         </button>
-        <button type="button" className="toolbar__zoom-pct" onClick={onZoomReset} title="Zoom herstellen (100%)">
-          {zoomPct}%
-        </button>
+        {!collapsed && (
+          <button type="button" className="toolbar__zoom-pct" onClick={onZoomReset} title="Zoom herstellen (100%)">
+            {zoomPct}%
+          </button>
+        )}
         <button type="button" className="pill-btn pill-btn--icon" onClick={onZoomIn} title="Inzoomen">
           <IconPlus size={14} />
         </button>
       </div>
 
-      <div className="toolbar__actions">
+      <div className="sidebar__divider" />
+
+      <button
+        type="button"
+        className="sidebar-btn"
+        onClick={toggleTheme}
+        title={theme === 'dark' ? 'Licht thema' : 'Donker thema'}
+      >
+        {theme === 'dark' ? <IconSun size={15} /> : <IconMoon size={15} />}
+        <span className="sidebar-btn__label">{theme === 'dark' ? 'Licht thema' : 'Donker thema'}</span>
+      </button>
+
+      <div className="sidebar__flyout-wrap" ref={sigMenuRef}>
+        <input
+          ref={signatureInputRef}
+          type="file"
+          accept="image/png,image/jpeg"
+          style={{ display: 'none' }}
+          onChange={(e) => void handleSignatureFile(e)}
+        />
         <button
           type="button"
-          className="pill-btn pill-btn--icon"
-          onClick={toggleTheme}
-          title={theme === 'dark' ? 'Licht thema' : 'Donker thema'}
+          className={`sidebar-btn${signatureAssets.length ? ' sidebar-btn--active' : ''}`}
+          onClick={() => {
+            if (signatureAssets.length === 0) signatureInputRef.current?.click()
+            else setSigMenuOpen((v) => !v)
+          }}
+          title="Handtekeningen laden en beheren"
         >
-          {theme === 'dark' ? <IconSun size={15} /> : <IconMoon size={15} />}
+          <IconSignature size={15} />
+          <span className="sidebar-btn__label">
+            {signatureAssets.length > 1 ? 'Handtekeningen' : 'Handtekening'}
+          </span>
+          {signatureAssets.length > 0 && <span className="sidebar-btn__badge">{signatureAssets.length}</span>}
         </button>
-
-        <div className="toolbar__divider" />
-
-        <div className="toolbar__group">
-          <input
-            ref={signatureInputRef}
-            type="file"
-            accept="image/png,image/jpeg"
-            style={{ display: 'none' }}
-            onChange={(e) => void handleSignatureFile(e)}
-          />
-          <button
-            type="button"
-            className={`pill-btn${signatureAsset ? ' pill-btn--active' : ''}`}
-            onClick={() => signatureInputRef.current?.click()}
-            title="Laad een afbeelding van je handtekening om op pagina's te plaatsen"
-          >
-            <IconSignature size={14} /> {signatureAsset ? 'Handtekening geladen' : 'Handtekening'}
-          </button>
-          {signatureAsset && (
+        {sigMenuOpen && (
+          <div className="dropdown-menu sidebar__flyout signature-menu" onClick={(e) => e.stopPropagation()}>
+            <div className="signature-menu__hint">Actieve handtekening sleep je in het volledig scherm op de pagina.</div>
+            {signatureAssets.map((asset) => (
+              <div
+                key={asset.id}
+                className={`signature-menu__item${asset.id === activeSignatureId ? ' signature-menu__item--active' : ''}`}
+                onClick={() => setActiveSignature(asset.id)}
+                title="Klik om deze handtekening actief te maken"
+              >
+                <img src={asset.dataUrl} alt={asset.name} draggable={false} />
+                <span className="signature-menu__name">{asset.name}</span>
+                {asset.id === activeSignatureId && <IconCheck size={13} className="dropdown-menu__check" />}
+                <button
+                  type="button"
+                  className="icon-btn icon-btn--chrome icon-btn--danger"
+                  title="Handtekening verwijderen"
+                  onClick={(e) => {
+                    e.stopPropagation()
+                    removeSignatureAsset(asset.id)
+                  }}
+                >
+                  <IconClose size={12} />
+                </button>
+              </div>
+            ))}
             <button
               type="button"
-              className="icon-btn icon-btn--chrome icon-btn--danger"
-              title="Handtekening wissen"
-              onClick={() => setSignatureAsset(null)}
+              className="dropdown-menu__item"
+              onClick={() => signatureInputRef.current?.click()}
             >
-              <IconClose size={13} />
+              <IconPlus size={14} />
+              Nieuwe handtekening…
             </button>
-          )}
-
-          <div className="toolbar__password">
-            <button
-              type="button"
-              className={`pill-btn${exportPassword ? ' pill-btn--active' : ''}`}
-              onClick={() => setShowPasswordField((v) => !v)}
-              title="Wachtwoord instellen voor geëxporteerde PDF's"
-            >
-              <IconLock size={14} /> Wachtwoord
-            </button>
-            {showPasswordField && (
-              <input
-                autoFocus
-                type="password"
-                className="toolbar__password-input"
-                placeholder="Wachtwoord voor export"
-                value={exportPassword}
-                onChange={(e) => setExportPassword(e.target.value)}
-              />
-            )}
           </div>
-        </div>
-
-        <div className="toolbar__divider" />
-
-        <div className="toolbar__group">
-          <button type="button" className="pill-btn" onClick={() => void handleOpen()} title="Openen (Ctrl+O)">
-            <IconFolderOpen size={14} /> Openen
-          </button>
-          <button
-            type="button"
-            className="pill-btn"
-            disabled={!activeGroup || busyExport !== null}
-            onClick={() => void exportActivePdf()}
-          >
-            {busyExport === 'pdf' ? 'Bezig…' : 'Exporteer PDF'}
-          </button>
-          <button
-            type="button"
-            className="pill-btn pill-btn--primary"
-            disabled={!groups.length || busyExport !== null}
-            onClick={() => void exportAllZip()}
-            title="Exporteer alles als zip (Ctrl+E)"
-          >
-            {busyExport === 'zip' ? 'Bezig…' : 'Exporteer zip'}
-          </button>
-        </div>
+        )}
       </div>
-    </div>
+
+      <div className="sidebar__flyout-wrap" ref={passwordRef}>
+        <button
+          type="button"
+          className={`sidebar-btn${exportPassword ? ' sidebar-btn--active' : ''}`}
+          onClick={() => setShowPasswordField((v) => !v)}
+          title="Wachtwoord instellen voor geëxporteerde PDF's"
+        >
+          <IconLock size={15} />
+          <span className="sidebar-btn__label">Wachtwoord</span>
+        </button>
+        {showPasswordField && (
+          <div className="dropdown-menu sidebar__flyout sidebar__password-flyout" onClick={(e) => e.stopPropagation()}>
+            <input
+              autoFocus
+              type="password"
+              className="sidebar__password-input"
+              placeholder="Wachtwoord voor export"
+              value={exportPassword}
+              onChange={(e) => setExportPassword(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter' || e.key === 'Escape') setShowPasswordField(false)
+              }}
+            />
+          </div>
+        )}
+      </div>
+
+      <div className="sidebar__divider" />
+
+      <button type="button" className="sidebar-btn" onClick={() => void handleOpen()} title="Openen (Ctrl+O)">
+        <IconFolderOpen size={15} />
+        <span className="sidebar-btn__label">Openen</span>
+      </button>
+      <button
+        type="button"
+        className="sidebar-btn"
+        disabled={!activeGroup || busyExport !== null}
+        onClick={() => void exportActivePdf()}
+        title="Exporteer het actieve document als PDF"
+      >
+        <IconDownload size={15} />
+        <span className="sidebar-btn__label">{busyExport === 'pdf' ? 'Bezig…' : 'Exporteer PDF'}</span>
+      </button>
+      <button
+        type="button"
+        className="sidebar-btn sidebar-btn--primary"
+        disabled={!groups.length || busyExport !== null}
+        onClick={() => void exportAllZip()}
+        title="Exporteer alles als zip (Ctrl+E)"
+      >
+        <IconArchive size={15} />
+        <span className="sidebar-btn__label">{busyExport === 'zip' ? 'Bezig…' : 'Exporteer zip'}</span>
+      </button>
+    </aside>
   )
 }

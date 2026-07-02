@@ -15,12 +15,42 @@ export interface SignaturePlacement {
   height: number
 }
 
+export type AnnotationFont = 'helvetica' | 'times' | 'courier'
+
+export interface HighlightAnnotation {
+  id: string
+  type: 'highlight'
+  /** PDF points, unrotated media-box space, bottom-left origin (same convention as signatures). */
+  x: number
+  y: number
+  width: number
+  height: number
+  color: string
+  opacity: number
+}
+
+export interface TextAnnotation {
+  id: string
+  type: 'text'
+  x: number
+  y: number
+  text: string
+  font: AnnotationFont
+  size: number
+  bold: boolean
+  italic: boolean
+  color: string
+}
+
+export type Annotation = HighlightAnnotation | TextAnnotation
+
 export interface PageRef {
   id: string
   sourceId: string
   sourcePageIndex: number
   rotation: 0 | 90 | 180 | 270
   signatures: SignaturePlacement[]
+  annotations: Annotation[]
 }
 
 export interface Watermark {
@@ -39,6 +69,8 @@ export interface DocGroup {
 }
 
 export interface SignatureAsset {
+  id: string
+  name: string
   dataUrl: string
   mimeType: 'image/png' | 'image/jpeg'
   naturalWidth: number

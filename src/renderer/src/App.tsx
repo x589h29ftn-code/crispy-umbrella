@@ -83,7 +83,9 @@ export default function App(): JSX.Element {
         onZoomOut={() => controlsRef.current?.zoomBy(1 / 1.2)}
         onZoomReset={() => controlsRef.current?.zoomTo(1)}
       />
-      <Canvas onScaleChange={onScaleChange} registerZoomControls={registerZoomControls} />
+      <main className="app-main">
+        <Canvas onScaleChange={onScaleChange} registerZoomControls={registerZoomControls} />
+      </main>
       <Lightbox />
       <SelectionBar />
       <PasswordDialog />

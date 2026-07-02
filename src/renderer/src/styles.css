@@ -76,8 +76,15 @@ body {
 
 .app {
   display: flex;
-  flex-direction: column;
+  flex-direction: row;
   height: 100vh;
+}
+
+.app-main {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
 }
 
 /* Toolbar */
@@ -1217,4 +1224,576 @@ body.is-dragging * {
 
 .group-row__header {
   touch-action: none;
+}
+
+/* ---------- Sidebar (werkbalk links, inklapbaar) ---------- */
+.sidebar {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+  width: 208px;
+  flex-shrink: 0;
+  padding: var(--space-3) var(--space-2);
+  background: var(--panel);
+  box-shadow: 1px 0 0 var(--border-soft), var(--shadow-sm);
+  position: relative;
+  z-index: 30;
+  transition: width 0.18s ease;
+}
+
+.sidebar--collapsed {
+  width: 56px;
+  align-items: center;
+}
+
+.sidebar__top {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-2);
+  min-height: 26px;
+}
+
+.sidebar--collapsed .sidebar__top {
+  justify-content: center;
+}
+
+.sidebar__title {
+  font-size: 13px;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  padding-left: var(--space-2);
+  white-space: nowrap;
+}
+
+.sidebar__collapse {
+  width: 26px;
+  height: 26px;
+}
+
+.sidebar__summary {
+  font-size: 11.5px;
+  color: var(--text-dim);
+  padding: 0 var(--space-2) var(--space-2);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.sidebar__row {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--space-1);
+}
+
+.sidebar--collapsed .sidebar__row {
+  flex-direction: column;
+}
+
+.sidebar__divider {
+  height: 1px;
+  background: var(--border);
+  margin: var(--space-2) var(--space-2);
+  align-self: stretch;
+}
+
+.sidebar-btn {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  background: transparent;
+  border: none;
+  color: var(--text-dim);
+  border-radius: var(--radius-sm);
+  padding: 8px 10px;
+  font-size: 13px;
+  cursor: pointer;
+  white-space: nowrap;
+  position: relative;
+  transition:
+    background 0.15s ease,
+    color 0.15s ease;
+}
+
+.sidebar-btn svg {
+  flex-shrink: 0;
+}
+
+.sidebar-btn:hover:not(:disabled) {
+  background: var(--panel-hover);
+  color: var(--text);
+}
+
+.sidebar-btn:disabled {
+  opacity: 0.4;
+  cursor: default;
+}
+
+.sidebar-btn--active {
+  color: var(--accent);
+}
+
+.sidebar-btn--primary {
+  background: var(--accent);
+  color: #fff;
+}
+
+.sidebar-btn--primary:hover:not(:disabled) {
+  background: var(--accent-hover);
+  color: #fff;
+}
+
+.sidebar--collapsed .sidebar-btn {
+  width: 38px;
+  justify-content: center;
+  padding: 8px 0;
+}
+
+.sidebar--collapsed .sidebar-btn__label,
+.sidebar--collapsed .sidebar__summary {
+  display: none;
+}
+
+.sidebar-btn__badge {
+  margin-left: auto;
+  min-width: 17px;
+  height: 17px;
+  border-radius: 9px;
+  background: var(--accent-tint);
+  color: var(--accent);
+  font-size: 10.5px;
+  font-weight: 600;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0 4px;
+}
+
+.sidebar--collapsed .sidebar-btn__badge {
+  position: absolute;
+  top: 1px;
+  right: 1px;
+  margin: 0;
+}
+
+.sidebar__flyout-wrap {
+  position: relative;
+}
+
+.sidebar__flyout {
+  top: 0;
+  left: calc(100% + 10px);
+  right: auto;
+}
+
+.sidebar__password-flyout {
+  padding: var(--space-2);
+  min-width: 220px;
+}
+
+.sidebar__password-input {
+  width: 100%;
+  background: var(--panel-2);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  color: var(--text);
+  padding: 8px 10px;
+  font-size: 13px;
+  outline: none;
+}
+
+.sidebar__password-input:focus {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px var(--accent-tint);
+}
+
+/* Signature menu (sidebar flyout + lightbox picker) */
+.signature-menu {
+  min-width: 260px;
+}
+
+.signature-menu__hint {
+  font-size: 11.5px;
+  color: var(--text-dim);
+  padding: var(--space-2) var(--space-2) var(--space-1);
+  line-height: 1.4;
+}
+
+.signature-menu__item {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  padding: 6px 8px;
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+}
+
+.signature-menu__item:hover {
+  background: var(--panel-hover);
+}
+
+.signature-menu__item--active {
+  background: var(--accent-tint);
+}
+
+.signature-menu__item img {
+  width: 52px;
+  height: 26px;
+  object-fit: contain;
+  background: #fff;
+  border-radius: 4px;
+  flex-shrink: 0;
+}
+
+.signature-menu__name {
+  flex: 1;
+  font-size: 12.5px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.signature-menu--lightbox {
+  position: absolute;
+  top: calc(100% + 8px);
+  right: 0;
+}
+
+/* ---------- Horizontale schuifbalk bij inzoomen ---------- */
+.canvas-scrollbar {
+  position: absolute;
+  left: var(--space-2);
+  right: var(--space-2);
+  bottom: 4px;
+  height: 12px;
+  border-radius: 6px;
+  z-index: 25;
+  cursor: pointer;
+  touch-action: none;
+}
+
+.canvas-scrollbar:hover,
+.canvas-scrollbar:active {
+  background: var(--border-soft);
+}
+
+.canvas-scrollbar__thumb {
+  position: absolute;
+  top: 2px;
+  bottom: 2px;
+  border-radius: 4px;
+  background: var(--text-dim);
+  opacity: 0.45;
+  cursor: grab;
+  transition: opacity 0.12s ease;
+}
+
+.canvas-scrollbar__thumb:hover,
+.canvas-scrollbar__thumb:active {
+  opacity: 0.8;
+}
+
+.zoom-reset-btn--lifted {
+  bottom: 26px;
+}
+
+/* ---------- Pagina toevoegen keuzemenu ---------- */
+.add-tile-wrap {
+  position: relative;
+  flex-shrink: 0;
+}
+
+.dropdown-menu--left {
+  left: 0;
+  right: auto;
+}
+
+/* Documentdatum-pill is nu een knop */
+.group-row__menu-wrap {
+  display: flex;
+  align-items: center;
+  gap: var(--space-1);
+}
+
+button.group-row__date {
+  border: none;
+  cursor: pointer;
+}
+
+button.group-row__date:hover {
+  background: var(--accent);
+  color: #fff;
+}
+
+/* ---------- Handtekeningen & annotaties op miniaturen ---------- */
+.page-thumb__decorations {
+  position: absolute;
+  inset: 0;
+  overflow: hidden;
+  pointer-events: none;
+}
+
+.page-decoration {
+  position: absolute;
+  transform-origin: 0% 100%;
+  display: block;
+}
+
+.page-decoration--highlight {
+  mix-blend-mode: multiply;
+}
+
+.page-decoration--text {
+  white-space: pre;
+}
+
+/* ---------- Bewerkingsmenu in volledig scherm ---------- */
+.editbar {
+  position: absolute;
+  top: 46px;
+  left: 0;
+  right: 0;
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  padding: 8px 18px;
+  z-index: 5;
+}
+
+.editbar__modes {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  background: rgba(255, 255, 255, 0.07);
+  border-radius: 999px;
+  padding: 3px;
+}
+
+.editbar__mode {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  background: transparent;
+  border: none;
+  color: rgba(255, 255, 255, 0.75);
+  border-radius: 999px;
+  padding: 6px 12px;
+  font-size: 12.5px;
+  cursor: pointer;
+}
+
+.editbar__mode:hover {
+  color: #fff;
+}
+
+.editbar__mode--active {
+  background: var(--accent);
+  color: #fff;
+}
+
+.editbar__group {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  background: rgba(255, 255, 255, 0.07);
+  border-radius: 999px;
+  padding: 5px 12px;
+  animation: dropdown-in 0.12s ease;
+}
+
+.editbar__swatches {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+}
+
+.editbar__swatch {
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  border: 2px solid transparent;
+  cursor: pointer;
+  padding: 0;
+}
+
+.editbar__swatch--active {
+  border-color: #fff;
+  box-shadow: 0 0 0 2px var(--accent);
+}
+
+.editbar__slider {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  color: rgba(255, 255, 255, 0.8);
+  font-size: 11.5px;
+  font-variant-numeric: tabular-nums;
+}
+
+.editbar__slider input[type='range'] {
+  width: 90px;
+  accent-color: var(--accent);
+}
+
+.editbar__select,
+.editbar__size {
+  background: rgba(0, 0, 0, 0.35);
+  border: 1px solid rgba(255, 255, 255, 0.15);
+  color: #fff;
+  border-radius: var(--radius-sm);
+  padding: 4px 6px;
+  font-size: 12.5px;
+  outline: none;
+}
+
+.editbar__size {
+  width: 52px;
+}
+
+.editbar__toggle {
+  width: 26px;
+  height: 26px;
+  border-radius: var(--radius-sm);
+  border: none;
+  background: transparent;
+  color: rgba(255, 255, 255, 0.75);
+  font-size: 13px;
+  cursor: pointer;
+}
+
+.editbar__toggle--bold {
+  font-weight: 800;
+}
+
+.editbar__toggle--italic {
+  font-style: italic;
+  font-family: Georgia, serif;
+}
+
+.editbar__toggle:hover {
+  color: #fff;
+  background: rgba(255, 255, 255, 0.12);
+}
+
+.editbar__toggle--active {
+  background: var(--accent);
+  color: #fff;
+}
+
+.editbar__spacer {
+  flex: 1;
+}
+
+.editbar__signature {
+  position: relative;
+}
+
+.editbar__hint {
+  font-size: 11.5px;
+  color: rgba(255, 255, 255, 0.5);
+}
+
+/* Annotatie-overlays op de pagina */
+.annotation-overlay {
+  position: absolute;
+  transform-origin: 0% 100%;
+  cursor: grab;
+}
+
+.annotation-overlay--passive {
+  pointer-events: none;
+}
+
+.annotation-overlay__fill {
+  width: 100%;
+  height: 100%;
+  mix-blend-mode: multiply;
+  pointer-events: none;
+}
+
+.annotation-overlay__text {
+  white-space: pre;
+  pointer-events: none;
+}
+
+.annotation-overlay:hover {
+  outline: 1px dashed var(--accent);
+}
+
+.annotation-overlay--selected {
+  outline: 1.5px solid var(--accent);
+}
+
+.annotation-overlay__remove {
+  position: absolute;
+  top: -10px;
+  right: -10px;
+}
+
+.lightbox__page-wrap--highlighting,
+.lightbox__page-wrap--highlighting img {
+  cursor: crosshair;
+  touch-action: none;
+}
+
+.lightbox__page-wrap--texting,
+.lightbox__page-wrap--texting img {
+  cursor: text;
+}
+
+.highlight-band {
+  position: absolute;
+  mix-blend-mode: multiply;
+  outline: 1px dashed rgba(0, 0, 0, 0.4);
+  pointer-events: none;
+}
+
+/* Inline tekst-editor op de pagina */
+.text-editor {
+  position: absolute;
+  z-index: 10;
+}
+
+.text-editor textarea {
+  min-width: 220px;
+  min-height: 34px;
+  background: rgba(255, 255, 255, 0.94);
+  border: 1.5px solid var(--accent);
+  border-radius: 4px;
+  padding: 2px 4px;
+  outline: none;
+  resize: both;
+}
+
+.text-editor__hint {
+  margin-top: 4px;
+  font-size: 10.5px;
+  color: rgba(255, 255, 255, 0.7);
+  background: rgba(0, 0, 0, 0.5);
+  border-radius: 4px;
+  padding: 2px 6px;
+  width: max-content;
+}
+
+/* De editbar zelf mag geen kliks vangen buiten zijn knoppen */
+.editbar {
+  pointer-events: none;
+}
+
+.editbar__modes,
+.editbar__group,
+.editbar__signature,
+.editbar__hint {
+  pointer-events: auto;
+}
+
+/* Ruimte voor topbar + editbar boven de pagina */
+.lightbox__stage {
+  margin-top: 52px;
+}
+
+.lightbox__page-wrap img {
+  max-height: 78vh;
 }

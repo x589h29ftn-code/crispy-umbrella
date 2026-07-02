@@ -1,7 +1,7 @@
 import { create } from 'zustand'
 import { nanoid } from 'nanoid'
 import { createBlankPageSource, decryptPdfBytes, forgetSource, isPasswordError, loadSourceFile } from './lib/pdfEngine'
-import type { DocGroup, PageRef, SignatureAsset, SignaturePlacement, SourceFile, Watermark } from './types'
+import type { Annotation, DocGroup, PageRef, SignatureAsset, SignaturePlacement, SourceFile, Watermark } from './types'
 
 export interface LightboxState {
   open: boolean
@@ -45,7 +45,8 @@ interface StudioState {
   isImporting: boolean
   dragPageIds: string[] | null
   dragGroupId: string | null
-  signatureAsset: SignatureAsset | null
+  signatureAssets: SignatureAsset[]
+  activeSignatureId: string | null
   theme: Theme
   past: DocGroup[][]
   future: DocGroup[][]
@@ -95,10 +96,15 @@ interface StudioState {
   openLightbox: (pageId: string) => void
   closeLightbox: () => void
   stepLightbox: (direction: 1 | -1) => void
-  setSignatureAsset: (asset: SignatureAsset | null) => void
+  addSignatureAsset: (asset: SignatureAsset) => void
+  removeSignatureAsset: (assetId: string) => void
+  setActiveSignature: (assetId: string) => void
   addSignaturePlacement: (pageId: string, placement: Omit<SignaturePlacement, 'id'>) => void
   updateSignaturePlacement: (pageId: string, placementId: string, patch: Partial<SignaturePlacement>) => void
   removeSignaturePlacement: (pageId: string, placementId: string) => void
+  addAnnotation: (pageId: string, annotation: Annotation) => void
+  updateAnnotation: (pageId: string, annotationId: string, patch: Partial<Annotation>) => void
+  removeAnnotation: (pageId: string, annotationId: string) => void
 }
 
 function findPage(groups: DocGroup[], pageId: string): { group: DocGroup; index: number } | null {
@@ -169,7 +175,8 @@ export const useStudioStore = create<StudioState>((set, get) => ({
   isImporting: false,
   dragPageIds: null,
   dragGroupId: null,
-  signatureAsset: null,
+  signatureAssets: [],
+  activeSignatureId: null,
   theme: getInitialTheme(),
   past: [],
   future: [],
@@ -316,7 +323,8 @@ export const useStudioStore = create<StudioState>((set, get) => ({
             sourceId: source.id,
             sourcePageIndex: i,
             rotation: 0,
-            signatures: []
+            signatures: [],
+            annotations: []
           })),
           watermark: null,
           pageNumbers: false,
@@ -346,7 +354,14 @@ export const useStudioStore = create<StudioState>((set, get) => ({
         if (!source) continue
         sources.set(source.id, source)
         for (let i = 0; i < source.pageCount; i += 1) {
-          newPages.push({ id: nanoid(), sourceId: source.id, sourcePageIndex: i, rotation: 0, signatures: [] })
+          newPages.push({
+            id: nanoid(),
+            sourceId: source.id,
+            sourcePageIndex: i,
+            rotation: 0,
+            signatures: [],
+            annotations: []
+          })
         }
       }
       if (!newPages.length) return
@@ -365,7 +380,14 @@ export const useStudioStore = create<StudioState>((set, get) => ({
     // SourceFile instead of re-parsing a fresh throwaway PDF through pdf.js each time.
     let source = get().sources.get(BLANK_SOURCE_ID)
     if (!source) source = await createBlankPageSource(BLANK_SOURCE_ID)
-    const page: PageRef = { id: nanoid(), sourceId: BLANK_SOURCE_ID, sourcePageIndex: 0, rotation: 0, signatures: [] }
+    const page: PageRef = {
+      id: nanoid(),
+      sourceId: BLANK_SOURCE_ID,
+      sourcePageIndex: 0,
+      rotation: 0,
+      signatures: [],
+      annotations: []
+    }
     get().markHistory()
     set((state) => ({
       sources: new Map(state.sources).set(BLANK_SOURCE_ID, source!),
@@ -458,7 +480,15 @@ export const useStudioStore = create<StudioState>((set, get) => ({
           ...g,
           pages: g.pages.flatMap((p) =>
             idSet.has(p.id)
-              ? [p, { ...p, id: nanoid(), signatures: p.signatures.map((s) => ({ ...s, id: nanoid() })) }]
+              ? [
+                  p,
+                  {
+                    ...p,
+                    id: nanoid(),
+                    signatures: p.signatures.map((s) => ({ ...s, id: nanoid() })),
+                    annotations: p.annotations.map((a) => ({ ...a, id: nanoid() }))
+                  }
+                ]
               : [p]
           )
         }))
@@ -518,7 +548,23 @@ export const useStudioStore = create<StudioState>((set, get) => ({
     set({ lightbox: { open: true, pageId: flat[nextIdx].id } })
   },
 
-  setSignatureAsset: (asset) => set({ signatureAsset: asset }),
+  addSignatureAsset: (asset) => {
+    set((state) => ({
+      signatureAssets: [...state.signatureAssets, asset],
+      activeSignatureId: asset.id
+    }))
+  },
+
+  removeSignatureAsset: (assetId) => {
+    set((state) => {
+      const signatureAssets = state.signatureAssets.filter((a) => a.id !== assetId)
+      const activeSignatureId =
+        state.activeSignatureId === assetId ? (signatureAssets[0]?.id ?? null) : state.activeSignatureId
+      return { signatureAssets, activeSignatureId }
+    })
+  },
+
+  setActiveSignature: (assetId) => set({ activeSignatureId: assetId }),
 
   addSignaturePlacement: (pageId, placement) => {
     get().markHistory()
@@ -557,6 +603,48 @@ export const useStudioStore = create<StudioState>((set, get) => ({
         ...g,
         pages: g.pages.map((p) =>
           p.id !== pageId ? p : { ...p, signatures: p.signatures.filter((s) => s.id !== placementId) }
+        )
+      }))
+    }))
+  },
+
+  addAnnotation: (pageId, annotation) => {
+    get().markHistory()
+    set((state) => ({
+      groups: state.groups.map((g) => ({
+        ...g,
+        pages: g.pages.map((p) => (p.id === pageId ? { ...p, annotations: [...p.annotations, annotation] } : p))
+      }))
+    }))
+  },
+
+  // No markHistory: fires continuously while dragging an annotation. Callers
+  // mark history once at the start of a gesture or one-shot style change.
+  updateAnnotation: (pageId, annotationId, patch) => {
+    set((state) => ({
+      groups: state.groups.map((g) => ({
+        ...g,
+        pages: g.pages.map((p) =>
+          p.id !== pageId
+            ? p
+            : {
+                ...p,
+                annotations: p.annotations.map((a) =>
+                  a.id === annotationId ? ({ ...a, ...patch } as Annotation) : a
+                )
+              }
+        )
+      }))
+    }))
+  },
+
+  removeAnnotation: (pageId, annotationId) => {
+    get().markHistory()
+    set((state) => ({
+      groups: state.groups.map((g) => ({
+        ...g,
+        pages: g.pages.map((p) =>
+          p.id !== pageId ? p : { ...p, annotations: p.annotations.filter((a) => a.id !== annotationId) }
         )
       }))
     }))

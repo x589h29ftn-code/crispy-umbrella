@@ -1,7 +1,7 @@
 import * as pdfjsLib from 'pdfjs-dist'
 import pdfWorkerUrl from 'pdfjs-dist/build/pdf.worker.min.mjs?url'
-import { PDFDocument, PDFFont, PDFImage, PDFPage, StandardFonts, degrees, rgb } from '@cantoo/pdf-lib'
-import type { DocGroup, PageRef, SignaturePlacement, SourceFile } from '../types'
+import { BlendMode, PDFDocument, PDFFont, PDFImage, PDFPage, StandardFonts, degrees, rgb } from '@cantoo/pdf-lib'
+import type { AnnotationFont, DocGroup, PageRef, SignaturePlacement, SourceFile, TextAnnotation } from '../types'
 
 const A4_WIDTH = 595.28
 const A4_HEIGHT = 841.89
@@ -145,10 +145,29 @@ export async function visualPointToContentPoint(
 }
 
 /**
- * Converts a signature rectangle expressed relative to the currently
- * displayed (rotated) page image into a page-content-space rectangle that
- * stays physically anchored to the page regardless of later rotation.
+ * Converts a rectangle expressed relative to the currently displayed
+ * (rotated) page image into a page-content-space rectangle (bottom-left
+ * pivot) that stays physically anchored to the page regardless of later
+ * rotation. Shared by signatures, highlights and text annotations.
  */
+export async function visualRectToContentRect(
+  source: SourceFile,
+  pageIndex: number,
+  rotation: number,
+  visual: { xPct: number; yPct: number; wPct: number; hPct: number }
+): Promise<{ x: number; y: number; width: number; height: number }> {
+  const viewport = await getScale1Viewport(source, pageIndex, rotation)
+  const pivotVisualX = visual.xPct * viewport.width
+  const pivotVisualY = (visual.yPct + visual.hPct) * viewport.height
+  const [x, y] = viewport.convertToPdfPoint(pivotVisualX, pivotVisualY)
+  return {
+    x,
+    y,
+    width: visual.wPct * viewport.width,
+    height: visual.hPct * viewport.height
+  }
+}
+
 export async function visualRectToSignaturePlacement(
   source: SourceFile,
   pageIndex: number,
@@ -156,17 +175,8 @@ export async function visualRectToSignaturePlacement(
   visual: { xPct: number; yPct: number; wPct: number; hPct: number },
   imageDataUrl: string
 ): Promise<Omit<SignaturePlacement, 'id'>> {
-  const viewport = await getScale1Viewport(source, pageIndex, rotation)
-  const pivotVisualX = visual.xPct * viewport.width
-  const pivotVisualY = (visual.yPct + visual.hPct) * viewport.height
-  const [x, y] = viewport.convertToPdfPoint(pivotVisualX, pivotVisualY)
-  return {
-    imageDataUrl,
-    x,
-    y,
-    width: visual.wPct * viewport.width,
-    height: visual.hPct * viewport.height
-  }
+  const rect = await visualRectToContentRect(source, pageIndex, rotation, visual)
+  return { imageDataUrl, ...rect }
 }
 
 export interface SignatureVisualBox {
@@ -177,25 +187,31 @@ export interface SignatureVisualBox {
   rotateDeg: number
 }
 
-/** Inverse of {@link visualRectToSignaturePlacement}, recomputed live from the current rotation. */
+/** Inverse of {@link visualRectToContentRect}, recomputed live from the current rotation. */
+export async function getPlacementVisualBox(
+  source: SourceFile,
+  pageIndex: number,
+  rotation: number,
+  rect: { x: number; y: number; width: number; height: number }
+): Promise<SignatureVisualBox> {
+  const viewport = await getScale1Viewport(source, pageIndex, rotation)
+  const rotateContentDeg = computeRotationCompensationDegrees(viewport)
+  const rad = (rotateContentDeg * Math.PI) / 180
+
+  const [pvx, pvy] = viewport.convertToViewportPoint(rect.x, rect.y)
+  const [rvx, rvy] = viewport.convertToViewportPoint(rect.x + 10 * Math.cos(rad), rect.y + 10 * Math.sin(rad))
+  const rotateDeg = (Math.atan2(rvy - pvy, rvx - pvx) * 180) / Math.PI
+
+  return { pivotX: pvx, pivotY: pvy, width: rect.width, height: rect.height, rotateDeg }
+}
+
 export async function getSignatureVisualBox(
   source: SourceFile,
   pageIndex: number,
   rotation: number,
   placement: SignaturePlacement
 ): Promise<SignatureVisualBox> {
-  const viewport = await getScale1Viewport(source, pageIndex, rotation)
-  const rotateContentDeg = computeRotationCompensationDegrees(viewport)
-  const rad = (rotateContentDeg * Math.PI) / 180
-
-  const [pvx, pvy] = viewport.convertToViewportPoint(placement.x, placement.y)
-  const [rvx, rvy] = viewport.convertToViewportPoint(
-    placement.x + 10 * Math.cos(rad),
-    placement.y + 10 * Math.sin(rad)
-  )
-  const rotateDeg = (Math.atan2(rvy - pvy, rvx - pvx) * 180) / Math.PI
-
-  return { pivotX: pvx, pivotY: pvy, width: placement.width, height: placement.height, rotateDeg }
+  return getPlacementVisualBox(source, pageIndex, rotation, placement)
 }
 
 // Bulk imports fire a render per page at once; a bounded queue keeps the
@@ -267,6 +283,52 @@ async function renderThumbnailOnce(
   return dataUrl
 }
 
+/** Shared text-annotation metrics so the on-screen overlay and the exported PDF line up. */
+export const TEXT_LINE_HEIGHT = 1.2
+/** Baseline offset above the bottom of each line box, as a fraction of the font size. */
+export const TEXT_BASELINE_FACTOR = 0.25
+
+export function textAnnotationLines(annotation: TextAnnotation): string[] {
+  return annotation.text.split('\n')
+}
+
+export function textAnnotationBlockHeight(annotation: TextAnnotation): number {
+  return textAnnotationLines(annotation).length * annotation.size * TEXT_LINE_HEIGHT
+}
+
+// [regular, bold, italic, bold-italic] per family, indexed by bold + 2*italic.
+const FONT_VARIANTS: Record<AnnotationFont, [StandardFonts, StandardFonts, StandardFonts, StandardFonts]> = {
+  helvetica: [
+    StandardFonts.Helvetica,
+    StandardFonts.HelveticaBold,
+    StandardFonts.HelveticaOblique,
+    StandardFonts.HelveticaBoldOblique
+  ],
+  times: [
+    StandardFonts.TimesRoman,
+    StandardFonts.TimesRomanBold,
+    StandardFonts.TimesRomanItalic,
+    StandardFonts.TimesRomanBoldItalic
+  ],
+  courier: [
+    StandardFonts.Courier,
+    StandardFonts.CourierBold,
+    StandardFonts.CourierOblique,
+    StandardFonts.CourierBoldOblique
+  ]
+}
+
+function annotationFontName(annotation: TextAnnotation): StandardFonts {
+  return FONT_VARIANTS[annotation.font][(annotation.bold ? 1 : 0) + (annotation.italic ? 2 : 0)]
+}
+
+function hexToRgb(hex: string): ReturnType<typeof rgb> {
+  let v = hex.replace('#', '')
+  if (v.length === 3) v = v.split('').map((c) => c + c).join('')
+  const n = Number.parseInt(v, 16)
+  return rgb(((n >> 16) & 255) / 255, ((n >> 8) & 255) / 255, (n & 255) / 255)
+}
+
 function dataUrlToBytes(dataUrl: string): { mime: string; bytes: Uint8Array } {
   const match = /^data:([^;]+);base64,(.+)$/.exec(dataUrl)
   if (!match) throw new Error('Ongeldige data-URL')
@@ -297,7 +359,16 @@ async function buildPdf(group: DocGroup, sources: Map<string, SourceFile>): Prom
     copiedByDoc.set(sourceId, copied)
   }
 
-  const font = group.watermark || group.pageNumbers ? await out.embedFont(StandardFonts.Helvetica) : null
+  const fontCache = new Map<StandardFonts, Promise<PDFFont>>()
+  function getFont(name: StandardFonts): Promise<PDFFont> {
+    let cached = fontCache.get(name)
+    if (!cached) {
+      cached = out.embedFont(name)
+      fontCache.set(name, cached)
+    }
+    return cached
+  }
+  const font = group.watermark || group.pageNumbers ? await getFont(StandardFonts.Helvetica) : null
   const embeddedImages = new Map<string, PDFImage>()
   const total = order.length
 
@@ -326,6 +397,45 @@ async function buildPdf(group: DocGroup, sources: Map<string, SourceFile>): Prom
         height: signature.height,
         rotate: degrees(rotateDeg)
       })
+    }
+
+    for (const annotation of page.annotations) {
+      const viewport = await getScale1Viewport(src, page.sourcePageIndex, page.rotation)
+      const rotateDeg = computeRotationCompensationDegrees(viewport)
+      if (annotation.type === 'highlight') {
+        // Multiply blend keeps the underlying text readable, like a real highlighter.
+        copiedPage.drawRectangle({
+          x: annotation.x,
+          y: annotation.y,
+          width: annotation.width,
+          height: annotation.height,
+          color: hexToRgb(annotation.color),
+          opacity: Math.max(0, Math.min(1, annotation.opacity)),
+          rotate: degrees(rotateDeg),
+          blendMode: BlendMode.Multiply
+        })
+      } else {
+        const textFont = await getFont(annotationFontName(annotation))
+        const lines = textAnnotationLines(annotation)
+        const lineHeight = annotation.size * TEXT_LINE_HEIGHT
+        // (annotation.x, annotation.y) is the block's bottom-left pivot in content
+        // space; each line's baseline sits along the block's local "up" axis.
+        const theta = (rotateDeg * Math.PI) / 180
+        const upX = -Math.sin(theta)
+        const upY = Math.cos(theta)
+        for (let line = 0; line < lines.length; line += 1) {
+          if (!lines[line]) continue
+          const offset = (lines.length - 1 - line) * lineHeight + annotation.size * TEXT_BASELINE_FACTOR
+          copiedPage.drawText(lines[line], {
+            x: annotation.x + upX * offset,
+            y: annotation.y + upY * offset,
+            size: annotation.size,
+            font: textFont,
+            color: hexToRgb(annotation.color),
+            rotate: degrees(rotateDeg)
+          })
+        }
+      }
     }
 
     if (group.watermark && font) {

@@ -7,7 +7,7 @@ import { beginGroupDrag, cancelDrag, finishDrag, updateDrag } from '../lib/dragC
 import type { DocGroup, SourceFile } from '../types'
 import PageThumb from './PageThumb'
 import AddTile from './AddTile'
-import { IconCalendar, IconCheck, IconClose, IconGrip, IconHash, IconMore, IconPlus, IconStamp } from './icons'
+import { IconCalendar, IconCheck, IconClose, IconFolderOpen, IconGrip, IconHash, IconMore, IconPlus, IconStamp } from './icons'
 
 interface Props {
   group: DocGroup
@@ -28,7 +28,9 @@ export default function GroupRow({ group, index, isLast, sources, isActive }: Pr
   const [menuView, setMenuView] = useState<'closed' | 'menu' | 'watermark' | 'date'>('closed')
   const [watermarkDraft, setWatermarkDraft] = useState(group.watermark?.text ?? '')
   const [dateDraft, setDateDraft] = useState(group.documentDate ?? '')
+  const [addMenuOpen, setAddMenuOpen] = useState(false)
   const menuRef = useRef<HTMLDivElement>(null)
+  const addMenuRef = useRef<HTMLDivElement>(null)
   const [animatePagesRef] = useAutoAnimate<HTMLDivElement>({ duration: 160, easing: 'ease-out' })
 
   function closeMenu(): void {
@@ -36,6 +38,7 @@ export default function GroupRow({ group, index, isLast, sources, isActive }: Pr
   }
 
   useClickOutside(menuRef, menuView !== 'closed', closeMenu)
+  useClickOutside(addMenuRef, addMenuOpen, () => setAddMenuOpen(false))
 
   const addPagesToGroup = useStudioStore((s) => s.addPagesToGroup)
   const insertBlankPage = useStudioStore((s) => s.insertBlankPage)
@@ -124,12 +127,34 @@ export default function GroupRow({ group, index, isLast, sources, isActive }: Pr
         <span className="group-row__count">
           {group.pages.length} {group.pages.length === 1 ? 'pagina' : "pagina's"}
         </span>
-        {group.documentDate && (
-          <span className="group-row__date" title="Documentdatum bij export">
-            <IconCalendar size={11} /> {formatDutchDate(group.documentDate)}
-          </span>
-        )}
         <div className="group-row__menu-wrap" ref={menuRef}>
+          {group.documentDate ? (
+            <button
+              type="button"
+              className="group-row__date"
+              title="Documentdatum bij export — klik om aan te passen"
+              onClick={(e) => {
+                e.stopPropagation()
+                setDateDraft(group.documentDate ?? '')
+                setMenuView((v) => (v === 'date' ? 'closed' : 'date'))
+              }}
+            >
+              <IconCalendar size={11} /> {formatDutchDate(group.documentDate)}
+            </button>
+          ) : (
+            <button
+              type="button"
+              className={`icon-btn icon-btn--chrome${menuView === 'date' ? ' icon-btn--active' : ''}`}
+              title="Documentdatum instellen (aanmaak- en wijzigingsdatum bij export)"
+              onClick={(e) => {
+                e.stopPropagation()
+                setDateDraft(group.documentDate ?? '')
+                setMenuView((v) => (v === 'date' ? 'closed' : 'date'))
+              }}
+            >
+              <IconCalendar size={14} />
+            </button>
+          )}
           <button
             type="button"
             className={`icon-btn icon-btn--chrome${menuView !== 'closed' ? ' icon-btn--active' : ''}`}
@@ -287,7 +312,35 @@ export default function GroupRow({ group, index, isLast, sources, isActive }: Pr
             {dropSlot === i * 2 + 1 && <div className="drop-indicator" />}
           </div>
         ))}
-        <AddTile label="Pagina toevoegen" onClick={() => void pickAndAddPages()} onFilesDropped={addDroppedFiles} />
+        <div className="add-tile-wrap" ref={addMenuRef}>
+          <AddTile label="Pagina toevoegen" onClick={() => setAddMenuOpen((v) => !v)} onFilesDropped={addDroppedFiles} />
+          {addMenuOpen && (
+            <div className="dropdown-menu dropdown-menu--left" onClick={(e) => e.stopPropagation()}>
+              <button
+                type="button"
+                className="dropdown-menu__item"
+                onClick={() => {
+                  setAddMenuOpen(false)
+                  void insertBlankPage(group.id)
+                }}
+              >
+                <IconPlus size={14} />
+                Lege pagina
+              </button>
+              <button
+                type="button"
+                className="dropdown-menu__item"
+                onClick={() => {
+                  setAddMenuOpen(false)
+                  void pickAndAddPages()
+                }}
+              >
+                <IconFolderOpen size={14} />
+                Pagina's uit PDF-bestand…
+              </button>
+            </div>
+          )}
+        </div>
       </div>
     </section>
   )

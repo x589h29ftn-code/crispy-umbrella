@@ -1,16 +1,73 @@
 import { useEffect, useState } from 'react'
-import { renderThumbnail } from '../lib/pdfEngine'
+import {
+  getPageVisualSize,
+  getPlacementVisualBox,
+  renderThumbnail,
+  textAnnotationBlockHeight,
+  TEXT_LINE_HEIGHT,
+  type SignatureVisualBox
+} from '../lib/pdfEngine'
+import { ANNOTATION_FONT_CSS } from '../lib/annotationStyle'
 import { beginPagesDrag, cancelDrag, consumeDragClick, finishDrag, updateDrag } from '../lib/dragController'
 import { usePressDrag } from '../hooks/usePressDrag'
 import { useStudioStore } from '../store'
-import type { PageRef, SourceFile } from '../types'
+import type { Annotation, PageRef, SignaturePlacement, SourceFile } from '../types'
 import { IconClose, IconRotate } from './icons'
 
 const BASE_WIDTH = 190
 
-/** Canvas zoom quantized to half steps so thumbnails re-render sharper as you zoom in, without thrashing. */
+/**
+ * Canvas zoom quantized to half steps so thumbnails re-render sharper as you
+ * zoom in, without thrashing. The 1.5x factor oversamples the bitmap relative
+ * to its on-screen size so it stays crisp even between the half steps.
+ */
 function useThumbResolutionScale(): number {
-  return useStudioStore((s) => Math.min(3, Math.max(1, Math.ceil(s.canvasScale * 2) / 2)))
+  return useStudioStore((s) => Math.min(4.5, Math.max(1.5, (Math.ceil(s.canvasScale * 2) / 2) * 1.5)))
+}
+
+interface Decorations {
+  pageWidth: number
+  signatures: { placement: SignaturePlacement; box: SignatureVisualBox }[]
+  annotations: { annotation: Annotation; box: SignatureVisualBox }[]
+}
+
+/** Signature/annotation overlays so placed items are visible on the small thumbnail too. */
+function useDecorations(page: PageRef, source: SourceFile | undefined): Decorations | null {
+  const [decorations, setDecorations] = useState<Decorations | null>(null)
+
+  useEffect(() => {
+    let cancelled = false
+    if (!source || (page.signatures.length === 0 && page.annotations.length === 0)) {
+      setDecorations(null)
+      return
+    }
+    ;(async () => {
+      const size = await getPageVisualSize(source, page.sourcePageIndex, page.rotation)
+      const signatures = await Promise.all(
+        page.signatures.map(async (placement) => ({
+          placement,
+          box: await getPlacementVisualBox(source, page.sourcePageIndex, page.rotation, placement)
+        }))
+      )
+      const annotations = await Promise.all(
+        page.annotations.map(async (annotation) => ({
+          annotation,
+          box: await getPlacementVisualBox(source, page.sourcePageIndex, page.rotation, {
+            x: annotation.x,
+            y: annotation.y,
+            width: annotation.type === 'highlight' ? annotation.width : 0,
+            height: annotation.type === 'highlight' ? annotation.height : textAnnotationBlockHeight(annotation)
+          })
+        }))
+      )
+      if (!cancelled) setDecorations({ pageWidth: size.width, signatures, annotations })
+    })().catch(() => undefined)
+    return () => {
+      cancelled = true
+    }
+  }, [source, page.sourcePageIndex, page.rotation, page.signatures, page.annotations])
+
+  return decorations
 }
 
 interface Props {
@@ -31,6 +88,7 @@ export default function PageThumb({ page, source, index }: Props): JSX.Element {
   const isSelected = useStudioStore((s) => s.selectedPageIds.has(page.id))
   const isDragSource = useStudioStore((s) => s.dragPageIds?.includes(page.id) ?? false)
   const resolutionScale = useThumbResolutionScale()
+  const decorations = useDecorations(page, source)
 
   useEffect(() => {
     let cancelled = false
@@ -63,6 +121,8 @@ export default function PageThumb({ page, source, index }: Props): JSX.Element {
     onEnd: finishDrag,
     onCancel: cancelDrag
   })
+
+  const decorScale = decorations ? BASE_WIDTH / decorations.pageWidth : 1
 
   return (
     <div
@@ -97,6 +157,61 @@ export default function PageThumb({ page, source, index }: Props): JSX.Element {
           </div>
         ) : (
           <div className="page-thumb__loading" />
+        )}
+        {thumb && decorations && (
+          <div className="page-thumb__decorations">
+            {decorations.annotations.map(({ annotation, box }) =>
+              annotation.type === 'highlight' ? (
+                <div
+                  key={annotation.id}
+                  className="page-decoration page-decoration--highlight"
+                  style={{
+                    left: box.pivotX * decorScale,
+                    top: (box.pivotY - box.height) * decorScale,
+                    width: box.width * decorScale,
+                    height: box.height * decorScale,
+                    transform: `rotate(${box.rotateDeg}deg)`,
+                    background: annotation.color,
+                    opacity: annotation.opacity
+                  }}
+                />
+              ) : (
+                <div
+                  key={annotation.id}
+                  className="page-decoration page-decoration--text"
+                  style={{
+                    left: box.pivotX * decorScale,
+                    top: (box.pivotY - box.height) * decorScale,
+                    transform: `rotate(${box.rotateDeg}deg)`,
+                    color: annotation.color,
+                    fontFamily: ANNOTATION_FONT_CSS[annotation.font],
+                    fontSize: annotation.size * decorScale,
+                    lineHeight: TEXT_LINE_HEIGHT,
+                    fontWeight: annotation.bold ? 700 : 400,
+                    fontStyle: annotation.italic ? 'italic' : 'normal'
+                  }}
+                >
+                  {annotation.text}
+                </div>
+              )
+            )}
+            {decorations.signatures.map(({ placement, box }) => (
+              <img
+                key={placement.id}
+                className="page-decoration"
+                src={placement.imageDataUrl}
+                alt=""
+                draggable={false}
+                style={{
+                  left: box.pivotX * decorScale,
+                  top: (box.pivotY - box.height) * decorScale,
+                  width: box.width * decorScale,
+                  height: box.height * decorScale,
+                  transform: `rotate(${box.rotateDeg}deg)`
+                }}
+              />
+            ))}
+          </div>
         )}
         <div className="page-thumb__actions">
           <button
