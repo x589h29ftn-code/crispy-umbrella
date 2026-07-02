@@ -4,7 +4,7 @@ import { useClickOutside } from '../hooks/useClickOutside'
 import type { DocGroup, SourceFile } from '../types'
 import PageThumb from './PageThumb'
 import AddTile from './AddTile'
-import { IconCheck, IconClose, IconGrip, IconHash, IconMore, IconPlus, IconStamp } from './icons'
+import { IconCalendar, IconCheck, IconClose, IconGrip, IconHash, IconMore, IconPlus, IconStamp } from './icons'
 
 interface Props {
   group: DocGroup
@@ -18,21 +18,25 @@ interface Slot {
   edge: 'before' | 'after'
 }
 
+function formatDutchDate(isoDate: string): string {
+  const [year, month, day] = isoDate.split('-').map(Number)
+  return `${day}-${month}-${year}`
+}
+
 export default function GroupRow({ group, index, sources, isActive }: Props): JSX.Element {
   const [slot, setSlot] = useState<Slot | null>(null)
   const [editing, setEditing] = useState(false)
   const [draft, setDraft] = useState(group.name)
-  const [menuOpen, setMenuOpen] = useState(false)
-  const [showWatermarkEditor, setShowWatermarkEditor] = useState(false)
+  const [menuView, setMenuView] = useState<'closed' | 'menu' | 'watermark' | 'date'>('closed')
   const [watermarkDraft, setWatermarkDraft] = useState(group.watermark?.text ?? '')
+  const [dateDraft, setDateDraft] = useState(group.documentDate ?? '')
   const menuRef = useRef<HTMLDivElement>(null)
 
   function closeMenu(): void {
-    setMenuOpen(false)
-    setShowWatermarkEditor(false)
+    setMenuView('closed')
   }
 
-  useClickOutside(menuRef, menuOpen, closeMenu)
+  useClickOutside(menuRef, menuView !== 'closed', closeMenu)
 
   const movePages = useStudioStore((s) => s.movePages)
   const addPagesToGroup = useStudioStore((s) => s.addPagesToGroup)
@@ -45,6 +49,7 @@ export default function GroupRow({ group, index, sources, isActive }: Props): JS
   const dragGroupId = useStudioStore((s) => s.dragGroupId)
   const setGroupWatermark = useStudioStore((s) => s.setGroupWatermark)
   const toggleGroupPageNumbers = useStudioStore((s) => s.toggleGroupPageNumbers)
+  const setGroupDocumentDate = useStudioStore((s) => s.setGroupDocumentDate)
 
   const targetIndex = (): number => {
     if (!slot) return group.pages.length
@@ -126,22 +131,26 @@ export default function GroupRow({ group, index, sources, isActive }: Props): JS
         <span className="group-row__count">
           {group.pages.length} {group.pages.length === 1 ? 'pagina' : "pagina's"}
         </span>
+        {group.documentDate && (
+          <span className="group-row__date" title="Documentdatum bij export">
+            <IconCalendar size={11} /> {formatDutchDate(group.documentDate)}
+          </span>
+        )}
         <div className="group-row__menu-wrap" ref={menuRef}>
           <button
             type="button"
-            className={`icon-btn icon-btn--chrome${menuOpen ? ' icon-btn--active' : ''}`}
+            className={`icon-btn icon-btn--chrome${menuView !== 'closed' ? ' icon-btn--active' : ''}`}
             title="Meer opties"
             onClick={(e) => {
               e.stopPropagation()
-              setMenuOpen((v) => !v)
-              setShowWatermarkEditor(false)
+              setMenuView((v) => (v === 'closed' ? 'menu' : 'closed'))
             }}
           >
             <IconMore size={14} />
           </button>
-          {menuOpen && (
+          {menuView !== 'closed' && (
             <div className="dropdown-menu" onClick={(e) => e.stopPropagation()}>
-              {showWatermarkEditor ? (
+              {menuView === 'watermark' && (
                 <div className="dropdown-menu__editor">
                   <input
                     autoFocus
@@ -177,9 +186,49 @@ export default function GroupRow({ group, index, sources, isActive }: Props): JS
                     </button>
                   </div>
                 </div>
-              ) : (
+              )}
+              {menuView === 'date' && (
+                <div className="dropdown-menu__editor">
+                  <label className="dropdown-menu__editor-label">
+                    Documentdatum (aanmaak- en wijzigingsdatum van het PDF-bestand bij export)
+                  </label>
+                  <input
+                    autoFocus
+                    type="date"
+                    value={dateDraft}
+                    onChange={(e) => setDateDraft(e.target.value)}
+                  />
+                  <div className="dropdown-menu__editor-actions">
+                    {group.documentDate && (
+                      <button
+                        type="button"
+                        className="text-btn"
+                        onClick={() => {
+                          setGroupDocumentDate(group.id, null)
+                          setDateDraft('')
+                          closeMenu()
+                        }}
+                      >
+                        Verwijderen
+                      </button>
+                    )}
+                    <button
+                      type="button"
+                      className="pill-btn pill-btn--primary"
+                      disabled={!dateDraft}
+                      onClick={() => {
+                        if (dateDraft) setGroupDocumentDate(group.id, dateDraft)
+                        closeMenu()
+                      }}
+                    >
+                      Toepassen
+                    </button>
+                  </div>
+                </div>
+              )}
+              {menuView === 'menu' && (
                 <>
-                  <button type="button" className="dropdown-menu__item" onClick={() => setShowWatermarkEditor(true)}>
+                  <button type="button" className="dropdown-menu__item" onClick={() => setMenuView('watermark')}>
                     <IconStamp size={14} />
                     Watermerk
                     {group.watermark && <IconCheck size={13} className="dropdown-menu__check" />}
@@ -195,6 +244,11 @@ export default function GroupRow({ group, index, sources, isActive }: Props): JS
                     <IconHash size={14} />
                     Paginanummers
                     {group.pageNumbers && <IconCheck size={13} className="dropdown-menu__check" />}
+                  </button>
+                  <button type="button" className="dropdown-menu__item" onClick={() => setMenuView('date')}>
+                    <IconCalendar size={14} />
+                    Documentdatum
+                    {group.documentDate && <IconCheck size={13} className="dropdown-menu__check" />}
                   </button>
                   <button
                     type="button"

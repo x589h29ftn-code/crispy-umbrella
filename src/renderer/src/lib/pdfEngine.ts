@@ -1,6 +1,6 @@
 import * as pdfjsLib from 'pdfjs-dist'
 import pdfWorkerUrl from 'pdfjs-dist/build/pdf.worker.min.mjs?url'
-import { PDFDocument, PDFFont, PDFImage, PDFPage, StandardFonts, degrees, rgb } from 'pdf-lib'
+import { PDFDocument, PDFFont, PDFImage, PDFPage, StandardFonts, degrees, rgb } from '@cantoo/pdf-lib'
 import type { DocGroup, PageRef, SignaturePlacement, SourceFile } from '../types'
 
 const A4_WIDTH = 595.28
@@ -48,6 +48,19 @@ export function forgetSource(sourceId: string): void {
 /** True when pdf.js refused the file because it is password-protected. */
 export function isPasswordError(error: unknown): boolean {
   return (error as { name?: string } | null)?.name === 'PasswordException'
+}
+
+/** Encrypts PDF bytes with a user+owner password (AES), preserving all metadata. */
+export async function encryptPdfBytes(data: Uint8Array, password: string): Promise<Uint8Array> {
+  const doc = await PDFDocument.load(cloneBytes(data), { updateMetadata: false })
+  doc.encrypt({ userPassword: password, ownerPassword: password })
+  return doc.save()
+}
+
+/** Decrypts password-protected PDF bytes to a plain PDF. Throws on a wrong password. */
+export async function decryptPdfBytes(data: Uint8Array, password: string): Promise<Uint8Array> {
+  const doc = await PDFDocument.load(cloneBytes(data), { password, updateMetadata: false })
+  return doc.save()
 }
 
 export async function loadSourceFile(name: string, data: Uint8Array, id: string): Promise<SourceFile> {
@@ -281,6 +294,17 @@ async function buildPdf(group: DocGroup, sources: Map<string, SourceFile>): Prom
     }
 
     out.addPage(copiedPage)
+  }
+
+  out.setTitle(group.name)
+  if (group.documentDate) {
+    // Parse the ISO date at local noon so timezone offsets can't shift it a day.
+    const [year, month, day] = group.documentDate.split('-').map(Number)
+    const date = new Date(year, month - 1, day, 12, 0, 0)
+    if (!Number.isNaN(date.getTime())) {
+      out.setCreationDate(date)
+      out.setModificationDate(date)
+    }
   }
 
   return out.save()

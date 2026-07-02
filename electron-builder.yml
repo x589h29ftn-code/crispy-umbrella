@@ -10,7 +10,6 @@ files:
   - '!{.env,.env.*,.npmrc,pnpm-lock.yaml}'
 asarUnpack:
   - resources/**
-  - node_modules/muhammara/**
 win:
   executableName: PDF-Studio
   target:
@@ -33,4 +32,4 @@ linux:
   target:
     - AppImage
   category: Office
-npmRebuild: true
+npmRebuild: false

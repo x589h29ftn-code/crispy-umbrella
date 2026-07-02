@@ -1,6 +1,6 @@
 import { create } from 'zustand'
 import { nanoid } from 'nanoid'
-import { createBlankPageSource, forgetSource, isPasswordError, loadSourceFile } from './lib/pdfEngine'
+import { createBlankPageSource, decryptPdfBytes, forgetSource, isPasswordError, loadSourceFile } from './lib/pdfEngine'
 import type { DocGroup, PageRef, SignatureAsset, SignaturePlacement, SourceFile, Watermark } from './types'
 
 export interface LightboxState {
@@ -79,6 +79,7 @@ interface StudioState {
   renameGroup: (groupId: string, name: string) => void
   setGroupWatermark: (groupId: string, watermark: Watermark | null) => void
   toggleGroupPageNumbers: (groupId: string) => void
+  setGroupDocumentDate: (groupId: string, documentDate: string | null) => void
   setActiveGroup: (groupId: string) => void
   setZoom: (zoom: number | ((z: number) => number)) => void
   openLightbox: (pageId: string) => void
@@ -140,7 +141,7 @@ async function loadFileInteractive(
         return null
       }
       try {
-        data = await window.api.decryptPdf(file.data, password)
+        data = await decryptPdfBytes(file.data, password)
       } catch {
         // Wrong password — loop; the next dialog shows the retry state via `attempt`.
         continue
@@ -302,7 +303,8 @@ export const useStudioStore = create<StudioState>((set, get) => ({
             signatures: []
           })),
           watermark: null,
-          pageNumbers: false
+          pageNumbers: false,
+          documentDate: null
         })
       }
       if (!newGroups.length) return
@@ -390,7 +392,8 @@ export const useStudioStore = create<StudioState>((set, get) => ({
         name: nextGroupName(state.groups, 'Nieuw document'),
         pages: moving,
         watermark: null,
-        pageNumbers: false
+        pageNumbers: false,
+        documentDate: null
       }
       const groups = state.groups
         .map((g) => ({ ...g, pages: g.pages.filter((p) => !idSet.has(p.id)) }))
@@ -468,6 +471,13 @@ export const useStudioStore = create<StudioState>((set, get) => ({
     get().markHistory()
     set((state) => ({
       groups: state.groups.map((g) => (g.id === groupId ? { ...g, pageNumbers: !g.pageNumbers } : g))
+    }))
+  },
+
+  setGroupDocumentDate: (groupId, documentDate) => {
+    get().markHistory()
+    set((state) => ({
+      groups: state.groups.map((g) => (g.id === groupId ? { ...g, documentDate } : g))
     }))
   },
 

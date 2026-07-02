@@ -2,7 +2,7 @@
 
 Een Windows-desktopapplicatie om PDF's te combineren, samenvoegen, splitsen en pagina's te beheren: slepen en neerzetten, miniaturen, in-/uitzoomen op een pan-canvas, en een volledig-scherm viewer met pijltjesnavigatie.
 
-Gebouwd met Electron, Vite, TypeScript en React. PDF-weergave via [pdf.js](https://mozilla.github.io/pdf.js/), PDF-samenstelling via [pdf-lib](https://pdf-lib.js.org/).
+Gebouwd met Electron, Vite, TypeScript en React. PDF-weergave via [pdf.js](https://mozilla.github.io/pdf.js/), PDF-samenstelling en -versleuteling via [@cantoo/pdf-lib](https://github.com/cantoo-scribe/pdf-lib) (de onderhouden pdf-lib-fork met encryptie-ondersteuning, puur JavaScript — geen native modules).
 
 ## Functies
 
@@ -17,7 +17,8 @@ Gebouwd met Electron, Vite, TypeScript en React. PDF-weergave via [pdf.js](https
 - **Lege pagina invoegen**: knop in de documenttitelbalk voegt een lege A4-pagina toe.
 - **Watermerk en paginanummers**: per document in- of uit te schakelen via de titelbalk; worden bij export op elke pagina getekend.
 - **Handtekening plaatsen**: laad een afbeelding (PNG/JPEG) via de werkbalk, sleep hem in het volledig-scherm vanuit de tray op de pagina, en versleep of vergroot/verklein hem daarna. De handtekening blijft aan de pagina "vastzitten": roteer je de pagina later, dan roteert de handtekening gewoon mee.
-- **Wachtwoord op export**: vul een wachtwoord in via de werkbalk om de geëxporteerde PDF('s) met dat wachtwoord te beveiligen (AES, via [muhammara](https://github.com/julianhille/MuhammaraJS)).
+- **Wachtwoord op export**: vul een wachtwoord in via de werkbalk om de geëxporteerde PDF('s) met dat wachtwoord te beveiligen (AES).
+- **Documentdatum instellen**: via het ⋯-menu per document kies je een datum (bv. 1-1-2026) die bij export als aanmaak- én wijzigingsdatum in de PDF-metadata wordt geschreven — ook in combinatie met een exportwachtwoord. Een blauw label in de documentkop toont de ingestelde datum.
 - **Beveiligde PDF's openen**: importeer je een PDF mét wachtwoord, dan verschijnt een wachtwoord-prompt (met nette foutmelding bij een onjuist wachtwoord); het bestand wordt ontsleuteld ingeladen.
 - **Ongedaan maken / opnieuw**: Ctrl+Z / Ctrl+Y (of Ctrl+Shift+Z) voor alle bewerkingen — verplaatsen, verwijderen, roteren, watermerk, handtekeningen, importeren — plus knoppen in de werkbalk.
 - **Meerdere pagina's selecteren**: Ctrl+klik om pagina's aan de selectie toe te voegen, Shift+klik voor een bereik. Sleep één geselecteerde pagina en de hele selectie verhuist mee; Delete verwijdert, R roteert en Ctrl+D dupliceert de selectie; Esc wist de selectie.
@@ -62,9 +63,7 @@ npm run build:mac
 npm run build:linux
 ```
 
-> **Let op:** dit is gebouwd en getypecheckt in een sandbox zonder toegang tot GitHub-releases, waardoor het Electron-binary hier niet gedownload kon worden om de app zelf te draaien. De volledige broncode is wél getypecheckt (`npm run typecheck`) en de renderer-bundel is succesvol gebouwd en in een browser functioneel getest: drag & drop, samenvoegen/splitsen/roteren/verwijderen van pagina's, zoomen, volledig-scherm navigatie, lege pagina invoegen, watermerk/paginanummers, handtekening plaatsen (ook op gedraaide pagina's, end-to-end via export en heropenen geverifieerd), en PDF/zip-export. De wachtwoordbeveiliging (`muhammara`) is apart geverifieerd door de main-process module direct aan te roepen. `npm install` en `npm run dev`/`build:win` werken normaal op een gewone ontwikkelmachine of in CI met internettoegang.
->
-> `muhammara` is een native Node-module (Apache-2.0) die tijdens `npm install` een platform-specifieke prebuilt binary ophaalt. Dat vereiste in deze sandbox toegang tot GitHub-releases die normaal niet beschikbaar is — het lukte hier onverwacht toch, maar reken erop dat dit gewoon werkt op een normale ontwikkelmachine of CI. `npm run build:win`/`electron-builder install-app-deps` zorgt dat de juiste Electron-ABI-variant wordt gebruikt.
+> **Let op:** dit is gebouwd en getypecheckt in een sandbox zonder toegang tot GitHub-releases, waardoor het Electron-binary hier niet gedownload kon worden om de app zelf te draaien. De volledige broncode is wél getypecheckt (`npm run typecheck`) en de renderer-bundel is succesvol gebouwd en in een browser functioneel getest: drag & drop, samenvoegen/splitsen/roteren/verwijderen/dupliceren van pagina's (ook multi-select), undo/redo, zoomen, volledig-scherm navigatie, lege pagina invoegen, watermerk/paginanummers, documentdatum, handtekening plaatsen (ook op gedraaide pagina's, end-to-end via export en heropenen geverifieerd), beveiligde PDF's importeren, en PDF/zip-export met en zonder wachtwoord (onafhankelijk geverifieerd met pypdf). Alle dependencies zijn puur JavaScript — geen native modules — dus `npm install` en `npm run dev`/`build:win` werken zonder gedoe op een gewone ontwikkelmachine of in CI.
 
 ## Projectstructuur
 

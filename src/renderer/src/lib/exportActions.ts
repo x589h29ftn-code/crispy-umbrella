@@ -1,6 +1,6 @@
 import { zipSync } from 'fflate'
 import { useStudioStore } from '../store'
-import { exportGroupToPdf } from './pdfEngine'
+import { encryptPdfBytes, exportGroupToPdf } from './pdfEngine'
 
 function sanitizeFileName(name: string): string {
   return name.replace(/[\\/:*?"<>|]/g, '_').trim() || 'document'
@@ -9,7 +9,7 @@ function sanitizeFileName(name: string): string {
 async function maybeEncrypt(bytes: Uint8Array): Promise<Uint8Array> {
   const password = useStudioStore.getState().exportPassword.trim()
   if (!password) return bytes
-  return window.api.encryptPdf(bytes, password)
+  return encryptPdfBytes(bytes, password)
 }
 
 /** Exports the active document as a single PDF via a save dialog. */

@@ -34,6 +34,8 @@ export interface DocGroup {
   pages: PageRef[]
   watermark: Watermark | null
   pageNumbers: boolean
+  /** ISO date (yyyy-mm-dd); written as the PDF's creation & modification date on export. */
+  documentDate: string | null
 }
 
 export interface SignatureAsset {

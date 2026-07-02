@@ -125,6 +125,15 @@ export function IconHash({ size = 16, className }: IconProps): JSX.Element {
   )
 }
 
+export function IconCalendar({ size = 16, className }: IconProps): JSX.Element {
+  return (
+    <svg width={size} height={size} viewBox="0 0 24 24" className={className} {...base}>
+      <rect x="4" y="5.5" width="16" height="15" rx="2" />
+      <path d="M4 10h16M8.5 3.5v3.5M15.5 3.5v3.5" />
+    </svg>
+  )
+}
+
 export function IconStamp({ size = 16, className }: IconProps): JSX.Element {
   return (
     <svg width={size} height={size} viewBox="0 0 24 24" className={className} {...base}>
