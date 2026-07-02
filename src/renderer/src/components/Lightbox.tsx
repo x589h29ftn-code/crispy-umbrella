@@ -20,7 +20,8 @@ export default function Lightbox(): JSX.Element | null {
   const sources = useStudioStore((s) => s.sources)
   const closeLightbox = useStudioStore((s) => s.closeLightbox)
   const stepLightbox = useStudioStore((s) => s.stepLightbox)
-  const rotatePage = useStudioStore((s) => s.rotatePage)
+  const rotatePages = useStudioStore((s) => s.rotatePages)
+  const markHistory = useStudioStore((s) => s.markHistory)
   const signatureAsset = useStudioStore((s) => s.signatureAsset)
   const addSignaturePlacement = useStudioStore((s) => s.addSignaturePlacement)
   const updateSignaturePlacement = useStudioStore((s) => s.updateSignaturePlacement)
@@ -150,6 +151,7 @@ export default function Lightbox(): JSX.Element | null {
     e.preventDefault()
     e.stopPropagation()
     e.currentTarget.setPointerCapture(e.pointerId)
+    markHistory() // one undo step per drag gesture, not per pointermove
     dragOriginRef.current = {
       kind: 'move',
       placementId: placement.id,
@@ -167,6 +169,7 @@ export default function Lightbox(): JSX.Element | null {
     e.preventDefault()
     e.stopPropagation()
     e.currentTarget.setPointerCapture(e.pointerId)
+    markHistory() // one undo step per resize gesture
     dragOriginRef.current = {
       kind: 'resize',
       placementId: placement.id,
@@ -231,7 +234,7 @@ export default function Lightbox(): JSX.Element | null {
             <span>Sleep om te plaatsen</span>
           </div>
         )}
-        <button type="button" className="icon-btn" onClick={() => rotatePage(context.page.id)} title="Roteer">
+        <button type="button" className="icon-btn" onClick={() => rotatePages([context.page.id])} title="Roteer">
           <IconRotate size={14} />
         </button>
         <button type="button" className="icon-btn" onClick={closeLightbox} title="Sluiten (Esc)">

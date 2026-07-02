@@ -17,7 +17,7 @@ export default function Canvas({ onScaleChange, registerZoomControls }: Props): 
   const sources = useStudioStore((s) => s.sources)
   const activeGroupId = useStudioStore((s) => s.activeGroupId)
   const importFiles = useStudioStore((s) => s.importFiles)
-  const createGroupWithPage = useStudioStore((s) => s.createGroupWithPage)
+  const createGroupWithPages = useStudioStore((s) => s.createGroupWithPages)
   const reorderGroups = useStudioStore((s) => s.reorderGroups)
 
   const { viewportRef, contentRef, zoomBy, zoomTo } = usePanZoom(onScaleChange)
@@ -48,8 +48,8 @@ export default function Canvas({ onScaleChange, registerZoomControls }: Props): 
       className="canvas-viewport"
       ref={viewportRef}
       onDragOver={(e) => {
-        const { dragPageId, dragGroupId } = useStudioStore.getState()
-        if (e.dataTransfer.types.includes('Files') || dragPageId || dragGroupId) e.preventDefault()
+        const { dragPageIds, dragGroupId } = useStudioStore.getState()
+        if (e.dataTransfer.types.includes('Files') || dragPageIds || dragGroupId) e.preventDefault()
       }}
       onDrop={(e) => {
         e.preventDefault()
@@ -57,13 +57,14 @@ export default function Canvas({ onScaleChange, registerZoomControls }: Props): 
           void addDroppedDocuments(e.dataTransfer.files)
           return
         }
-        const { dragGroupId } = useStudioStore.getState()
+        const { dragPageIds, dragGroupId } = useStudioStore.getState()
         if (dragGroupId) {
           reorderGroups(dragGroupId, groups.length)
           return
         }
         const pageId = e.dataTransfer.getData('text/plain')
-        if (pageId) createGroupWithPage(pageId)
+        const ids = dragPageIds ?? (pageId ? [pageId] : [])
+        if (ids.length) createGroupWithPages(ids)
       }}
     >
       <div className="canvas-content" ref={contentNodeRef}>

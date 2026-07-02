@@ -45,6 +45,11 @@ export function forgetSource(sourceId: string): void {
   }
 }
 
+/** True when pdf.js refused the file because it is password-protected. */
+export function isPasswordError(error: unknown): boolean {
+  return (error as { name?: string } | null)?.name === 'PasswordException'
+}
+
 export async function loadSourceFile(name: string, data: Uint8Array, id: string): Promise<SourceFile> {
   const doc = await pdfjsLib.getDocument({ data: cloneBytes(data) }).promise
   const source: SourceFile = { id, name, data, pageCount: doc.numPages }

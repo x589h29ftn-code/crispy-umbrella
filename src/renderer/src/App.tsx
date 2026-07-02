@@ -2,7 +2,15 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import Toolbar from './components/Toolbar'
 import Canvas from './components/Canvas'
 import Lightbox from './components/Lightbox'
+import Toasts from './components/Toasts'
+import PasswordDialog from './components/PasswordDialog'
+import { exportAllZip } from './lib/exportActions'
 import { useStudioStore } from './store'
+
+function isTypingTarget(target: EventTarget | null): boolean {
+  const el = target as HTMLElement | null
+  return !!el && (el.tagName === 'INPUT' || el.tagName === 'TEXTAREA' || el.isContentEditable)
+}
 
 export default function App(): JSX.Element {
   const [zoomPct, setZoomPct] = useState(100)
@@ -14,6 +22,43 @@ export default function App(): JSX.Element {
   useEffect(() => {
     document.documentElement.setAttribute('data-theme', theme)
   }, [theme])
+
+  useEffect(() => {
+    function onKey(e: KeyboardEvent): void {
+      if (isTypingTarget(e.target)) return
+      const state = useStudioStore.getState()
+      if (state.passwordRequest) return
+      const mod = e.ctrlKey || e.metaKey
+      const key = e.key.toLowerCase()
+
+      if (mod && key === 'z' && !e.shiftKey) {
+        e.preventDefault()
+        state.undo()
+      } else if ((mod && key === 'y') || (mod && e.shiftKey && key === 'z')) {
+        e.preventDefault()
+        state.redo()
+      } else if (mod && key === 'o') {
+        e.preventDefault()
+        void window.api.openPdfs().then((files) => {
+          if (files.length) void useStudioStore.getState().importFiles(files)
+        })
+      } else if (mod && key === 'e') {
+        e.preventDefault()
+        void exportAllZip()
+      } else if (mod && key === 'd') {
+        e.preventDefault()
+        if (!state.lightbox.open) state.duplicatePages([...state.selectedPageIds])
+      } else if ((e.key === 'Delete' || e.key === 'Backspace') && !state.lightbox.open) {
+        state.deletePages([...state.selectedPageIds])
+      } else if (key === 'r' && !mod && !state.lightbox.open) {
+        state.rotatePages([...state.selectedPageIds])
+      } else if (e.key === 'Escape' && !state.lightbox.open) {
+        state.clearSelection()
+      }
+    }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  }, [])
 
   const onScaleChange = useCallback((scale: number) => {
     setZoomPct(Math.round(scale * 100))
@@ -36,6 +81,8 @@ export default function App(): JSX.Element {
       />
       <Canvas onScaleChange={onScaleChange} registerZoomControls={registerZoomControls} />
       <Lightbox />
+      <PasswordDialog />
+      <Toasts />
     </div>
   )
 }

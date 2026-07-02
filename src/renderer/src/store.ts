@@ -1,6 +1,6 @@
 import { create } from 'zustand'
 import { nanoid } from 'nanoid'
-import { createBlankPageSource, forgetSource, loadSourceFile } from './lib/pdfEngine'
+import { createBlankPageSource, forgetSource, isPasswordError, loadSourceFile } from './lib/pdfEngine'
 import type { DocGroup, PageRef, SignatureAsset, SignaturePlacement, SourceFile, Watermark } from './types'
 
 export interface LightboxState {
@@ -8,7 +8,19 @@ export interface LightboxState {
   pageId: string | null
 }
 
+export interface Toast {
+  id: string
+  kind: 'info' | 'success' | 'error'
+  message: string
+}
+
+export interface PasswordRequest {
+  fileName: string
+  attempt: number
+}
+
 const BLANK_SOURCE_ID = 'blank-page-source'
+const HISTORY_LIMIT = 50
 
 export type Theme = 'dark' | 'light'
 
@@ -27,23 +39,43 @@ interface StudioState {
   zoom: number
   lightbox: LightboxState
   isImporting: boolean
-  dragPageId: string | null
+  dragPageIds: string[] | null
   dragGroupId: string | null
   signatureAsset: SignatureAsset | null
   theme: Theme
+  past: DocGroup[][]
+  future: DocGroup[][]
+  selectedPageIds: Set<string>
+  lastSelectedPageId: string | null
+  toasts: Toast[]
+  passwordRequest: PasswordRequest | null
+  busyExport: 'pdf' | 'zip' | null
+  exportPassword: string
 
   toggleTheme: () => void
-  setDragPageId: (id: string | null) => void
+  markHistory: () => void
+  undo: () => void
+  redo: () => void
+  toggleSelectPage: (pageId: string) => void
+  rangeSelectPage: (pageId: string) => void
+  clearSelection: () => void
+  addToast: (kind: Toast['kind'], message: string) => void
+  dismissToast: (id: string) => void
+  submitPassword: (password: string | null) => void
+  setBusyExport: (busy: 'pdf' | 'zip' | null) => void
+  setExportPassword: (password: string) => void
+  setDragPageIds: (ids: string[] | null) => void
   setDragGroupId: (id: string | null) => void
   reorderGroups: (groupId: string, toIndex: number) => void
   removeGroup: (groupId: string) => void
   importFiles: (files: { name: string; data: Uint8Array }[]) => Promise<void>
   addPagesToGroup: (groupId: string, files: { name: string; data: Uint8Array }[]) => Promise<void>
   insertBlankPage: (groupId: string) => Promise<void>
-  movePage: (pageId: string, toGroupId: string, toIndex: number) => void
-  createGroupWithPage: (pageId: string) => void
-  deletePage: (pageId: string) => void
-  rotatePage: (pageId: string) => void
+  movePages: (pageIds: string[], toGroupId: string, toIndex: number) => void
+  createGroupWithPages: (pageIds: string[]) => void
+  deletePages: (pageIds: string[]) => void
+  rotatePages: (pageIds: string[]) => void
+  duplicatePages: (pageIds: string[]) => void
   renameGroup: (groupId: string, name: string) => void
   setGroupWatermark: (groupId: string, watermark: Watermark | null) => void
   toggleGroupPageNumbers: (groupId: string) => void
@@ -74,6 +106,49 @@ function nextGroupName(groups: DocGroup[], base: string): string {
   return `${base} (${n})`
 }
 
+/** Resolver for the in-flight password dialog; module-level because it never needs to render. */
+let passwordResolver: ((password: string | null) => void) | null = null
+
+function requestPassword(fileName: string, attempt: number): Promise<string | null> {
+  return new Promise((resolve) => {
+    passwordResolver = resolve
+    useStudioStore.setState({ passwordRequest: { fileName, attempt } })
+  })
+}
+
+/**
+ * Loads a PDF, prompting for a password (and decrypting via the main process)
+ * when the file turns out to be protected. Returns null if the user cancels
+ * or the file is unreadable — a toast explains which.
+ */
+async function loadFileInteractive(
+  file: { name: string; data: Uint8Array },
+  addToast: StudioState['addToast']
+): Promise<SourceFile | null> {
+  let data = file.data
+  for (let attempt = 1; ; attempt += 1) {
+    try {
+      return await loadSourceFile(file.name, data, nanoid())
+    } catch (error) {
+      if (!isPasswordError(error)) {
+        addToast('error', `Kon "${file.name}" niet openen — is het een geldig PDF-bestand?`)
+        return null
+      }
+      const password = await requestPassword(file.name, attempt)
+      if (password === null) {
+        addToast('info', `"${file.name}" overgeslagen`)
+        return null
+      }
+      try {
+        data = await window.api.decryptPdf(file.data, password)
+      } catch {
+        // Wrong password — loop; the next dialog shows the retry state via `attempt`.
+        continue
+      }
+    }
+  }
+}
+
 export const useStudioStore = create<StudioState>((set, get) => ({
   sources: new Map(),
   groups: [],
@@ -81,10 +156,18 @@ export const useStudioStore = create<StudioState>((set, get) => ({
   zoom: 1,
   lightbox: { open: false, pageId: null },
   isImporting: false,
-  dragPageId: null,
+  dragPageIds: null,
   dragGroupId: null,
   signatureAsset: null,
   theme: getInitialTheme(),
+  past: [],
+  future: [],
+  selectedPageIds: new Set(),
+  lastSelectedPageId: null,
+  toasts: [],
+  passwordRequest: null,
+  busyExport: null,
+  exportPassword: '',
 
   toggleTheme: () => {
     set((state) => {
@@ -94,10 +177,90 @@ export const useStudioStore = create<StudioState>((set, get) => ({
     })
   },
 
-  setDragPageId: (id) => set({ dragPageId: id }),
+  markHistory: () => {
+    set((state) => ({
+      past: [...state.past.slice(-(HISTORY_LIMIT - 1)), state.groups],
+      future: []
+    }))
+  },
+
+  undo: () => {
+    set((state) => {
+      if (!state.past.length) return state
+      const previous = state.past[state.past.length - 1]
+      return {
+        groups: previous,
+        past: state.past.slice(0, -1),
+        future: [state.groups, ...state.future],
+        ...syncDerivedState(state, previous)
+      }
+    })
+  },
+
+  redo: () => {
+    set((state) => {
+      if (!state.future.length) return state
+      const [next, ...rest] = state.future
+      return {
+        groups: next,
+        past: [...state.past, state.groups],
+        future: rest,
+        ...syncDerivedState(state, next)
+      }
+    })
+  },
+
+  toggleSelectPage: (pageId) => {
+    set((state) => {
+      const selectedPageIds = new Set(state.selectedPageIds)
+      if (selectedPageIds.has(pageId)) selectedPageIds.delete(pageId)
+      else selectedPageIds.add(pageId)
+      return { selectedPageIds, lastSelectedPageId: pageId }
+    })
+  },
+
+  rangeSelectPage: (pageId) => {
+    set((state) => {
+      const target = findPage(state.groups, pageId)
+      if (!target) return state
+      const anchor = state.lastSelectedPageId ? findPage(state.groups, state.lastSelectedPageId) : null
+      // Range selection only makes sense within one document row; otherwise treat as single select.
+      if (!anchor || anchor.group.id !== target.group.id) {
+        return { selectedPageIds: new Set([pageId]), lastSelectedPageId: pageId }
+      }
+      const [from, to] = [anchor.index, target.index].sort((a, b) => a - b)
+      const selectedPageIds = new Set(state.selectedPageIds)
+      for (let i = from; i <= to; i += 1) selectedPageIds.add(anchor.group.pages[i].id)
+      return { selectedPageIds }
+    })
+  },
+
+  clearSelection: () => set({ selectedPageIds: new Set(), lastSelectedPageId: null }),
+
+  addToast: (kind, message) => {
+    const id = nanoid()
+    set((state) => ({ toasts: [...state.toasts, { id, kind, message }] }))
+    window.setTimeout(() => get().dismissToast(id), 4500)
+  },
+
+  dismissToast: (id) => {
+    set((state) => ({ toasts: state.toasts.filter((t) => t.id !== id) }))
+  },
+
+  submitPassword: (password) => {
+    const resolve = passwordResolver
+    passwordResolver = null
+    set({ passwordRequest: null })
+    resolve?.(password)
+  },
+
+  setBusyExport: (busy) => set({ busyExport: busy }),
+  setExportPassword: (password) => set({ exportPassword: password }),
+  setDragPageIds: (ids) => set({ dragPageIds: ids }),
   setDragGroupId: (id) => set({ dragGroupId: id }),
 
   reorderGroups: (groupId, toIndex) => {
+    get().markHistory()
     set((state) => {
       const fromIndex = state.groups.findIndex((g) => g.id === groupId)
       if (fromIndex === -1) return state
@@ -110,9 +273,10 @@ export const useStudioStore = create<StudioState>((set, get) => ({
   },
 
   removeGroup: (groupId) => {
+    get().markHistory()
     set((state) => {
       const groups = state.groups.filter((g) => g.id !== groupId)
-      return finalizeGroups(state, groups)
+      return { ...finalizeGroups(state, groups), ...pruneSelection(state, groups) }
     })
   },
 
@@ -123,16 +287,16 @@ export const useStudioStore = create<StudioState>((set, get) => ({
       const newGroups: DocGroup[] = []
       const sources = new Map(get().sources)
       for (const file of files) {
-        const id = nanoid()
-        const source = await loadSourceFile(file.name, file.data, id)
-        sources.set(id, source)
+        const source = await loadFileInteractive(file, get().addToast)
+        if (!source) continue
+        sources.set(source.id, source)
         const baseName = file.name.replace(/\.pdf$/i, '')
         newGroups.push({
           id: nanoid(),
           name: nextGroupName([...get().groups, ...newGroups], baseName),
           pages: Array.from({ length: source.pageCount }, (_, i) => ({
             id: nanoid(),
-            sourceId: id,
+            sourceId: source.id,
             sourcePageIndex: i,
             rotation: 0,
             signatures: []
@@ -141,6 +305,8 @@ export const useStudioStore = create<StudioState>((set, get) => ({
           pageNumbers: false
         })
       }
+      if (!newGroups.length) return
+      get().markHistory()
       set((state) => ({
         sources,
         groups: [...state.groups, ...newGroups],
@@ -158,13 +324,15 @@ export const useStudioStore = create<StudioState>((set, get) => ({
       const sources = new Map(get().sources)
       const newPages: PageRef[] = []
       for (const file of files) {
-        const id = nanoid()
-        const source = await loadSourceFile(file.name, file.data, id)
-        sources.set(id, source)
+        const source = await loadFileInteractive(file, get().addToast)
+        if (!source) continue
+        sources.set(source.id, source)
         for (let i = 0; i < source.pageCount; i += 1) {
-          newPages.push({ id: nanoid(), sourceId: id, sourcePageIndex: i, rotation: 0, signatures: [] })
+          newPages.push({ id: nanoid(), sourceId: source.id, sourcePageIndex: i, rotation: 0, signatures: [] })
         }
       }
+      if (!newPages.length) return
+      get().markHistory()
       set((state) => ({
         sources,
         groups: state.groups.map((g) => (g.id === groupId ? { ...g, pages: [...g.pages, ...newPages] } : g))
@@ -180,92 +348,124 @@ export const useStudioStore = create<StudioState>((set, get) => ({
     let source = get().sources.get(BLANK_SOURCE_ID)
     if (!source) source = await createBlankPageSource(BLANK_SOURCE_ID)
     const page: PageRef = { id: nanoid(), sourceId: BLANK_SOURCE_ID, sourcePageIndex: 0, rotation: 0, signatures: [] }
+    get().markHistory()
     set((state) => ({
       sources: new Map(state.sources).set(BLANK_SOURCE_ID, source!),
       groups: state.groups.map((g) => (g.id === groupId ? { ...g, pages: [...g.pages, page] } : g))
     }))
   },
 
-  movePage: (pageId, toGroupId, toIndex) => {
+  movePages: (pageIds, toGroupId, toIndex) => {
+    if (!pageIds.length) return
+    get().markHistory()
     set((state) => {
-      const found = findPage(state.groups, pageId)
-      if (!found) return state
-      const { group: fromGroup, index: fromIndex } = found
-      const page = fromGroup.pages[fromIndex]
+      const idSet = new Set(pageIds)
+      const moving = state.groups.flatMap((g) => g.pages).filter((p) => idSet.has(p.id))
+      if (!moving.length) return state
 
-      const groups = state.groups.map((g) => {
-        if (g.id === fromGroup.id && g.id === toGroupId) {
-          const pages = g.pages.filter((p) => p.id !== pageId)
-          const insertAt = fromIndex < toIndex ? toIndex - 1 : toIndex
-          pages.splice(Math.max(0, Math.min(insertAt, pages.length)), 0, page)
-          return { ...g, pages }
-        }
-        if (g.id === fromGroup.id) {
-          return { ...g, pages: g.pages.filter((p) => p.id !== pageId) }
-        }
-        if (g.id === toGroupId) {
-          const pages = [...g.pages]
-          pages.splice(Math.max(0, Math.min(toIndex, pages.length)), 0, page)
-          return { ...g, pages }
-        }
-        return g
-      })
+      const target = state.groups.find((g) => g.id === toGroupId)
+      if (!target) return state
+      // Removing selected pages that sit before the drop position shifts it left.
+      const removedBefore = target.pages.slice(0, Math.max(0, toIndex)).filter((p) => idSet.has(p.id)).length
 
-      return finalizeGroups(state, groups)
+      const groups = state.groups.map((g) => ({ ...g, pages: g.pages.filter((p) => !idSet.has(p.id)) }))
+      const targetGroup = groups.find((g) => g.id === toGroupId)
+      if (!targetGroup) return state
+      const insertAt = Math.max(0, Math.min(toIndex - removedBefore, targetGroup.pages.length))
+      targetGroup.pages.splice(insertAt, 0, ...moving)
+
+      return { ...finalizeGroups(state, groups), ...pruneSelection(state, groups) }
     })
   },
 
-  createGroupWithPage: (pageId) => {
+  createGroupWithPages: (pageIds) => {
+    if (!pageIds.length) return
+    get().markHistory()
     set((state) => {
-      const found = findPage(state.groups, pageId)
-      if (!found) return state
-      const { group: fromGroup, index } = found
-      const page = fromGroup.pages[index]
+      const idSet = new Set(pageIds)
+      const moving = state.groups.flatMap((g) => g.pages).filter((p) => idSet.has(p.id))
+      if (!moving.length) return state
       const newGroup: DocGroup = {
         id: nanoid(),
         name: nextGroupName(state.groups, 'Nieuw document'),
-        pages: [page],
+        pages: moving,
         watermark: null,
         pageNumbers: false
       }
       const groups = state.groups
-        .map((g) => (g.id === fromGroup.id ? { ...g, pages: g.pages.filter((p) => p.id !== pageId) } : g))
+        .map((g) => ({ ...g, pages: g.pages.filter((p) => !idSet.has(p.id)) }))
         .concat(newGroup)
-      return { ...finalizeGroups(state, groups), activeGroupId: newGroup.id }
+      return {
+        ...finalizeGroups(state, groups),
+        ...pruneSelection(state, groups),
+        activeGroupId: newGroup.id
+      }
     })
   },
 
-  deletePage: (pageId) => {
+  deletePages: (pageIds) => {
+    if (!pageIds.length) return
+    get().markHistory()
     set((state) => {
-      const groups = state.groups.map((g) => ({ ...g, pages: g.pages.filter((p) => p.id !== pageId) }))
-      return finalizeGroups(state, groups)
+      const idSet = new Set(pageIds)
+      const groups = state.groups.map((g) => ({ ...g, pages: g.pages.filter((p) => !idSet.has(p.id)) }))
+      return { ...finalizeGroups(state, groups), ...pruneSelection(state, groups) }
     })
   },
 
-  rotatePage: (pageId) => {
-    set((state) => ({
-      groups: state.groups.map((g) => ({
-        ...g,
-        pages: g.pages.map((p) =>
-          p.id === pageId ? { ...p, rotation: (((p.rotation + 90) % 360) as PageRef['rotation']) } : p
-        )
-      }))
-    }))
+  rotatePages: (pageIds) => {
+    if (!pageIds.length) return
+    get().markHistory()
+    set((state) => {
+      const idSet = new Set(pageIds)
+      return {
+        groups: state.groups.map((g) => ({
+          ...g,
+          pages: g.pages.map((p) =>
+            idSet.has(p.id) ? { ...p, rotation: (((p.rotation + 90) % 360) as PageRef['rotation']) } : p
+          )
+        }))
+      }
+    })
+  },
+
+  duplicatePages: (pageIds) => {
+    if (!pageIds.length) return
+    get().markHistory()
+    set((state) => {
+      const idSet = new Set(pageIds)
+      return {
+        groups: state.groups.map((g) => ({
+          ...g,
+          pages: g.pages.flatMap((p) =>
+            idSet.has(p.id)
+              ? [p, { ...p, id: nanoid(), signatures: p.signatures.map((s) => ({ ...s, id: nanoid() })) }]
+              : [p]
+          )
+        }))
+      }
+    })
   },
 
   renameGroup: (groupId, name) => {
+    const trimmed = name.trim()
+    const current = get().groups.find((g) => g.id === groupId)
+    if (!current || !trimmed || trimmed === current.name) return
+    get().markHistory()
     set((state) => ({
-      groups: state.groups.map((g) => (g.id === groupId ? { ...g, name: name.trim() || g.name } : g))
+      groups: state.groups.map((g) => (g.id === groupId ? { ...g, name: trimmed } : g))
     }))
   },
 
   setGroupWatermark: (groupId, watermark) => {
+    get().markHistory()
     set((state) => ({
       groups: state.groups.map((g) => (g.id === groupId ? { ...g, watermark } : g))
     }))
   },
 
   toggleGroupPageNumbers: (groupId) => {
+    get().markHistory()
     set((state) => ({
       groups: state.groups.map((g) => (g.id === groupId ? { ...g, pageNumbers: !g.pageNumbers } : g))
     }))
@@ -295,6 +495,7 @@ export const useStudioStore = create<StudioState>((set, get) => ({
   setSignatureAsset: (asset) => set({ signatureAsset: asset }),
 
   addSignaturePlacement: (pageId, placement) => {
+    get().markHistory()
     set((state) => ({
       groups: state.groups.map((g) => ({
         ...g,
@@ -305,6 +506,8 @@ export const useStudioStore = create<StudioState>((set, get) => ({
     }))
   },
 
+  // No markHistory here: this fires continuously during a drag. Lightbox calls
+  // markHistory() once on pointer-down so the whole gesture is a single undo step.
   updateSignaturePlacement: (pageId, placementId, patch) => {
     set((state) => ({
       groups: state.groups.map((g) => ({
@@ -322,6 +525,7 @@ export const useStudioStore = create<StudioState>((set, get) => ({
   },
 
   removeSignaturePlacement: (pageId, placementId) => {
+    get().markHistory()
     set((state) => ({
       groups: state.groups.map((g) => ({
         ...g,
@@ -344,9 +548,36 @@ function finalizeGroups(
   return { groups: kept, activeGroupId }
 }
 
+function pruneSelection(
+  state: StudioState,
+  groups: DocGroup[]
+): { selectedPageIds: Set<string>; lastSelectedPageId: string | null } {
+  const existing = new Set(groups.flatMap((g) => g.pages.map((p) => p.id)))
+  const selectedPageIds = new Set([...state.selectedPageIds].filter((id) => existing.has(id)))
+  const lastSelectedPageId =
+    state.lastSelectedPageId && existing.has(state.lastSelectedPageId) ? state.lastSelectedPageId : null
+  return { selectedPageIds, lastSelectedPageId }
+}
+
+/** After undo/redo the restored groups may not contain the active group, selection, or lightbox page. */
+function syncDerivedState(
+  state: StudioState,
+  groups: DocGroup[]
+): Pick<StudioState, 'activeGroupId' | 'selectedPageIds' | 'lastSelectedPageId' | 'lightbox'> {
+  const { activeGroupId } = finalizeGroups(state, groups)
+  const { selectedPageIds, lastSelectedPageId } = pruneSelection(state, groups)
+  const pageStillExists =
+    state.lightbox.pageId != null && groups.some((g) => g.pages.some((p) => p.id === state.lightbox.pageId))
+  const lightbox = state.lightbox.open && !pageStillExists ? { open: false, pageId: null } : state.lightbox
+  return { activeGroupId, selectedPageIds, lastSelectedPageId, lightbox }
+}
+
 export function releaseUnusedSources(): void {
-  const { sources, groups } = useStudioStore.getState()
-  const used = new Set(groups.flatMap((g) => g.pages.map((p) => p.sourceId)))
+  const { sources, groups, past, future } = useStudioStore.getState()
+  // Sources referenced anywhere in history must survive so undo/redo can restore them.
+  const used = new Set(
+    [...past, ...future, groups].flatMap((snapshot) => snapshot.flatMap((g) => g.pages.map((p) => p.sourceId)))
+  )
   const next = new Map(sources)
   for (const id of sources.keys()) {
     if (!used.has(id)) {

@@ -2,7 +2,7 @@ import { app, shell, BrowserWindow, ipcMain, dialog } from 'electron'
 import { join } from 'path'
 import { readFile, writeFile } from 'fs/promises'
 import { electronApp, optimizer, is } from '@electron-toolkit/utils'
-import { encryptPdfBuffer } from './pdfEncrypt'
+import { decryptPdfBuffer, encryptPdfBuffer } from './pdfEncrypt'
 import icon from '../../resources/icon.png?asset'
 
 function createWindow(): void {
@@ -91,6 +91,10 @@ app.whenReady().then(() => {
 
   ipcMain.handle('pdf:encrypt', async (_evt, data: Uint8Array, password: string) => {
     return encryptPdfBuffer(data, password)
+  })
+
+  ipcMain.handle('pdf:decrypt', async (_evt, data: Uint8Array, password: string) => {
+    return decryptPdfBuffer(data, password)
   })
 
   createWindow()

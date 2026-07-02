@@ -875,3 +875,144 @@ body {
   width: 100%;
   height: 100%;
 }
+
+/* Selection */
+.page-thumb--selected .page-thumb__frame {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+.page-thumb__selected-badge {
+  position: absolute;
+  top: 6px;
+  left: 6px;
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  background: var(--accent);
+  box-shadow: 0 0 0 2px var(--panel);
+}
+
+/* Toasts */
+.toasts {
+  position: fixed;
+  right: var(--space-4);
+  bottom: var(--space-4);
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  z-index: 200;
+}
+
+.toast {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  min-width: 240px;
+  max-width: 380px;
+  padding: 10px 10px 10px 14px;
+  background: var(--panel);
+  border-radius: var(--radius-md);
+  box-shadow: var(--shadow-lg);
+  border-left: 3px solid var(--text-dim);
+  font-size: 13px;
+  animation: toast-in 0.18s ease;
+}
+
+@keyframes toast-in {
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.toast--success {
+  border-left-color: #34a853;
+}
+
+.toast--error {
+  border-left-color: var(--danger);
+}
+
+.toast--info {
+  border-left-color: var(--accent);
+}
+
+.toast__message {
+  flex: 1;
+}
+
+/* Modal (password dialog) */
+.modal-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(10, 10, 12, 0.55);
+  z-index: 150;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  animation: lightbox-in 0.15s ease;
+}
+
+.modal-card {
+  width: 340px;
+  background: var(--panel);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-lg);
+  padding: var(--space-5);
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+}
+
+.modal-card__icon {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 42px;
+  height: 42px;
+  border-radius: 50%;
+  background: var(--accent-tint);
+  color: var(--accent);
+}
+
+.modal-card h3 {
+  margin: 0;
+  font-size: 16px;
+}
+
+.modal-card p {
+  margin: 0;
+  font-size: 13px;
+  color: var(--text-dim);
+  user-select: text;
+}
+
+.modal-card__error {
+  color: var(--danger);
+}
+
+.modal-card input {
+  background: var(--panel-2);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  color: var(--text);
+  padding: 9px 11px;
+  font-size: 13px;
+  outline: none;
+}
+
+.modal-card input:focus {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px var(--accent-tint);
+}
+
+.modal-card__actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: var(--space-2);
+}

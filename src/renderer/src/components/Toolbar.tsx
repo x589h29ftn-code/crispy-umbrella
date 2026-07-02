@@ -1,18 +1,24 @@
 import { useRef, useState } from 'react'
 import { useStudioStore } from '../store'
-import { exportGroupToPdf } from '../lib/pdfEngine'
-import { zipSync } from 'fflate'
-import { IconClose, IconFolderOpen, IconLock, IconMinus, IconMoon, IconPlus, IconSignature, IconSun } from './icons'
+import { exportActivePdf, exportAllZip } from '../lib/exportActions'
+import {
+  IconClose,
+  IconFolderOpen,
+  IconLock,
+  IconMinus,
+  IconMoon,
+  IconPlus,
+  IconRedo,
+  IconSignature,
+  IconSun,
+  IconUndo
+} from './icons'
 
 interface Props {
   zoomPct: number
   onZoomIn: () => void
   onZoomOut: () => void
   onZoomReset: () => void
-}
-
-function sanitizeFileName(name: string): string {
-  return name.replace(/[\\/:*?"<>|]/g, '_').trim() || 'document'
 }
 
 function readImageFile(file: File): Promise<{ dataUrl: string; width: number; height: number }> {
@@ -32,16 +38,20 @@ function readImageFile(file: File): Promise<{ dataUrl: string; width: number; he
 
 export default function Toolbar({ zoomPct, onZoomIn, onZoomOut, onZoomReset }: Props): JSX.Element {
   const groups = useStudioStore((s) => s.groups)
-  const sources = useStudioStore((s) => s.sources)
   const activeGroupId = useStudioStore((s) => s.activeGroupId)
   const importFiles = useStudioStore((s) => s.importFiles)
   const signatureAsset = useStudioStore((s) => s.signatureAsset)
   const setSignatureAsset = useStudioStore((s) => s.setSignatureAsset)
   const theme = useStudioStore((s) => s.theme)
   const toggleTheme = useStudioStore((s) => s.toggleTheme)
-  const [busy, setBusy] = useState<string | null>(null)
+  const canUndo = useStudioStore((s) => s.past.length > 0)
+  const canRedo = useStudioStore((s) => s.future.length > 0)
+  const undo = useStudioStore((s) => s.undo)
+  const redo = useStudioStore((s) => s.redo)
+  const busyExport = useStudioStore((s) => s.busyExport)
+  const exportPassword = useStudioStore((s) => s.exportPassword)
+  const setExportPassword = useStudioStore((s) => s.setExportPassword)
   const [showPasswordField, setShowPasswordField] = useState(false)
-  const [password, setPassword] = useState('')
   const signatureInputRef = useRef<HTMLInputElement>(null)
 
   const pageTotal = groups.reduce((n, g) => n + g.pages.length, 0)
@@ -65,48 +75,7 @@ export default function Toolbar({ zoomPct, onZoomIn, onZoomOut, onZoomReset }: P
         naturalHeight: height
       })
     } catch {
-      // Unreadable/corrupt image — leave any previously loaded signature in place.
-    }
-  }
-
-  async function maybeEncrypt(bytes: Uint8Array): Promise<Uint8Array> {
-    if (!password.trim()) return bytes
-    return window.api.encryptPdf(bytes, password.trim())
-  }
-
-  async function handleExportPdf(): Promise<void> {
-    if (!activeGroup) return
-    setBusy('pdf')
-    try {
-      const bytes = await maybeEncrypt(await exportGroupToPdf(activeGroup, sources))
-      await window.api.savePdf(`${activeGroup.name}.pdf`, bytes)
-    } finally {
-      setBusy(null)
-    }
-  }
-
-  async function handleExportZip(): Promise<void> {
-    if (!groups.length) return
-    setBusy('zip')
-    try {
-      const files: Record<string, Uint8Array> = {}
-      const usedNames = new Set<string>()
-      for (const group of groups) {
-        if (!group.pages.length) continue
-        const bytes = await maybeEncrypt(await exportGroupToPdf(group, sources))
-        let fileName = `${sanitizeFileName(group.name)}.pdf`
-        let n = 2
-        while (usedNames.has(fileName)) {
-          fileName = `${sanitizeFileName(group.name)} (${n}).pdf`
-          n += 1
-        }
-        usedNames.add(fileName)
-        files[fileName] = bytes
-      }
-      const zipBytes = zipSync(files, { level: 6 })
-      await window.api.saveZip('PDF-Studio-export.zip', zipBytes)
-    } finally {
-      setBusy(null)
+      useStudioStore.getState().addToast('error', 'Kon de handtekening-afbeelding niet laden')
     }
   }
 
@@ -118,6 +87,27 @@ export default function Toolbar({ zoomPct, onZoomIn, onZoomOut, onZoomReset }: P
           : `${groups.length} ${groups.length === 1 ? 'document' : 'documenten'} · ${pageTotal} ${
               pageTotal === 1 ? 'pagina' : "pagina's"
             }`}
+      </div>
+
+      <div className="toolbar__group">
+        <button
+          type="button"
+          className="pill-btn pill-btn--icon"
+          disabled={!canUndo}
+          onClick={undo}
+          title="Ongedaan maken (Ctrl+Z)"
+        >
+          <IconUndo size={15} />
+        </button>
+        <button
+          type="button"
+          className="pill-btn pill-btn--icon"
+          disabled={!canRedo}
+          onClick={redo}
+          title="Opnieuw (Ctrl+Y)"
+        >
+          <IconRedo size={15} />
+        </button>
       </div>
 
       <div className="toolbar__zoom">
@@ -174,7 +164,7 @@ export default function Toolbar({ zoomPct, onZoomIn, onZoomOut, onZoomReset }: P
           <div className="toolbar__password">
             <button
               type="button"
-              className={`pill-btn${password ? ' pill-btn--active' : ''}`}
+              className={`pill-btn${exportPassword ? ' pill-btn--active' : ''}`}
               onClick={() => setShowPasswordField((v) => !v)}
               title="Wachtwoord instellen voor geëxporteerde PDF's"
             >
@@ -186,8 +176,8 @@ export default function Toolbar({ zoomPct, onZoomIn, onZoomOut, onZoomReset }: P
                 type="password"
                 className="toolbar__password-input"
                 placeholder="Wachtwoord voor export"
-                value={password}
-                onChange={(e) => setPassword(e.target.value)}
+                value={exportPassword}
+                onChange={(e) => setExportPassword(e.target.value)}
               />
             )}
           </div>
@@ -196,24 +186,25 @@ export default function Toolbar({ zoomPct, onZoomIn, onZoomOut, onZoomReset }: P
         <div className="toolbar__divider" />
 
         <div className="toolbar__group">
-          <button type="button" className="pill-btn" onClick={() => void handleOpen()}>
+          <button type="button" className="pill-btn" onClick={() => void handleOpen()} title="Openen (Ctrl+O)">
             <IconFolderOpen size={14} /> Openen
           </button>
           <button
             type="button"
             className="pill-btn"
-            disabled={!activeGroup || busy !== null}
-            onClick={() => void handleExportPdf()}
+            disabled={!activeGroup || busyExport !== null}
+            onClick={() => void exportActivePdf()}
           >
-            {busy === 'pdf' ? 'Bezig…' : 'Exporteer PDF'}
+            {busyExport === 'pdf' ? 'Bezig…' : 'Exporteer PDF'}
           </button>
           <button
             type="button"
             className="pill-btn pill-btn--primary"
-            disabled={!groups.length || busy !== null}
-            onClick={() => void handleExportZip()}
+            disabled={!groups.length || busyExport !== null}
+            onClick={() => void exportAllZip()}
+            title="Exporteer alles als zip (Ctrl+E)"
           >
-            {busy === 'zip' ? 'Bezig…' : 'Exporteer zip'}
+            {busyExport === 'zip' ? 'Bezig…' : 'Exporteer zip'}
           </button>
         </div>
       </div>

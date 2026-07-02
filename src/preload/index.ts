@@ -19,6 +19,8 @@ const api = {
     ipcRenderer.invoke('dialog:saveZip', defaultName, data),
   encryptPdf: (data: Uint8Array, password: string): Promise<Uint8Array> =>
     ipcRenderer.invoke('pdf:encrypt', data, password),
+  decryptPdf: (data: Uint8Array, password: string): Promise<Uint8Array> =>
+    ipcRenderer.invoke('pdf:decrypt', data, password),
   onFilesOpened: (callback: (files: LoadedFile[]) => void): (() => void) => {
     const listener = (_evt: unknown, files: LoadedFile[]): void => callback(files)
     ipcRenderer.on('files:opened', listener)

@@ -18,6 +18,11 @@ Gebouwd met Electron, Vite, TypeScript en React. PDF-weergave via [pdf.js](https
 - **Watermerk en paginanummers**: per document in- of uit te schakelen via de titelbalk; worden bij export op elke pagina getekend.
 - **Handtekening plaatsen**: laad een afbeelding (PNG/JPEG) via de werkbalk, sleep hem in het volledig-scherm vanuit de tray op de pagina, en versleep of vergroot/verklein hem daarna. De handtekening blijft aan de pagina "vastzitten": roteer je de pagina later, dan roteert de handtekening gewoon mee.
 - **Wachtwoord op export**: vul een wachtwoord in via de werkbalk om de geëxporteerde PDF('s) met dat wachtwoord te beveiligen (AES, via [muhammara](https://github.com/julianhille/MuhammaraJS)).
+- **Beveiligde PDF's openen**: importeer je een PDF mét wachtwoord, dan verschijnt een wachtwoord-prompt (met nette foutmelding bij een onjuist wachtwoord); het bestand wordt ontsleuteld ingeladen.
+- **Ongedaan maken / opnieuw**: Ctrl+Z / Ctrl+Y (of Ctrl+Shift+Z) voor alle bewerkingen — verplaatsen, verwijderen, roteren, watermerk, handtekeningen, importeren — plus knoppen in de werkbalk.
+- **Meerdere pagina's selecteren**: Ctrl+klik om pagina's aan de selectie toe te voegen, Shift+klik voor een bereik. Sleep één geselecteerde pagina en de hele selectie verhuist mee; Delete verwijdert, R roteert en Ctrl+D dupliceert de selectie; Esc wist de selectie.
+- **Sneltoetsen**: Ctrl+O openen, Ctrl+E alles exporteren als zip, naast bovenstaande selectie- en undo-sneltoetsen.
+- **Meldingen**: geslaagde exports en fouten (onleesbaar bestand, mislukte export, overgeslagen beveiligd bestand) verschijnen als toast rechtsonder.
 - **Exporteren**: "Exporteer PDF" slaat het actieve document op als los PDF-bestand; "Exporteer zip" bundelt alle documenten als aparte PDF's in één zip-bestand.
 
 > Watermerk en paginanummers worden voor de eenvoud niet rotatiegecorrigeerd getekend (prima leesbaar, maar bij een 90°/270°-gedraaide pagina staan ze niet per se aan de "onderkant" zoals je op het scherm ziet). Handtekeningen zijn wél volledig rotatiecorrect: dat is uitgebreid getest, ook op gedraaide pagina's. Bijsnijden (crop) is bewust nog niet toegevoegd.
@@ -44,6 +49,10 @@ npm run build:win
 ```
 
 Dit levert in `dist/` zowel een NSIS-installer (`PDF Studio-1.0.0-setup.exe`) als een portable `.exe` op. Bouw op Windows zelf, of gebruik macOS/Linux met [`electron-builder`](https://www.electron.build/multi-platform-build) (Wine vereist voor het NSIS-installer target).
+
+### Automatische build via GitHub Actions
+
+De workflow `.github/workflows/build-windows.yml` bouwt de Windows-installer automatisch bij elke push naar `main` (en bij tags die met `v` beginnen, die ook een GitHub-release krijgen). Je kunt hem ook handmatig starten via het tabblad *Actions* → *Build Windows installer* → *Run workflow*. De `.exe`-bestanden staan daarna als artifact "pdf-studio-windows" bij de workflow-run.
 
 Andere platforms:
 

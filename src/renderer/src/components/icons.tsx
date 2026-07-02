@@ -38,6 +38,24 @@ export function IconRotate({ size = 16, className }: IconProps): JSX.Element {
   )
 }
 
+export function IconUndo({ size = 16, className }: IconProps): JSX.Element {
+  return (
+    <svg width={size} height={size} viewBox="0 0 24 24" className={className} {...base}>
+      <path d="M9 14L4 9l5-5" />
+      <path d="M4 9h10.5a5.5 5.5 0 0 1 0 11H12" />
+    </svg>
+  )
+}
+
+export function IconRedo({ size = 16, className }: IconProps): JSX.Element {
+  return (
+    <svg width={size} height={size} viewBox="0 0 24 24" className={className} {...base}>
+      <path d="M15 14l5-5-5-5" />
+      <path d="M20 9H9.5a5.5 5.5 0 0 0 0 11H12" />
+    </svg>
+  )
+}
+
 export function IconClose({ size = 16, className }: IconProps): JSX.Element {
   return (
     <svg width={size} height={size} viewBox="0 0 24 24" className={className} {...base}>

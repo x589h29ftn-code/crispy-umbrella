@@ -34,7 +34,7 @@ export default function GroupRow({ group, index, sources, isActive }: Props): JS
 
   useClickOutside(menuRef, menuOpen, closeMenu)
 
-  const movePage = useStudioStore((s) => s.movePage)
+  const movePages = useStudioStore((s) => s.movePages)
   const addPagesToGroup = useStudioStore((s) => s.addPagesToGroup)
   const insertBlankPage = useStudioStore((s) => s.insertBlankPage)
   const renameGroup = useStudioStore((s) => s.renameGroup)
@@ -246,8 +246,10 @@ export default function GroupRow({ group, index, sources, isActive }: Props): JS
             setSlot(null)
             return
           }
+          const dragIds = useStudioStore.getState().dragPageIds
           const pageId = e.dataTransfer.getData('text/plain')
-          if (pageId) movePage(pageId, group.id, targetIndex())
+          const ids = dragIds ?? (pageId ? [pageId] : [])
+          if (ids.length) movePages(ids, group.id, targetIndex())
           setSlot(null)
         }}
       >
