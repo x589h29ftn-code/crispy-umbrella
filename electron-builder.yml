@@ -10,6 +10,11 @@ files:
   - '!{.env,.env.*,.npmrc,pnpm-lock.yaml}'
 asarUnpack:
   - resources/**
+  - node_modules/tesseract.js/**
+  - node_modules/tesseract.js-core/**
+extraResources:
+  - from: node_modules/@tesseract.js-data/nld/4.0.0_best_int/nld.traineddata.gz
+    to: tessdata/nld.traineddata.gz
 win:
   executableName: PDF-Studio
   target:

@@ -5,6 +5,7 @@ import Lightbox from './components/Lightbox'
 import Toasts from './components/Toasts'
 import PasswordDialog from './components/PasswordDialog'
 import SelectionBar from './components/SelectionBar'
+import SearchPanel from './components/SearchPanel'
 import { exportAllZip } from './lib/exportActions'
 import { cancelDrag, isDragActive } from './lib/dragController'
 import { useStudioStore } from './store'
@@ -39,6 +40,9 @@ export default function App(): JSX.Element {
       } else if ((mod && key === 'y') || (mod && e.shiftKey && key === 'z')) {
         e.preventDefault()
         state.redo()
+      } else if (mod && key === 'f') {
+        e.preventDefault()
+        state.setSearchOpen(!state.searchOpen)
       } else if (mod && key === 'o') {
         e.preventDefault()
         void window.api.openPdfs().then((files) => {
@@ -86,6 +90,7 @@ export default function App(): JSX.Element {
       />
       <main className="app-main">
         <Canvas onScaleChange={onScaleChange} registerZoomControls={registerZoomControls} />
+        <SearchPanel />
       </main>
       <Lightbox />
       <SelectionBar />

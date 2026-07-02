@@ -16,6 +16,7 @@ import {
   IconMoon,
   IconPlus,
   IconRedo,
+  IconSearch,
   IconSignature,
   IconSun,
   IconUndo
@@ -62,6 +63,8 @@ export default function Toolbar({ zoomPct, onZoomIn, onZoomOut, onZoomReset, onZ
   const undo = useStudioStore((s) => s.undo)
   const redo = useStudioStore((s) => s.redo)
   const busyExport = useStudioStore((s) => s.busyExport)
+  const searchOpen = useStudioStore((s) => s.searchOpen)
+  const setSearchOpen = useStudioStore((s) => s.setSearchOpen)
   const exportPassword = useStudioStore((s) => s.exportPassword)
   const setExportPassword = useStudioStore((s) => s.setExportPassword)
   const [showPasswordField, setShowPasswordField] = useState(false)
@@ -180,6 +183,16 @@ export default function Toolbar({ zoomPct, onZoomIn, onZoomOut, onZoomReset, onZ
       )}
 
       <div className="sidebar__divider" />
+
+      <button
+        type="button"
+        className={`sidebar-btn${searchOpen ? ' sidebar-btn--active' : ''}`}
+        onClick={() => setSearchOpen(!searchOpen)}
+        title="Zoeken in alle documenten (Ctrl+F)"
+      >
+        <IconSearch size={15} />
+        <span className="sidebar-btn__label">Zoeken</span>
+      </button>
 
       <button
         type="button"

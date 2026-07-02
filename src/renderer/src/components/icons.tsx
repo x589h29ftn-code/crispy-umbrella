@@ -229,6 +229,15 @@ export function IconType({ size = 16, className }: IconProps): JSX.Element {
   )
 }
 
+export function IconSearch({ size = 16, className }: IconProps): JSX.Element {
+  return (
+    <svg width={size} height={size} viewBox="0 0 24 24" className={className} {...base}>
+      <circle cx="10.5" cy="10.5" r="6.5" />
+      <path d="M15.5 15.5L21 21" />
+    </svg>
+  )
+}
+
 export function IconPen({ size = 16, className }: IconProps): JSX.Element {
   return (
     <svg width={size} height={size} viewBox="0 0 24 24" className={className} {...base}>

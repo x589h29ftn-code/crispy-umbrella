@@ -78,6 +78,12 @@ app.whenReady().then(() => {
     return { saved: true, path: result.filePath }
   })
 
+  ipcMain.handle('ocr:recognize', async (_evt, png: Uint8Array) => {
+    // Lazy import so tesseract.js only loads when OCR is actually used.
+    const { recognizePng } = await import('./ocr')
+    return recognizePng(png)
+  })
+
   ipcMain.handle('dialog:saveZip', async (_evt, defaultName: string, data: Uint8Array) => {
     const result = await dialog.showSaveDialog({
       defaultPath: defaultName,
@@ -96,6 +102,7 @@ app.whenReady().then(() => {
 })
 
 app.on('window-all-closed', () => {
+  void import('./ocr').then(({ disposeOcrWorker }) => disposeOcrWorker())
   if (process.platform !== 'darwin') {
     app.quit()
   }

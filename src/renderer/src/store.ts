@@ -59,7 +59,9 @@ interface StudioState {
   canvasScale: number
   dropTarget: DropTarget | null
   groupDropIndex: number | null
+  searchOpen: boolean
 
+  setSearchOpen: (open: boolean) => void
   toggleTheme: () => void
   markHistory: () => void
   undo: () => void
@@ -189,6 +191,9 @@ export const useStudioStore = create<StudioState>((set, get) => ({
   canvasScale: 1,
   dropTarget: null,
   groupDropIndex: null,
+  searchOpen: false,
+
+  setSearchOpen: (open) => set({ searchOpen: open }),
 
   toggleTheme: () => {
     set((state) => {

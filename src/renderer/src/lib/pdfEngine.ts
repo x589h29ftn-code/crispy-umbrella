@@ -10,6 +10,7 @@ import openSansRegularUrl from '../assets/fonts/OpenSans-Regular.ttf?url'
 import openSansBoldUrl from '../assets/fonts/OpenSans-Bold.ttf?url'
 import openSansItalicUrl from '../assets/fonts/OpenSans-Italic.ttf?url'
 import openSansBoldItalicUrl from '../assets/fonts/OpenSans-BoldItalic.ttf?url'
+import { getOcr } from './ocrStore'
 import type { AnnotationFont, DocGroup, PageRef, SignaturePlacement, SourceFile, TextAnnotation } from '../types'
 
 const A4_WIDTH = 595.28
@@ -525,6 +526,29 @@ async function buildPdf(group: DocGroup, sources: Map<string, SourceFile>): Prom
             color: hexToRgb(annotation.color),
             rotate: degrees(rotateDeg)
           })
+        }
+      }
+    }
+
+    // Recognized (OCR) text is written as an invisible layer at the word
+    // positions, so exported scans become selectable and searchable.
+    const ocr = getOcr(page.sourceId, page.sourcePageIndex)
+    if (ocr && ocr.words.length) {
+      const invisibleFont = await getFont({ kind: 'standard', ref: StandardFonts.Helvetica })
+      const viewport = await getScale1Viewport(src, page.sourcePageIndex, page.rotation)
+      const rotateDeg = computeRotationCompensationDegrees(viewport)
+      for (const word of ocr.words) {
+        try {
+          copiedPage.drawText(word.text, {
+            x: word.x,
+            y: word.y,
+            size: word.size,
+            font: invisibleFont,
+            opacity: 0,
+            rotate: degrees(rotateDeg)
+          })
+        } catch {
+          // Word contains glyphs outside the standard encoding — skip it.
         }
       }
     }
