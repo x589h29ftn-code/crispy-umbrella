@@ -7,6 +7,7 @@ import PasswordDialog from './components/PasswordDialog'
 import SelectionBar from './components/SelectionBar'
 import SearchPanel from './components/SearchPanel'
 import CommentsPanel from './components/CommentsPanel'
+import BookmarksPanel from './components/BookmarksPanel'
 import TabStrip from './components/TabStrip'
 import EditorView from './components/editor/EditorView'
 import { exportAllZip } from './lib/exportActions'
@@ -105,6 +106,7 @@ export default function App(): JSX.Element {
         )}
         <SearchPanel />
         <CommentsPanel />
+        <BookmarksPanel />
       </main>
       <Lightbox />
       <SelectionBar />

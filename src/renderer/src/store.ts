@@ -163,6 +163,8 @@ interface StudioState {
   updateSignaturePlacement: (pageId: string, placementId: string, patch: Partial<SignaturePlacement>) => void
   removeSignaturePlacement: (pageId: string, placementId: string) => void
   commentsPanelOpen: boolean
+  bookmarksPanelOpen: boolean
+  setBookmarksPanelOpen: (open: boolean) => void
   focusCommentId: string | null
   setCommentsPanelOpen: (open: boolean) => void
   openCommentThread: (pageId: string, commentId: string) => void
@@ -740,6 +742,8 @@ export const useStudioStore = create<StudioState>((set, get) => ({
   },
 
   commentsPanelOpen: false,
+  bookmarksPanelOpen: false,
+  setBookmarksPanelOpen: (open) => set({ bookmarksPanelOpen: open }),
   focusCommentId: null,
 
   setCommentsPanelOpen: (open) => set({ commentsPanelOpen: open }),

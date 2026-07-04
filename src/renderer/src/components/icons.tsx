@@ -415,3 +415,11 @@ export function IconForm({ size = 16, className }: IconProps): JSX.Element {
     </svg>
   )
 }
+
+export function IconBookmark({ size = 16, className }: IconProps): JSX.Element {
+  return (
+    <svg width={size} height={size} viewBox="0 0 24 24" className={className} {...base}>
+      <path d="M6.5 4.5A1.5 1.5 0 0 1 8 3h8a1.5 1.5 0 0 1 1.5 1.5V21L12 16.8 6.5 21z" />
+    </svg>
+  )
+}

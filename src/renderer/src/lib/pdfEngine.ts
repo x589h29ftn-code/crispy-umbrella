@@ -689,6 +689,8 @@ async function buildPdf(group: DocGroup, sources: Map<string, SourceFile>, optio
       : null
   const embeddedImages = new Map<string, PDFImage>()
   const total = order.length
+  // Export page index per order entry (skipped entries leave gaps).
+  const placedAt = new Map<number, number>()
 
   for (let i = 0; i < order.length; i += 1) {
     const { sourceId, localIndex, page } = order[i]
@@ -926,9 +928,12 @@ async function buildPdf(group: DocGroup, sources: Map<string, SourceFile>, optio
     addCommentAnnotations(out, targetPage, page.comments, ox, oy)
 
     if (!redactions.length) out.addPage(copiedPage)
+    placedAt.set(i, out.getPageCount() - 1)
   }
 
   if (!options.flattenForms) rebuildAcroForm(out)
+
+  await writeExportOutline(out, sources, order, placedAt)
 
   out.setTitle(group.name)
   if (group.documentDate) {
@@ -971,6 +976,103 @@ function drawPageNumber(page: PDFPage, pageNumber: number, total: number, font: 
     font,
     color: rgb(0.35, 0.35, 0.35)
   })
+}
+
+interface ExportOutlineNode {
+  title: string
+  exportPageIndex: number
+  children: ExportOutlineNode[]
+}
+
+/**
+ * Writes the export's bookmark tree (inhoudsopgave): the source documents'
+ * own bookmarks remapped to the exported pages, and — when the document mixes
+ * multiple sources — a top-level bookmark per source file.
+ */
+async function writeExportOutline(
+  out: PDFDocument,
+  sources: Map<string, SourceFile>,
+  order: { sourceId: string; localIndex: number; page: PageRef }[],
+  placedAt: Map<number, number>
+): Promise<void> {
+  const { getSourceOutline } = await import('./bookmarks')
+
+  const exportIndexFor = new Map<string, number>()
+  order.forEach((entry, i) => {
+    const key = `${entry.sourceId}:${entry.page.sourcePageIndex}`
+    const placed = placedAt.get(i)
+    if (placed !== undefined && !exportIndexFor.has(key)) exportIndexFor.set(key, placed)
+  })
+  const seenSources: string[] = []
+  order.forEach((e) => {
+    if (!seenSources.includes(e.sourceId)) seenSources.push(e.sourceId)
+  })
+  const multi = seenSources.length > 1
+
+  const roots: ExportOutlineNode[] = []
+  for (const sourceId of seenSources) {
+    const src = sources.get(sourceId)
+    if (!src) continue
+    const outline = await getSourceOutline(src)
+    const remap = (nodes: { title: string; pageIndex: number; children: unknown[] }[]): ExportOutlineNode[] =>
+      nodes.flatMap((node) => {
+        const idx = node.pageIndex >= 0 ? exportIndexFor.get(`${sourceId}:${node.pageIndex}`) : undefined
+        const children = remap(node.children as typeof nodes)
+        // A bookmark whose page isn't in this document: promote its children.
+        if (idx === undefined) return children
+        return [{ title: node.title, exportPageIndex: idx, children }]
+      })
+    const children = remap(outline)
+    if (multi) {
+      let firstIdx: number | undefined
+      for (let i = 0; i < order.length; i += 1) {
+        if (order[i].sourceId === sourceId && placedAt.has(i)) {
+          firstIdx = placedAt.get(i)
+          break
+        }
+      }
+      if (firstIdx !== undefined) {
+        roots.push({ title: src.name.replace(/\.pdf$/i, ''), exportPageIndex: firstIdx, children })
+      }
+    } else {
+      roots.push(...children)
+    }
+  }
+  if (!roots.length) return
+
+  const context = out.context
+  const pages = out.getPages()
+  const countAll = (nodes: ExportOutlineNode[]): number =>
+    nodes.reduce((n, node) => n + 1 + countAll(node.children), 0)
+
+  const outlinesRef = context.nextRef()
+  function emit(nodes: ExportOutlineNode[], parentRef: PDFRef): { first: PDFRef; last: PDFRef } {
+    const refs = nodes.map(() => context.nextRef())
+    nodes.forEach((node, i) => {
+      const page = pages[Math.min(node.exportPageIndex, pages.length - 1)]
+      const dict = context.obj({
+        Title: PDFHexString.fromText(node.title),
+        Parent: parentRef,
+        Dest: [page.ref, 'XYZ', null, null, null]
+      }) as PDFDict
+      if (i > 0) dict.set(PDFName.of('Prev'), refs[i - 1])
+      if (i < refs.length - 1) dict.set(PDFName.of('Next'), refs[i + 1])
+      if (node.children.length) {
+        const sub = emit(node.children, refs[i])
+        dict.set(PDFName.of('First'), sub.first)
+        dict.set(PDFName.of('Last'), sub.last)
+        dict.set(PDFName.of('Count'), context.obj(countAll(node.children)))
+      }
+      context.assign(refs[i], dict)
+    })
+    return { first: refs[0], last: refs[refs.length - 1] }
+  }
+  const top = emit(roots, outlinesRef)
+  const outlines = context.obj({ Type: 'Outlines', Count: countAll(roots) }) as PDFDict
+  outlines.set(PDFName.of('First'), top.first)
+  outlines.set(PDFName.of('Last'), top.last)
+  context.assign(outlinesRef, outlines)
+  out.catalog.set(PDFName.of('Outlines'), outlinesRef)
 }
 
 /**

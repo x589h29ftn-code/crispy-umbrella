@@ -10,6 +10,7 @@ import {
   IconChevronLeft,
   IconChevronRight,
   IconClose,
+  IconBookmark,
   IconComment,
   IconDownload,
   IconFolderOpen,
@@ -70,6 +71,8 @@ export default function Toolbar({ zoomPct, onZoomIn, onZoomOut, onZoomReset, onZ
   const setSearchOpen = useStudioStore((s) => s.setSearchOpen)
   const commentsPanelOpen = useStudioStore((s) => s.commentsPanelOpen)
   const setCommentsPanelOpen = useStudioStore((s) => s.setCommentsPanelOpen)
+  const bookmarksPanelOpen = useStudioStore((s) => s.bookmarksPanelOpen)
+  const setBookmarksPanelOpen = useStudioStore((s) => s.setBookmarksPanelOpen)
   const openCommentCount = useStudioStore((s) =>
     s.groups.reduce((n, g) => n + g.pages.reduce((m, p) => m + p.comments.filter((c) => !c.resolved).length, 0), 0)
   )
@@ -211,6 +214,16 @@ export default function Toolbar({ zoomPct, onZoomIn, onZoomOut, onZoomReset, onZ
         <IconComment size={15} />
         <span className="sidebar-btn__label">Opmerkingen</span>
         {openCommentCount > 0 && <span className="sidebar-btn__badge">{openCommentCount}</span>}
+      </button>
+
+      <button
+        type="button"
+        className={`sidebar-btn${bookmarksPanelOpen ? ' sidebar-btn--active' : ''}`}
+        onClick={() => setBookmarksPanelOpen(!bookmarksPanelOpen)}
+        title="Bladwijzers / inhoudsopgave van de documenten"
+      >
+        <IconBookmark size={15} />
+        <span className="sidebar-btn__label">Bladwijzers</span>
       </button>
 
       <button
