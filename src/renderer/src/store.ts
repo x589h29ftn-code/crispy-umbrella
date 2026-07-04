@@ -114,6 +114,14 @@ interface StudioState {
   setFormValue: (sourceId: string, fieldName: string, value: string | boolean) => void
   setFlattenForms: (flatten: boolean) => void
   setAuthorName: (name: string) => void
+  /** Herstelt een vorige sessie (alleen wanneer er nog niets geopend is). */
+  restoreSession: (payload: {
+    sources: SourceFile[]
+    groups: DocGroup[]
+    signatureAssets: SignatureAsset[]
+    formValues: Record<string, Record<string, string | boolean>>
+    flattenForms: boolean
+  }) => boolean
   setSearchHighlight: (value: { pageId: string; query: string } | null) => void
   openEditorTab: (groupId: string) => void
   closeEditorTab: (groupId: string) => void
@@ -279,6 +287,25 @@ export const useStudioStore = create<StudioState>((set, get) => ({
   },
 
   setFlattenForms: (flatten) => set({ flattenForms: flatten }),
+
+  restoreSession: (payload) => {
+    if (get().groups.length || !payload.groups.length) return false
+    const sources = new Map(get().sources)
+    payload.sources.forEach((s) => sources.set(s.id, s))
+    // Alleen groepen waarvan alle bronnen aanwezig zijn (bin-bestand kan ontbreken).
+    const groups = payload.groups.filter((g) => g.pages.every((p) => sources.has(p.sourceId)))
+    if (!groups.length) return false
+    set({
+      sources,
+      groups,
+      signatureAssets: payload.signatureAssets,
+      formValues: payload.formValues,
+      flattenForms: payload.flattenForms,
+      activeGroupId: groups[0]?.id ?? null,
+      activeSignatureId: payload.signatureAssets[0]?.id ?? null
+    })
+    return true
+  },
 
   setAuthorName: (name) => {
     window.localStorage.setItem(AUTHOR_STORAGE_KEY, name)

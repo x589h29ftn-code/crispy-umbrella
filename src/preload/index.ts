@@ -45,7 +45,18 @@ const api = {
     const listener = (_evt: unknown, files: LoadedFile[]): void => callback(files)
     ipcRenderer.on('files:opened', listener)
     return () => ipcRenderer.removeListener('files:opened', listener)
-  }
+  },
+  getRecentFiles: (): Promise<{ path: string; name: string }[]> => ipcRenderer.invoke('recent:list'),
+  openRecentFile: (path: string): Promise<(LoadedFile & { error?: undefined }) | { error: string }> =>
+    ipcRenderer.invoke('recent:open', path),
+  sessionLoad: (): Promise<{
+    state: unknown
+    sources: { id: string; name: string; pageCount: number; data: Uint8Array }[]
+  }> => ipcRenderer.invoke('session:load'),
+  sessionSave: (stateJson: string): Promise<{ missing: string[] }> => ipcRenderer.invoke('session:save', stateJson),
+  sessionSaveSources: (sources: { id: string; data: Uint8Array }[]): Promise<boolean> =>
+    ipcRenderer.invoke('session:saveSources', sources),
+  sessionClear: (): Promise<boolean> => ipcRenderer.invoke('session:clear')
 }
 
 try {

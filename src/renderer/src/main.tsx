@@ -1,7 +1,10 @@
 import React from 'react'
 import ReactDOM from 'react-dom/client'
 import App from './App'
+import { initSessionPersistence } from './lib/session'
 import './styles.css'
+
+initSessionPersistence()
 
 // Safety net: without this, dropping a file outside a designated drop zone
 // makes Electron navigate the window away to the dropped file.

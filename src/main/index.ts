@@ -1,12 +1,85 @@
 import { app, shell, BrowserWindow, ipcMain, dialog } from 'electron'
-import { join } from 'path'
-import { mkdtemp, readFile, rm, writeFile } from 'fs/promises'
+import { join, basename } from 'path'
+import { mkdir, mkdtemp, readdir, readFile, rm, stat, unlink, writeFile } from 'fs/promises'
 import { tmpdir } from 'os'
 import { electronApp, optimizer, is } from '@electron-toolkit/utils'
 import icon from '../../resources/icon.png?asset'
 
+let mainWindow: BrowserWindow | null = null
+
+// ---- Recent geopende bestanden (userData/recent.json) ----
+
+const MAX_RECENT = 12
+
+function recentPath(): string {
+  return join(app.getPath('userData'), 'recent.json')
+}
+
+async function readRecent(): Promise<{ path: string; name: string; openedAt: number }[]> {
+  try {
+    const raw = await readFile(recentPath(), 'utf-8')
+    const list = JSON.parse(raw)
+    return Array.isArray(list) ? list : []
+  } catch {
+    return []
+  }
+}
+
+async function rememberRecent(paths: string[]): Promise<void> {
+  if (!paths.length) return
+  try {
+    const now = Date.now()
+    let list = await readRecent()
+    for (const p of paths) {
+      list = list.filter((r) => r.path !== p)
+      list.unshift({ path: p, name: basename(p), openedAt: now })
+      app.addRecentDocument(p)
+    }
+    await writeFile(recentPath(), JSON.stringify(list.slice(0, MAX_RECENT)), 'utf-8')
+  } catch {
+    // Recente lijst is best-effort.
+  }
+}
+
+// ---- Sessieherstel (userData/session) ----
+
+function sessionDir(): string {
+  return join(app.getPath('userData'), 'session')
+}
+
+function sessionSourcesDir(): string {
+  return join(sessionDir(), 'sources')
+}
+
+const IMPORTABLE = ['.pdf', '.docx', '.doc', '.odt', '.rtf', '.xlsx', '.xls', '.ods', '.csv', '.pptx', '.ppt', '.odp']
+
+function importableArgs(argv: string[]): string[] {
+  return argv.filter((a) => {
+    const lower = a.toLowerCase()
+    return IMPORTABLE.some((ext) => lower.endsWith(ext)) && !a.startsWith('-')
+  })
+}
+
+async function sendFilesToWindow(win: BrowserWindow, paths: string[]): Promise<void> {
+  const files = (
+    await Promise.all(
+      paths.map(async (p) => {
+        try {
+          return { name: basename(p), data: await readFile(p) }
+        } catch {
+          return null
+        }
+      })
+    )
+  ).filter(Boolean)
+  if (files.length) {
+    win.webContents.send('files:opened', files)
+    void rememberRecent(paths)
+  }
+}
+
 function createWindow(): void {
-  const mainWindow = new BrowserWindow({
+  const win = new BrowserWindow({
     width: 1280,
     height: 820,
     minWidth: 860,
@@ -21,32 +94,50 @@ function createWindow(): void {
     }
   })
 
-  mainWindow.on('ready-to-show', () => {
-    mainWindow.show()
+  mainWindow = win
+
+  win.on('ready-to-show', () => {
+    win.show()
   })
 
-  mainWindow.webContents.setWindowOpenHandler((details) => {
+  win.on('closed', () => {
+    if (mainWindow === win) mainWindow = null
+  })
+
+  win.webContents.setWindowOpenHandler((details) => {
     shell.openExternal(details.url)
     return { action: 'deny' }
   })
 
-  const filesToOpen = process.argv.filter((a) => a.toLowerCase().endsWith('.pdf'))
+  const filesToOpen = importableArgs(process.argv.slice(1))
 
   if (is.dev && process.env['ELECTRON_RENDERER_URL']) {
-    mainWindow.loadURL(process.env['ELECTRON_RENDERER_URL'])
+    win.loadURL(process.env['ELECTRON_RENDERER_URL'])
   } else {
-    mainWindow.loadFile(join(__dirname, '../renderer/index.html'))
+    win.loadFile(join(__dirname, '../renderer/index.html'))
   }
 
   if (filesToOpen.length) {
-    mainWindow.webContents.once('did-finish-load', async () => {
-      const files = await Promise.all(
-        filesToOpen.map(async (p) => ({ name: p.split(/[\\/]/).pop() || p, data: await readFile(p) }))
-      )
-      mainWindow.webContents.send('files:opened', files)
+    win.webContents.once('did-finish-load', () => {
+      void sendFilesToWindow(win, filesToOpen)
     })
   }
 }
+
+// Eén instantie: een tweede start (bijv. dubbelklik op een PDF wanneer de app
+// al draait) stuurt de bestanden naar het bestaande venster.
+const gotLock = app.requestSingleInstanceLock()
+if (!gotLock) {
+  app.quit()
+}
+
+app.on('second-instance', (_evt, argv) => {
+  if (!mainWindow) return
+  if (mainWindow.isMinimized()) mainWindow.restore()
+  mainWindow.focus()
+  const files = importableArgs(argv.slice(1))
+  if (files.length) void sendFilesToWindow(mainWindow, files)
+})
 
 app.whenReady().then(() => {
   electronApp.setAppUserModelId('com.pdfstudio.app')
@@ -92,12 +183,99 @@ app.whenReady().then(() => {
       ]
     })
     if (result.canceled) return []
+    void rememberRecent(result.filePaths)
     return Promise.all(
       result.filePaths.map(async (p) => ({
-        name: p.split(/[\\/]/).pop() || p,
+        name: basename(p),
         data: await readFile(p)
       }))
     )
+  })
+
+  ipcMain.handle('recent:list', async () => {
+    const list = await readRecent()
+    const existing: { path: string; name: string }[] = []
+    for (const entry of list) {
+      try {
+        await stat(entry.path)
+        existing.push({ path: entry.path, name: entry.name })
+      } catch {
+        // Verplaatst of verwijderd — stilletjes overslaan.
+      }
+    }
+    return existing
+  })
+
+  ipcMain.handle('recent:open', async (_evt, path: string) => {
+    try {
+      const data = await readFile(path)
+      void rememberRecent([path])
+      return { name: basename(path), data }
+    } catch {
+      return { error: 'Het bestand is verplaatst of verwijderd' }
+    }
+  })
+
+  // ---- Sessieherstel ----
+
+  ipcMain.handle('session:load', async () => {
+    try {
+      const raw = await readFile(join(sessionDir(), 'state.json'), 'utf-8')
+      const state = JSON.parse(raw)
+      const metas: { id: string; name: string; pageCount: number }[] = state.sources ?? []
+      const sources = (
+        await Promise.all(
+          metas.map(async (meta) => {
+            try {
+              const data = await readFile(join(sessionSourcesDir(), `${meta.id}.bin`))
+              return { id: meta.id, name: meta.name, pageCount: meta.pageCount, data }
+            } catch {
+              return null
+            }
+          })
+        )
+      ).filter(Boolean)
+      return { state, sources }
+    } catch {
+      return { state: null, sources: [] }
+    }
+  })
+
+  ipcMain.handle('session:save', async (_evt, stateJson: string) => {
+    try {
+      await mkdir(sessionSourcesDir(), { recursive: true })
+      await writeFile(join(sessionDir(), 'state.json'), stateJson, 'utf-8')
+      const state = JSON.parse(stateJson)
+      const wanted = new Set(((state.sources ?? []) as { id: string }[]).map((m) => `${m.id}.bin`))
+      const missing: string[] = []
+      const present = new Set(await readdir(sessionSourcesDir()))
+      for (const file of present) {
+        if (!wanted.has(file)) void unlink(join(sessionSourcesDir(), file)).catch(() => undefined)
+      }
+      for (const meta of (state.sources ?? []) as { id: string }[]) {
+        if (!present.has(`${meta.id}.bin`)) missing.push(meta.id)
+      }
+      return { missing }
+    } catch {
+      return { missing: [] }
+    }
+  })
+
+  ipcMain.handle('session:saveSources', async (_evt, sources: { id: string; data: Uint8Array }[]) => {
+    try {
+      await mkdir(sessionSourcesDir(), { recursive: true })
+      for (const source of sources) {
+        await writeFile(join(sessionSourcesDir(), `${source.id}.bin`), Buffer.from(source.data))
+      }
+      return true
+    } catch {
+      return false
+    }
+  })
+
+  ipcMain.handle('session:clear', async () => {
+    await rm(sessionDir(), { recursive: true, force: true }).catch(() => undefined)
+    return true
   })
 
   ipcMain.handle('dialog:savePdf', async (_evt, defaultName: string, data: Uint8Array) => {
