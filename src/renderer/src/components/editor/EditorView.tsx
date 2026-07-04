@@ -19,19 +19,24 @@ import {
   IconChevronDown,
   IconChevronLeft,
   IconChevronRight,
+  IconClose,
   IconComment,
   IconCursor,
   IconEditText,
   IconEraser,
+  IconExpand,
   IconForm,
+  IconGridView,
   IconGrip,
   IconHighlighter,
   IconMinus,
   IconPen,
   IconPlus,
   IconRedact,
+  IconRotate,
   IconShapes,
   IconStamp,
+  IconTrash,
   IconType
 } from '../icons'
 
@@ -138,13 +143,18 @@ export default function EditorView({ groupId }: Props): JSX.Element | null {
   const flattenForms = useStudioStore((s) => s.flattenForms)
   const setFlattenForms = useStudioStore((s) => s.setFlattenForms)
   const movePages = useStudioStore((s) => s.movePages)
+  const rotatePages = useStudioStore((s) => s.rotatePages)
+  const deletePages = useStudioStore((s) => s.deletePages)
+  const presentationMode = useStudioStore((s) => s.presentationMode)
+  const setPresentationMode = useStudioStore((s) => s.setPresentationMode)
 
   const [mode, setMode] = useState<EditorMode>('view')
   const [selection, setSelection] = useState<EditorSelection | null>(null)
   const [zoom, setZoom] = useState(1)
   const [currentPage, setCurrentPage] = useState(0)
   const [centerWidth, setCenterWidth] = useState(800)
-  const [singleBaseWidth, setSingleBaseWidth] = useState(595)
+  const [centerHeight, setCenterHeight] = useState(600)
+  const [pageBaseSize, setPageBaseSize] = useState({ width: 595, height: 842 })
   const [sigPickerOpen, setSigPickerOpen] = useState(false)
   const centerRef = useRef<HTMLDivElement>(null)
 
@@ -173,14 +183,17 @@ export default function EditorView({ groupId }: Props): JSX.Element | null {
   useEffect(() => {
     const el = centerRef.current
     if (!el) return
-    const measure = (): void => setCenterWidth(el.clientWidth)
+    const measure = (): void => {
+      setCenterWidth(el.clientWidth)
+      setCenterHeight(el.clientHeight)
+    }
     measure()
     const observer = new ResizeObserver(measure)
     observer.observe(el)
     return () => observer.disconnect()
   }, [])
 
-  // "Ware grootte" for the single-page mode: 100% = 1 PDF point per CSS pixel.
+  // Page proportions of the current page, used to fit single/spread views.
   useEffect(() => {
     let cancelled = false
     const page = group?.pages[currentPage]
@@ -188,7 +201,7 @@ export default function EditorView({ groupId }: Props): JSX.Element | null {
     if (!page || !source) return
     getPageVisualSize(source, page.sourcePageIndex, page.rotation)
       .then((size) => {
-        if (!cancelled) setSingleBaseWidth(size.width)
+        if (!cancelled) setPageBaseSize(size)
       })
       .catch(() => undefined)
     return () => {
@@ -212,7 +225,8 @@ export default function EditorView({ groupId }: Props): JSX.Element | null {
         return
       }
       if (e.key === 'Escape') {
-        if (mode !== 'view') setMode('view')
+        if (useStudioStore.getState().presentationMode) setPresentationMode(false)
+        else if (mode !== 'view') setMode('view')
         else setSelection(null)
         return
       }
@@ -242,14 +256,47 @@ export default function EditorView({ groupId }: Props): JSX.Element | null {
     return thumbs.length
   }
 
-  // Ctrl+wheel zooms the pages.
+  // Ctrl+wheel zooms (smooth, proportional to scroll speed); a plain wheel in
+  // the single/spread views flips pages when there's nothing left to scroll,
+  // while normal scrolling inside a zoomed page keeps working.
+  const viewModeRef = useRef(viewMode)
+  viewModeRef.current = viewMode
+  const pageCountRef = useRef(0)
+  pageCountRef.current = group?.pages.length ?? 0
+  const lastFlipRef = useRef(0)
   useEffect(() => {
     const el = centerRef.current
     if (!el) return
     const onWheel = (e: WheelEvent): void => {
-      if (!e.ctrlKey && !e.metaKey) return
+      if (e.ctrlKey || e.metaKey) {
+        e.preventDefault()
+        // Exponential in deltaY: small ticks nudge, fast wheels move quickly.
+        setZoom((z) => Math.min(5, Math.max(0.3, z * Math.exp(-e.deltaY * 0.0022))))
+        return
+      }
+      const vm = viewModeRef.current
+      if (vm !== 'single' && vm !== 'spread') return
+      const scroller = el.querySelector('.editor-pages') as HTMLElement | null
+      // Kleine overschrijding (padding rond een passend gemaakte pagina) telt
+      // niet als scrollbaar — anders blijft de eerste wheel-tik "hangen".
+      const canScroll = scroller && scroller.scrollHeight > scroller.clientHeight + 28
+      if (canScroll && scroller) {
+        const atTop = scroller.scrollTop <= 1
+        const atBottom = scroller.scrollTop + scroller.clientHeight >= scroller.scrollHeight - 1
+        if ((e.deltaY > 0 && !atBottom) || (e.deltaY < 0 && !atTop)) return // normal scroll
+      }
+      // Page flip, debounced so one wheel gesture flips once.
+      const now = performance.now()
+      if (now - lastFlipRef.current < 350 || Math.abs(e.deltaY) < 4) return
+      lastFlipRef.current = now
       e.preventDefault()
-      setZoom((z) => Math.min(4, Math.max(0.3, z * (e.deltaY < 0 ? 1.12 : 1 / 1.12))))
+      const step = vm === 'spread' ? 2 : 1
+      setCurrentPage((p) => {
+        const max = Math.max(0, pageCountRef.current - 1)
+        const next = e.deltaY > 0 ? p + step : p - step
+        return Math.max(0, Math.min(max, next))
+      })
+      if (scroller) scroller.scrollTop = e.deltaY > 0 ? 0 : scroller.scrollHeight
     }
     el.addEventListener('wheel', onWheel, { passive: false })
     return () => el.removeEventListener('wheel', onWheel)
@@ -334,15 +381,27 @@ export default function EditorView({ groupId }: Props): JSX.Element | null {
   const showStamp = mode === 'stamp'
   const shownShape = selectedAnnotation?.type === 'shape' ? selectedAnnotation : null
 
+  // Single/spread fit the window like a real reader: zoom 1 = the page(s)
+  // exactly fill the available space (no dead margins), zooming multiplies.
   const gap = 28
+  const aspect = pageBaseSize.height / Math.max(1, pageBaseSize.width)
+  const fitHeight = Math.max(200, centerHeight - 118) // minus view bar + pages padding
+  const singleFit = Math.max(160, Math.min(centerWidth - gap * 2, fitHeight / aspect))
+  const spreadFit = Math.max(140, Math.min((centerWidth - gap * 3) / 2, fitHeight / aspect))
   const pageWidth =
     viewMode === 'single'
-      ? singleBaseWidth * zoom
+      ? singleFit * zoom
       : viewMode === 'spread'
-        ? Math.max(160, ((centerWidth - gap * 3) / 2) * Math.min(zoom, 2))
+        ? spreadFit * zoom
         : Math.max(200, (centerWidth - gap * 2) * 0.92 * Math.min(zoom, 2))
 
-  const visiblePages = viewMode === 'single' ? [group.pages[currentPage]].filter(Boolean) : group.pages
+  const spreadStart = currentPage - (currentPage % 2)
+  const visiblePages =
+    viewMode === 'single'
+      ? [group.pages[currentPage]].filter(Boolean)
+      : viewMode === 'spread'
+        ? group.pages.slice(spreadStart, spreadStart + 2)
+        : group.pages
 
   const MODES: { key: EditorMode; label: string; icon: JSX.Element; title: string }[] = [
     { key: 'view', label: 'Selecteren', icon: <IconCursor size={15} />, title: 'Selecteren en verplaatsen' },
@@ -359,7 +418,17 @@ export default function EditorView({ groupId }: Props): JSX.Element | null {
   ]
 
   return (
-    <div className="editor-view">
+    <div className={`editor-view${presentationMode ? ' editor-view--presentation' : ''}`}>
+      {presentationMode && (
+        <button
+          type="button"
+          className="pill-btn presentation-exit"
+          onClick={() => setPresentationMode(false)}
+          title="Volledig scherm afsluiten (Esc)"
+        >
+          <IconClose size={13} /> Volledig scherm afsluiten
+        </button>
+      )}
       <div className="editor-rail">
         {group.pages.map((page, i) => (
           <div key={page.id} className="editor-rail__slot">
@@ -368,11 +437,17 @@ export default function EditorView({ groupId }: Props): JSX.Element | null {
               page={page}
               source={sources.get(page.sourceId)}
               index={i}
-              active={viewMode === 'single' ? i === currentPage : false}
+              active={
+                viewMode === 'single'
+                  ? i === currentPage
+                  : viewMode === 'spread'
+                    ? i === spreadStart || i === spreadStart + 1
+                    : false
+              }
               dragging={railDrag?.fromIndex === i}
               onClick={() => {
-                if (viewMode === 'single') setCurrentPage(i)
-                else
+                setCurrentPage(i)
+                if (viewMode === 'scroll')
                   document
                     .querySelector(`.editor-view .editor-page[data-page-id="${page.id}"]`)
                     ?.scrollIntoView({ behavior: 'smooth', block: 'start' })
@@ -408,8 +483,11 @@ export default function EditorView({ groupId }: Props): JSX.Element | null {
             <button
               type="button"
               className={`editbar__mode${viewMode === 'spread' ? ' editbar__mode--active' : ''}`}
-              onClick={() => setViewMode('spread')}
-              title="Twee pagina's naast elkaar"
+              onClick={() => {
+                setViewMode('spread')
+                setZoom(1)
+              }}
+              title="Twee pagina's naast elkaar, passend in het venster"
             >
               Naast elkaar
             </button>
@@ -420,31 +498,35 @@ export default function EditorView({ groupId }: Props): JSX.Element | null {
                 setViewMode('single')
                 setZoom(1)
               }}
-              title="Eén pagina op ware grootte (100%)"
+              title="Eén pagina, passend in het venster"
             >
               Eén pagina
             </button>
           </div>
-          {viewMode === 'single' && (
+          {(viewMode === 'single' || viewMode === 'spread') && (
             <div className="editor-center__nav">
               <button
                 type="button"
                 className="pill-btn pill-btn--icon"
                 disabled={currentPage === 0}
-                onClick={() => setCurrentPage((p) => Math.max(0, p - 1))}
-                title="Vorige pagina"
+                onClick={() => setCurrentPage((p) => Math.max(0, p - (viewMode === 'spread' ? 2 : 1)))}
+                title="Vorige pagina (of scroll met het muiswiel)"
               >
                 <IconChevronLeft size={14} />
               </button>
               <span>
-                {currentPage + 1} / {group.pages.length}
+                {viewMode === 'spread' && group.pages.length > spreadStart + 1
+                  ? `${spreadStart + 1}–${spreadStart + 2} / ${group.pages.length}`
+                  : `${currentPage + 1} / ${group.pages.length}`}
               </span>
               <button
                 type="button"
                 className="pill-btn pill-btn--icon"
-                disabled={currentPage >= group.pages.length - 1}
-                onClick={() => setCurrentPage((p) => Math.min(group.pages.length - 1, p + 1))}
-                title="Volgende pagina"
+                disabled={currentPage >= group.pages.length - (viewMode === 'spread' ? 2 : 1)}
+                onClick={() =>
+                  setCurrentPage((p) => Math.min(group.pages.length - 1, p + (viewMode === 'spread' ? 2 : 1)))
+                }
+                title="Volgende pagina (of scroll met het muiswiel)"
               >
                 <IconChevronRight size={14} />
               </button>
@@ -457,10 +539,18 @@ export default function EditorView({ groupId }: Props): JSX.Element | null {
             <button type="button" className="toolbar__zoom-pct" onClick={() => setZoom(1)} title="Zoom herstellen">
               {Math.round(zoom * 100)}%
             </button>
-            <button type="button" className="pill-btn pill-btn--icon" onClick={() => setZoom((z) => Math.min(4, z * 1.2))}>
+            <button type="button" className="pill-btn pill-btn--icon" onClick={() => setZoom((z) => Math.min(5, z * 1.2))}>
               <IconPlus size={13} />
             </button>
           </div>
+          <button
+            type="button"
+            className="pill-btn pill-btn--icon editor-center__present"
+            onClick={() => setPresentationMode(true)}
+            title="Volledig scherm / presentatiemodus (Esc om te sluiten)"
+          >
+            <IconExpand size={14} />
+          </button>
         </div>
 
         <div className={`editor-pages editor-pages--${viewMode}`}>
@@ -761,6 +851,42 @@ export default function EditorView({ groupId }: Props): JSX.Element | null {
         ) : (
           <div className="editor-tools__hint">Laad een handtekening via het zijmenu om te ondertekenen</div>
         )}
+
+        <div className="editor-tools__divider" />
+        <div className="editor-tools__title">Pagina {currentPage + 1}</div>
+        <button
+          type="button"
+          className="editor-tools__btn"
+          title={`Roteer pagina ${currentPage + 1} een kwartslag`}
+          onClick={() => {
+            const page = group.pages[currentPage]
+            if (page) rotatePages([page.id])
+          }}
+        >
+          <IconRotate size={15} />
+          <span>Pagina roteren</span>
+        </button>
+        <button
+          type="button"
+          className="editor-tools__btn"
+          title={`Verwijder pagina ${currentPage + 1} uit dit document`}
+          onClick={() => {
+            const page = group.pages[currentPage]
+            if (page) deletePages([page.id])
+          }}
+        >
+          <IconTrash size={15} />
+          <span>Pagina verwijderen</span>
+        </button>
+        <button
+          type="button"
+          className="editor-tools__btn"
+          title="Pagina's samenvoegen, splitsen of tussen documenten verplaatsen — dit doe je in het overzicht"
+          onClick={() => setActiveEditorTab(null)}
+        >
+          <IconGridView size={15} />
+          <span>Samenvoegen / splitsen…</span>
+        </button>
 
         <div className="editor-tools__spacer" />
         <button

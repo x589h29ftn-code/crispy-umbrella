@@ -5,12 +5,11 @@ import { exportCommentSummary } from '../lib/commentSummary'
 import { IconCheck, IconClose, IconComment } from './icons'
 
 /**
- * Timeline of every comment in the project, newest first. Clicking an entry
- * jumps straight to the thread on that page in the full-screen viewer.
+ * Herbruikbare tijdlijn van alle opmerkingen (nieuwste eerst) met naam-
+ * instelling en overzicht-export; gebruikt door het opmerkingen-paneel en
+ * het Commentaar-tabblad in het bladwijzers-paneel.
  */
-export default function CommentsPanel(): JSX.Element | null {
-  const open = useStudioStore((s) => s.commentsPanelOpen)
-  const setOpen = useStudioStore((s) => s.setCommentsPanelOpen)
+export function CommentsTimeline(): JSX.Element {
   const groups = useStudioStore((s) => s.groups)
   const openCommentThread = useStudioStore((s) => s.openCommentThread)
   const updateComment = useStudioStore((s) => s.updateComment)
@@ -34,18 +33,8 @@ export default function CommentsPanel(): JSX.Element | null {
     [groups]
   )
 
-  if (!open) return null
-
   return (
-    <aside className="comments-panel" onClick={(e) => e.stopPropagation()}>
-      <div className="comments-panel__head">
-        <IconComment size={15} />
-        <span>Opmerkingen</span>
-        <span className="comments-panel__count">{items.filter((i) => !i.comment.resolved).length} open</span>
-        <button type="button" className="icon-btn icon-btn--chrome" title="Sluiten" onClick={() => setOpen(false)}>
-          <IconClose size={13} />
-        </button>
-      </div>
+    <>
       <div className="comments-panel__settings">
         <label className="comments-panel__author">
           <span>Je naam</span>
@@ -117,6 +106,34 @@ export default function CommentsPanel(): JSX.Element | null {
           ))}
         </div>
       )}
+    </>
+  )
+}
+
+/** Timeline of every comment in the project; clicking an entry jumps to the thread. */
+export default function CommentsPanel(): JSX.Element | null {
+  const open = useStudioStore((s) => s.commentsPanelOpen)
+  const setOpen = useStudioStore((s) => s.setCommentsPanelOpen)
+  const groups = useStudioStore((s) => s.groups)
+
+  const openCount = useMemo(
+    () => groups.flatMap((g) => g.pages.flatMap((p) => p.comments)).filter((c) => !c.resolved).length,
+    [groups]
+  )
+
+  if (!open) return null
+
+  return (
+    <aside className="comments-panel" onClick={(e) => e.stopPropagation()}>
+      <div className="comments-panel__head">
+        <IconComment size={15} />
+        <span>Opmerkingen</span>
+        <span className="comments-panel__count">{openCount} open</span>
+        <button type="button" className="icon-btn icon-btn--chrome" title="Sluiten" onClick={() => setOpen(false)}>
+          <IconClose size={13} />
+        </button>
+      </div>
+      <CommentsTimeline />
     </aside>
   )
 }

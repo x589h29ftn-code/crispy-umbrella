@@ -86,3 +86,30 @@ export async function getTextLineBoxes(
     return { str: str.trim(), fontSize, visual }
   })
 }
+
+/**
+ * Intersections of a dragged band with the page's text lines, one rect per
+ * line (visual units). Lets markeren/redigeren volg de tekst in plaats van
+ * een losse rechthoek: sleep over de tekst en elke regel krijgt zijn eigen vak.
+ */
+export function bandTextRects(
+  band: { x1: number; y1: number; x2: number; y2: number },
+  lines: TextLineBox[] | null
+): { x: number; y: number; width: number; height: number }[] {
+  if (!lines || !lines.length) return []
+  const left = Math.min(band.x1, band.x2)
+  const right = Math.max(band.x1, band.x2)
+  const top = Math.min(band.y1, band.y2)
+  const bottom = Math.max(band.y1, band.y2)
+  const rects: { x: number; y: number; width: number; height: number }[] = []
+  for (const line of lines) {
+    const v = line.visual
+    const cy = v.y + v.height / 2
+    if (cy < top || cy > bottom) continue
+    const x0 = Math.max(left, v.x)
+    const x1 = Math.min(right, v.x + v.width)
+    if (x1 - x0 < 2) continue
+    rects.push({ x: x0, y: v.y, width: x1 - x0, height: v.height })
+  }
+  return rects
+}

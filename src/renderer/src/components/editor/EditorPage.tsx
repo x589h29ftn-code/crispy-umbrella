@@ -13,7 +13,7 @@ import {
   type SignatureVisualBox
 } from '../../lib/pdfEngine'
 import { ANNOTATION_FONT_CSS } from '../../lib/annotationStyle'
-import { getTextLineBoxes, type TextLineBox } from '../../lib/textLines'
+import { bandTextRects, getTextLineBoxes, type TextLineBox } from '../../lib/textLines'
 import { renderTextSelectionLayer, selectionLineRects, type SelectionLineRect } from '../../lib/textLayer'
 import { findSearchHitRects, type SearchHitRect } from '../../lib/searchHits'
 import { useStudioStore } from '../../store'
@@ -91,6 +91,9 @@ interface TextEditorState {
   visualY: number
   value: string
   coverVisualRect?: { x: number; y: number; width: number; height: number }
+  /** Vast lettertype/grootte voor in-place bewerken: de vervangende tekst
+   * krijgt de maat van de originele regel, niet de tool-instelling. */
+  style?: { font: TextAnnotation['font']; size: number; bold: boolean; italic: boolean; color: string }
 }
 
 interface Props {
@@ -237,10 +240,11 @@ export default function EditorPage({
     }
   }, [source, page])
 
-  // Flash de zoektreffers op deze pagina na een klik in het zoekpaneel.
+  // Zolang een zoekterm actief is, worden alle treffers op elke pagina geel
+  // gemarkeerd; de aangeklikte/huidige treffer-pagina scrollt in beeld.
   useEffect(() => {
     let cancelled = false
-    if (!source || !searchHighlight || searchHighlight.pageId !== page.id) {
+    if (!source || !searchHighlight?.query) {
       setSearchHits([])
       return
     }
@@ -248,7 +252,7 @@ export default function EditorPage({
       .then((rects) => {
         if (!cancelled) {
           setSearchHits(rects)
-          imgRef.current?.scrollIntoView({ block: 'center' })
+          if (searchHighlight.pageId === page.id) imgRef.current?.scrollIntoView({ block: 'center' })
         }
       })
       .catch(() => undefined)
@@ -274,7 +278,8 @@ export default function EditorPage({
 
   useEffect(() => {
     let cancelled = false
-    if (mode !== 'edittext' || !source) return
+    // Text lines drive in-place editing AND text-snapping for markeren/redigeren.
+    if ((mode !== 'edittext' && mode !== 'highlight' && mode !== 'redact') || !source) return
     getTextLineBoxes(source, page.sourcePageIndex, page.rotation)
       .then((lines) => {
         if (!cancelled) setTextLines(lines)
@@ -451,27 +456,44 @@ export default function EditorPage({
       const width = Math.abs(finished.x2 - finished.x1)
       const height = Math.abs(finished.y2 - finished.y1)
       if (width * scale < MIN_HIGHLIGHT_SIZE_PX || height * scale < MIN_HIGHLIGHT_SIZE_PX) return
-      const visual = {
-        xPct: left / pageVisualSize.width,
-        yPct: top / pageVisualSize.height,
-        wPct: width / pageVisualSize.width,
-        hPct: height / pageVisualSize.height
-      }
       const bandMode = mode
-      void visualRectToContentRect(source, page.sourcePageIndex, page.rotation, visual).then((rect) => {
-        const annotation: Annotation =
-          bandMode === 'redact'
-            ? { id: nanoid(), type: 'redact', ...rect, fill: 'black' }
-            : {
-                id: nanoid(),
-                type: 'highlight',
-                ...rect,
-                color: settings.highlightColor,
-                opacity: settings.highlightOpacity
-              }
-        addAnnotation(page.id, annotation)
-        onSelect({ pageId: page.id, annotationId: annotation.id })
-      })
+
+      // Tekst onder de sleep? Dan volgen markering/redigeren de tekstregels;
+      // zonder tekst (scans, marges) blijft het een gewone rechthoek.
+      const pad = bandMode === 'redact' ? 1.5 : 0.5
+      const lineRects = bandTextRects(finished, textLines).map((r) => ({
+        x: r.x - pad,
+        y: r.y - pad,
+        width: r.width + pad * 2,
+        height: r.height + pad * 2
+      }))
+      const targets = lineRects.length
+        ? lineRects
+        : [{ x: left, y: top, width, height }]
+      void (async () => {
+        let lastId: string | null = null
+        for (const target of targets) {
+          const rect = await visualRectToContentRect(source, page.sourcePageIndex, page.rotation, {
+            xPct: target.x / pageVisualSize.width,
+            yPct: target.y / pageVisualSize.height,
+            wPct: target.width / pageVisualSize.width,
+            hPct: target.height / pageVisualSize.height
+          })
+          const annotation: Annotation =
+            bandMode === 'redact'
+              ? { id: nanoid(), type: 'redact', ...rect, fill: 'black' }
+              : {
+                  id: nanoid(),
+                  type: 'highlight',
+                  ...rect,
+                  color: settings.highlightColor,
+                  opacity: settings.highlightOpacity
+                }
+          addAnnotation(page.id, annotation)
+          lastId = annotation.id
+        }
+        if (lastId) onSelect({ pageId: page.id, annotationId: lastId })
+      })()
       return
     }
     bandRef.current = null
@@ -573,8 +595,15 @@ export default function EditorPage({
     }
 
     if (!value.trim()) return
+    const style = editor.style ?? {
+      font: settings.textFont,
+      size: settings.textSize,
+      bold: settings.textBold,
+      italic: settings.textItalic,
+      color: settings.textColor
+    }
     const lines = value.split('\n').length
-    const height = lines * settings.textSize * TEXT_LINE_HEIGHT
+    const height = lines * style.size * TEXT_LINE_HEIGHT
     const { x, y } = await visualPointToContentPoint(
       source,
       page.sourcePageIndex,
@@ -588,11 +617,11 @@ export default function EditorPage({
       x,
       y,
       text: value,
-      font: settings.textFont,
-      size: settings.textSize,
-      bold: settings.textBold,
-      italic: settings.textItalic,
-      color: settings.textColor
+      font: style.font,
+      size: style.size,
+      bold: style.bold,
+      italic: style.italic,
+      color: style.color
     }
     addAnnotation(page.id, annotation)
     onSelect({ pageId: page.id, annotationId: annotation.id })
@@ -611,6 +640,13 @@ export default function EditorPage({
         y: line.visual.y - pad,
         width: line.visual.width + pad * 2,
         height: line.visual.height + pad * 2
+      },
+      style: {
+        font: 'arial',
+        size: Math.max(6, Math.round(line.fontSize)),
+        bold: false,
+        italic: false,
+        color: '#111111'
       }
     })
   }
@@ -1295,12 +1331,12 @@ export default function EditorPage({
               value={textEditor.value}
               placeholder="Typ tekst…"
               style={{
-                color: settings.textColor,
-                fontFamily: ANNOTATION_FONT_CSS[settings.textFont],
-                fontSize: settings.textSize * scale,
+                color: textEditor.style?.color ?? settings.textColor,
+                fontFamily: ANNOTATION_FONT_CSS[textEditor.style?.font ?? settings.textFont],
+                fontSize: (textEditor.style?.size ?? settings.textSize) * scale,
                 lineHeight: TEXT_LINE_HEIGHT,
-                fontWeight: settings.textBold ? 700 : 400,
-                fontStyle: settings.textItalic ? 'italic' : 'normal'
+                fontWeight: (textEditor.style?.bold ?? settings.textBold) ? 700 : 400,
+                fontStyle: (textEditor.style?.italic ?? settings.textItalic) ? 'italic' : 'normal'
               }}
               onChange={(e) => setTextEditor({ ...textEditor, value: e.target.value })}
               onKeyDown={(e) => {

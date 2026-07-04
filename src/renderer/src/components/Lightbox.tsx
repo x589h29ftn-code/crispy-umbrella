@@ -23,7 +23,8 @@ import {
 import { useStudioStore } from '../store'
 import { usePressDrag } from '../hooks/usePressDrag'
 import { useClickOutside } from '../hooks/useClickOutside'
-import { getTextLineBoxes, type TextLineBox } from '../lib/textLines'
+import { bandTextRects, getTextLineBoxes, type TextLineBox } from '../lib/textLines'
+import { renderTextSelectionLayer, selectionLineRects, type SelectionLineRect } from '../lib/textLayer'
 import { findSearchHitRects, type SearchHitRect } from '../lib/searchHits'
 import { buildStampSub, ShapeGeometry, ShapePreviewIcon, SHAPE_LABELS, STAMP_PRESETS } from '../lib/shapes'
 import type {
@@ -46,6 +47,7 @@ import {
   IconChevronRight,
   IconClose,
   IconComment,
+  IconCopy,
   IconCursor,
   IconEditText,
   IconEraser,
@@ -58,8 +60,10 @@ import {
   IconRotate,
   IconShapes,
   IconStamp,
+  IconStrike,
   IconTrash,
-  IconType
+  IconType,
+  IconUnderline
 } from './icons'
 import LightboxFilmstrip from './LightboxFilmstrip'
 import FormLayer from './FormLayer'
@@ -183,6 +187,10 @@ export default function Lightbox(): JSX.Element | null {
   const liveStrokeRef = useRef<{ x: number; y: number }[] | null>(null)
   const [textLines, setTextLines] = useState<TextLineBox[] | null>(null)
   const [searchHits, setSearchHits] = useState<SearchHitRect[]>([])
+  const textLayerRef = useRef<HTMLDivElement>(null)
+  const [selPopup, setSelPopup] = useState<{ x: number; y: number; text: string; rects: SelectionLineRect[] } | null>(
+    null
+  )
   const searchHighlight = useStudioStore((st) => st.searchHighlight)
   const setSearchHighlight = useStudioStore((st) => st.setSearchHighlight)
   const [commentPins, setCommentPins] = useState<Record<string, { x: number; y: number }>>({})
@@ -253,10 +261,10 @@ export default function Lightbox(): JSX.Element | null {
     setFormFieldCount(null)
   }, [lightbox.pageId])
 
-  // Flash de zoektreffers op de pagina na een klik in het zoekpaneel.
+  // Zolang een zoekterm actief is: alle treffers op de getoonde pagina geel markeren.
   useEffect(() => {
     let cancelled = false
-    if (!context || !searchHighlight || searchHighlight.pageId !== context.page.id) {
+    if (!context || !searchHighlight?.query) {
       setSearchHits([])
       return
     }
@@ -307,10 +315,10 @@ export default function Lightbox(): JSX.Element | null {
     }
   }, [context, sources])
 
-  // In-place text editing needs the native text line positions.
+  // Text lines: in-place editing + text-snapping voor markeren/redigeren.
   useEffect(() => {
     let cancelled = false
-    if (mode !== 'edittext' || !context) return
+    if ((mode !== 'edittext' && mode !== 'highlight' && mode !== 'redact') || !context) return
     const source = sources.get(context.page.sourceId)
     if (!source) return
     getTextLineBoxes(source, context.page.sourcePageIndex, context.page.rotation)
@@ -322,6 +330,25 @@ export default function Lightbox(): JSX.Element | null {
       cancelled = true
     }
   }, [mode, context, sources])
+
+  // Selecteerbare tekstlaag (kopiëren + tekst-volgend markeren) in Selecteren-modus.
+  useEffect(() => {
+    const el = textLayerRef.current
+    if (!el || !context || !image || !pageVisualSize || !stageImgRef.current) return
+    const source = sources.get(context.page.sourceId)
+    if (!source) return
+    const scaleNow = stageImgRef.current.clientWidth / pageVisualSize.width
+    const timer = window.setTimeout(() => {
+      renderTextSelectionLayer(el, source, context.page.sourcePageIndex, context.page.rotation, scaleNow).catch(
+        () => undefined
+      )
+    }, 150)
+    return () => window.clearTimeout(timer)
+  }, [context, sources, image, pageVisualSize])
+
+  useEffect(() => {
+    setSelPopup(null)
+  }, [lightbox.pageId, mode])
 
   useEffect(() => {
     function isTyping(target: EventTarget | null): boolean {
@@ -355,7 +382,8 @@ export default function Lightbox(): JSX.Element | null {
     const onWheel = (e: WheelEvent): void => {
       if (e.ctrlKey || e.metaKey) {
         e.preventDefault()
-        setPageZoom((z) => Math.min(MAX_PAGE_ZOOM, Math.max(1, z * (e.deltaY < 0 ? 1.15 : 1 / 1.15))))
+        // Vloeiend: schaalt exponentieel met de scrollsnelheid.
+        setPageZoom((z) => Math.min(MAX_PAGE_ZOOM, Math.max(1, z * Math.exp(-e.deltaY * 0.0022))))
       } else {
         setPageZoom((z) => {
           if (z > 1) {
@@ -683,24 +711,38 @@ export default function Lightbox(): JSX.Element | null {
       const height = Math.abs(finished.y2 - finished.y1)
       if (width * screenScale < MIN_HIGHLIGHT_SIZE_PX || height * screenScale < MIN_HIGHLIGHT_SIZE_PX) return
 
-      const visual = {
-        xPct: left / pageVisualSize.width,
-        yPct: top / pageVisualSize.height,
-        wPct: width / pageVisualSize.width,
-        hPct: height / pageVisualSize.height
-      }
       const pageId = context.page.id
       const bandMode = mode
-      void visualRectToContentRect(source, context.page.sourcePageIndex, context.page.rotation, visual).then(
-        (rect) => {
+      // Tekst onder de sleep? Dan volgen markering/redigeren de tekstregels;
+      // zonder tekst (scans, marges) blijft het een gewone rechthoek.
+      const pad = bandMode === 'redact' ? 1.5 : 0.5
+      const lineRects = bandTextRects(finished, textLines).map((r) => ({
+        x: r.x - pad,
+        y: r.y - pad,
+        width: r.width + pad * 2,
+        height: r.height + pad * 2
+      }))
+      const targets = lineRects.length ? lineRects : [{ x: left, y: top, width, height }]
+      const pageIndex = context.page.sourcePageIndex
+      const rotation = context.page.rotation
+      void (async () => {
+        let lastId: string | null = null
+        for (const target of targets) {
+          const rect = await visualRectToContentRect(source, pageIndex, rotation, {
+            xPct: target.x / pageVisualSize.width,
+            yPct: target.y / pageVisualSize.height,
+            wPct: target.width / pageVisualSize.width,
+            hPct: target.height / pageVisualSize.height
+          })
           const annotation: Annotation =
             bandMode === 'redact'
               ? { id: nanoid(), type: 'redact', ...rect, fill: 'black' }
               : { id: nanoid(), type: 'highlight', ...rect, color: highlightColor, opacity: highlightOpacity }
           addAnnotation(pageId, annotation)
-          setSelectedAnnotationId(annotation.id)
+          lastId = annotation.id
         }
-      )
+        if (lastId) setSelectedAnnotationId(lastId)
+      })()
       return
     }
 
@@ -919,6 +961,45 @@ export default function Lightbox(): JSX.Element | null {
       visualY: box.pivotY - textAnnotationBlockHeight(annotation),
       value: annotation.text
     })
+  }
+
+  // --- Tekstselectie: kopieer of markeer de gesleepte selectie direct ---
+  function onSurfaceMouseUp(): void {
+    if (mode !== 'view') return
+    window.setTimeout(() => {
+      const img = stageImgRef.current
+      if (!img) return
+      const found = selectionLineRects(img.parentElement as HTMLElement)
+      if (!found) {
+        setSelPopup(null)
+        return
+      }
+      const first = found.rects[0]
+      setSelPopup({ x: first.x, y: Math.max(0, first.y - 40), text: found.text, rects: found.rects })
+    }, 10)
+  }
+
+  async function annotateSelection(style: 'fill' | 'underline' | 'strike'): Promise<void> {
+    const popup = selPopup
+    if (!popup || !source || !context || !pageVisualSize) return
+    setSelPopup(null)
+    window.getSelection()?.removeAllRanges()
+    for (const rect of popup.rects) {
+      const contentRect = await visualRectToContentRect(source, context.page.sourcePageIndex, context.page.rotation, {
+        xPct: rect.x / layoutScale / pageVisualSize.width,
+        yPct: rect.y / layoutScale / pageVisualSize.height,
+        wPct: rect.width / layoutScale / pageVisualSize.width,
+        hPct: rect.height / layoutScale / pageVisualSize.height
+      })
+      addAnnotation(context.page.id, {
+        id: nanoid(),
+        type: 'highlight',
+        ...contentRect,
+        color: highlightColor,
+        opacity: style === 'fill' ? highlightOpacity : 0.9,
+        style
+      })
+    }
   }
 
   // --- Toolbar control handlers: edit the selected annotation, or set defaults ---
@@ -1705,6 +1786,46 @@ export default function Lightbox(): JSX.Element | null {
               onClick={onStageClick}
             >
               <img ref={stageImgRef} src={image} alt={context.group.name} draggable={false} />
+              <div
+                ref={textLayerRef}
+                className={`text-select-layer${mode === 'view' ? '' : ' text-select-layer--passive'}`}
+                onMouseUp={onSurfaceMouseUp}
+              />
+              {selPopup && mode === 'view' && (
+                <div
+                  className="selection-popup"
+                  style={{ left: selPopup.x, top: selPopup.y }}
+                  onPointerDown={(e) => e.stopPropagation()}
+                  onClick={(e) => e.stopPropagation()}
+                >
+                  <button
+                    type="button"
+                    className="selection-popup__btn"
+                    title="Kopiëren"
+                    onClick={() => {
+                      void navigator.clipboard.writeText(selPopup.text)
+                      window.getSelection()?.removeAllRanges()
+                      setSelPopup(null)
+                    }}
+                  >
+                    <IconCopy size={14} />
+                  </button>
+                  <button type="button" className="selection-popup__btn" title="Markeren" onClick={() => void annotateSelection('fill')}>
+                    <IconHighlighter size={14} />
+                  </button>
+                  <button
+                    type="button"
+                    className="selection-popup__btn"
+                    title="Onderstrepen"
+                    onClick={() => void annotateSelection('underline')}
+                  >
+                    <IconUnderline size={14} />
+                  </button>
+                  <button type="button" className="selection-popup__btn" title="Doorhalen" onClick={() => void annotateSelection('strike')}>
+                    <IconStrike size={14} />
+                  </button>
+                </div>
+              )}
               {context.page.annotations.map((annotation) => annotationOverlay(annotation))}
               {context.page.signatures.map((placement: SignaturePlacement) => {
                 const box = boxes[placement.id]

@@ -176,6 +176,9 @@ interface StudioState {
   /** reMarkable-koppeldialoog open? */
   remarkableDialogOpen: boolean
   setRemarkableDialogOpen: (open: boolean) => void
+  /** Presentatiemodus: alles verbergen behalve de pagina's. */
+  presentationMode: boolean
+  setPresentationMode: (on: boolean) => void
   focusCommentId: string | null
   setCommentsPanelOpen: (open: boolean) => void
   openCommentThread: (pageId: string, commentId: string) => void
@@ -305,7 +308,9 @@ export const useStudioStore = create<StudioState>((set, get) => ({
       formValues: payload.formValues,
       flattenForms: payload.flattenForms,
       activeGroupId: groups[0]?.id ?? null,
-      activeSignatureId: payload.signatureAssets[0]?.id ?? null
+      activeSignatureId: payload.signatureAssets[0]?.id ?? null,
+      editorTabs: groups.map((g) => g.id),
+      activeEditorTab: groups[0]?.id ?? null
     })
     return true
   },
@@ -487,11 +492,20 @@ export const useStudioStore = create<StudioState>((set, get) => ({
       }
       if (!newGroups.length) return
       get().markHistory()
-      set((state) => ({
-        sources,
-        groups: [...state.groups, ...newGroups],
-        activeGroupId: state.activeGroupId ?? newGroups[0]?.id ?? null
-      }))
+      set((state) => {
+        // Reader-first: het éérste document opent direct als leestabblad.
+        // Wie daarna vanuit het Overzicht bij-importeert, blijft gewoon daar.
+        const firstImport = state.groups.length === 0
+        return {
+          sources,
+          groups: [...state.groups, ...newGroups],
+          activeGroupId: state.activeGroupId ?? newGroups[0]?.id ?? null,
+          editorTabs: firstImport
+            ? [...state.editorTabs, ...newGroups.map((g) => g.id).filter((id) => !state.editorTabs.includes(id))]
+            : state.editorTabs,
+          activeEditorTab: firstImport ? (newGroups[0]?.id ?? state.activeEditorTab) : state.activeEditorTab
+        }
+      })
     } finally {
       set({ isImporting: false })
     }
@@ -776,6 +790,8 @@ export const useStudioStore = create<StudioState>((set, get) => ({
   setBookmarksPanelOpen: (open) => set({ bookmarksPanelOpen: open }),
   remarkableDialogOpen: false,
   setRemarkableDialogOpen: (open) => set({ remarkableDialogOpen: open }),
+  presentationMode: false,
+  setPresentationMode: (on) => set({ presentationMode: on }),
   focusCommentId: null,
 
   setCommentsPanelOpen: (open) => set({ commentsPanelOpen: open }),

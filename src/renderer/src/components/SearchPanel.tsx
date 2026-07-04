@@ -18,11 +18,32 @@ export default function SearchPanel(): JSX.Element | null {
   const setSearchHighlight = useStudioStore((s) => s.setSearchHighlight)
   const addToast = useStudioStore((s) => s.addToast)
 
+  const activeEditorTab = useStudioStore((s) => s.activeEditorTab)
+
   const [query, setQuery] = useState('')
   const [outcome, setOutcome] = useState<SearchOutcome | null>(null)
   const [searching, setSearching] = useState(false)
   const [ocrProgress, setOcrProgress] = useState<OcrProgress | null>(null)
+  const [hitIndex, setHitIndex] = useState(-1)
   const runIdRef = useRef(0)
+
+  function close(): void {
+    setOpen(false)
+    // Bij het sluiten verdwijnen alle gele zoekmarkeringen weer.
+    setSearchHighlight(null)
+  }
+
+  /** Naar een treffer: in het open leestabblad scrollt de pagina in beeld;
+   * anders opent het volledig scherm op die pagina. */
+  function goToHit(index: number): void {
+    const hit = (outcome?.hits ?? [])[index]
+    if (!hit) return
+    setHitIndex(index)
+    setSearchHighlight({ pageId: hit.pageId, query: query.trim() })
+    const state = useStudioStore.getState()
+    const group = state.groups.find((g) => g.pages.some((p) => p.id === hit.pageId))
+    if (!group || group.id !== activeEditorTab) openLightbox(hit.pageId)
+  }
 
   // Debounced search over all documents; also runs with an empty query so the
   // panel can report scanned pages without a text layer right away.
@@ -50,8 +71,15 @@ export default function SearchPanel(): JSX.Element | null {
       setQuery('')
       setOutcome(null)
       setOcrProgress(null)
+      setHitIndex(-1)
+      setSearchHighlight(null)
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open])
+
+  useEffect(() => {
+    setHitIndex(-1)
+  }, [query])
 
   if (!open) return null
 
@@ -109,10 +137,28 @@ export default function SearchPanel(): JSX.Element | null {
           value={query}
           onChange={(e) => setQuery(e.target.value)}
           onKeyDown={(e) => {
-            if (e.key === 'Escape') setOpen(false)
+            if (e.key === 'Escape') close()
+            if (e.key === 'Enter') goToHit(e.shiftKey ? Math.max(0, hitIndex - 1) : hitIndex + 1)
           }}
         />
-        <button type="button" className="icon-btn icon-btn--chrome" title="Sluiten (Esc)" onClick={() => setOpen(false)}>
+        {hits.length > 0 && (
+          <div className="search-panel__nav" title="Blader door de treffers (Enter / Shift+Enter)">
+            <button type="button" className="icon-btn icon-btn--chrome" onClick={() => goToHit(Math.max(0, hitIndex - 1))}>
+              ‹
+            </button>
+            <span>
+              {Math.max(1, hitIndex + 1)}/{hits.length}
+            </span>
+            <button
+              type="button"
+              className="icon-btn icon-btn--chrome"
+              onClick={() => goToHit(Math.min(hits.length - 1, hitIndex + 1))}
+            >
+              ›
+            </button>
+          </div>
+        )}
+        <button type="button" className="icon-btn icon-btn--chrome" title="Sluiten (Esc)" onClick={close}>
           <IconClose size={13} />
         </button>
       </div>
@@ -121,16 +167,12 @@ export default function SearchPanel(): JSX.Element | null {
         <div className="search-panel__results">
           {searching && <div className="search-panel__status">Zoeken…</div>}
           {!searching && hits.length === 0 && <div className="search-panel__status">Geen resultaten</div>}
-          {hits.slice(0, 50).map((hit) => (
+          {hits.slice(0, 50).map((hit, index) => (
             <button
               key={hit.pageId}
               type="button"
-              className="search-panel__hit"
-              onClick={() => {
-                setOpen(false)
-                setSearchHighlight({ pageId: hit.pageId, query: query.trim() })
-                openLightbox(hit.pageId)
-              }}
+              className={`search-panel__hit${index === hitIndex ? ' search-panel__hit--active' : ''}`}
+              onClick={() => goToHit(index)}
             >
               <span className="search-panel__hit-where">
                 {hit.groupName} · pagina {hit.pageNumber}

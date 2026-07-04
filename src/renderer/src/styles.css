@@ -3205,3 +3205,86 @@ button.group-row__date:hover {
   text-align: center;
   text-transform: lowercase;
 }
+
+/* ---- Verbeterronde: presentatie, paneel-tabs, zoeknavigatie (taak 38) ---- */
+
+.app--presentation .sidebar,
+.app--presentation .tab-strip {
+  display: none;
+}
+
+.editor-view--presentation .editor-rail,
+.editor-view--presentation .editor-tools,
+.editor-view--presentation .editor-center__bar {
+  display: none;
+}
+
+.presentation-exit {
+  position: fixed;
+  top: 14px;
+  right: 16px;
+  z-index: 120;
+  opacity: 0.35;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.presentation-exit:hover {
+  opacity: 1;
+}
+
+.editor-center__present {
+  margin-left: 6px;
+}
+
+.bookmarks-panel__tabs {
+  gap: 4px;
+}
+
+.bookmarks-panel__tab {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  background: transparent;
+  border: none;
+  border-bottom: 2px solid transparent;
+  color: var(--text-dim);
+  font: inherit;
+  font-size: 12px;
+  font-weight: 600;
+  padding: 4px 8px 6px;
+  cursor: pointer;
+}
+
+.bookmarks-panel__tab--active {
+  color: var(--text);
+  border-bottom-color: var(--accent);
+}
+
+.bookmarks-panel__tabs .icon-btn {
+  margin-left: auto;
+}
+
+.search-panel__nav {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 11px;
+  color: var(--text-dim);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.search-panel__hit--active {
+  outline: 1.5px solid var(--accent);
+  border-radius: 6px;
+}
+
+/* Annotaties/handtekeningen/inkt liggen boven de selecteerbare tekstlaag,
+   zodat verslepen, selecteren en gummen in Selecteren-modus blijven werken. */
+.annotation-overlay,
+.signature-overlay,
+.ink-overlay {
+  z-index: 3;
+}

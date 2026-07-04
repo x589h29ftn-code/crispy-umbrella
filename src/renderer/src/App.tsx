@@ -28,6 +28,7 @@ export default function App(): JSX.Element {
   const controlsRef = useRef<{ zoomBy: (f: number) => void; zoomTo: (s: number) => void } | null>(null)
   const theme = useStudioStore((s) => s.theme)
   const activeEditorTab = useStudioStore((s) => s.activeEditorTab)
+  const presentationMode = useStudioStore((s) => s.presentationMode)
 
   useEffect(() => window.api.onFilesOpened((files) => void useStudioStore.getState().importFiles(files)), [])
 
@@ -92,7 +93,7 @@ export default function App(): JSX.Element {
   )
 
   return (
-    <div className="app">
+    <div className={`app${presentationMode ? ' app--presentation' : ''}`}>
       <Toolbar
         zoomPct={zoomPct}
         onZoomIn={() => controlsRef.current?.zoomBy(1.2)}
