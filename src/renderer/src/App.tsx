@@ -10,6 +10,7 @@ import CommentsPanel from './components/CommentsPanel'
 import BookmarksPanel from './components/BookmarksPanel'
 import WhatsNewDialog from './components/WhatsNewDialog'
 import UpdateBanner from './components/UpdateBanner'
+import RemarkableDialog from './components/RemarkableDialog'
 import TabStrip from './components/TabStrip'
 import EditorView from './components/editor/EditorView'
 import { exportAllZip } from './lib/exportActions'
@@ -115,6 +116,7 @@ export default function App(): JSX.Element {
       <PasswordDialog />
       <WhatsNewDialog />
       <UpdateBanner />
+      <RemarkableDialog />
       <Toasts />
     </div>
   )

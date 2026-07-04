@@ -173,6 +173,26 @@ app.whenReady().then(() => {
     return convertOfficeToPdf(name, data)
   })
 
+  ipcMain.handle('remarkable:status', async () => {
+    const { remarkableStatus } = await import('./remarkable')
+    return remarkableStatus()
+  })
+
+  ipcMain.handle('remarkable:pair', async (_evt, code: string) => {
+    const { remarkablePair } = await import('./remarkable')
+    return remarkablePair(code)
+  })
+
+  ipcMain.handle('remarkable:unpair', async () => {
+    const { remarkableUnpair } = await import('./remarkable')
+    return remarkableUnpair()
+  })
+
+  ipcMain.handle('remarkable:upload', async (_evt, name: string, data: Uint8Array) => {
+    const { remarkableUpload } = await import('./remarkable')
+    return remarkableUpload(name, data)
+  })
+
   ipcMain.handle('dialog:openPdfs', async () => {
     const result = await dialog.showOpenDialog({
       properties: ['openFile', 'multiSelections'],

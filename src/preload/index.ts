@@ -57,6 +57,12 @@ const api = {
   sessionSaveSources: (sources: { id: string; data: Uint8Array }[]): Promise<boolean> =>
     ipcRenderer.invoke('session:saveSources', sources),
   sessionClear: (): Promise<boolean> => ipcRenderer.invoke('session:clear'),
+  remarkableStatus: (): Promise<{ paired: boolean }> => ipcRenderer.invoke('remarkable:status'),
+  remarkablePair: (code: string): Promise<{ ok: boolean; error?: string }> =>
+    ipcRenderer.invoke('remarkable:pair', code),
+  remarkableUnpair: (): Promise<{ ok: boolean }> => ipcRenderer.invoke('remarkable:unpair'),
+  remarkableUpload: (name: string, data: Uint8Array): Promise<{ ok: boolean; error?: string }> =>
+    ipcRenderer.invoke('remarkable:upload', name, data),
   getAppVersion: (): Promise<string> => ipcRenderer.invoke('app:version'),
   installUpdate: (): Promise<void> => ipcRenderer.invoke('update:install'),
   onUpdateEvent: (callback: (event: { type: string; version?: string }) => void): (() => void) => {

@@ -3178,3 +3178,30 @@ button.group-row__date:hover {
   color: var(--text);
   z-index: 90;
 }
+
+/* ---- Delen met reMarkable (taak 37) ---- */
+
+.remarkable-card {
+  max-width: 420px;
+  position: relative;
+}
+
+.remarkable-card__close {
+  position: absolute;
+  top: 12px;
+  right: 12px;
+}
+
+.remarkable-card a {
+  color: var(--accent);
+}
+
+.remarkable-card__code {
+  width: 100%;
+  margin-top: 6px;
+  font-family: ui-monospace, 'SFMono-Regular', Menlo, monospace;
+  font-size: 18px;
+  letter-spacing: 0.18em;
+  text-align: center;
+  text-transform: lowercase;
+}

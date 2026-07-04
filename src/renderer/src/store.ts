@@ -173,6 +173,9 @@ interface StudioState {
   commentsPanelOpen: boolean
   bookmarksPanelOpen: boolean
   setBookmarksPanelOpen: (open: boolean) => void
+  /** reMarkable-koppeldialoog open? */
+  remarkableDialogOpen: boolean
+  setRemarkableDialogOpen: (open: boolean) => void
   focusCommentId: string | null
   setCommentsPanelOpen: (open: boolean) => void
   openCommentThread: (pageId: string, commentId: string) => void
@@ -771,6 +774,8 @@ export const useStudioStore = create<StudioState>((set, get) => ({
   commentsPanelOpen: false,
   bookmarksPanelOpen: false,
   setBookmarksPanelOpen: (open) => set({ bookmarksPanelOpen: open }),
+  remarkableDialogOpen: false,
+  setRemarkableDialogOpen: (open) => set({ remarkableDialogOpen: open }),
   focusCommentId: null,
 
   setCommentsPanelOpen: (open) => set({ commentsPanelOpen: open }),

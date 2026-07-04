@@ -432,3 +432,13 @@ export function IconFile({ size = 16, className }: IconProps): JSX.Element {
     </svg>
   )
 }
+
+export function IconRemarkable({ size = 16, className }: IconProps): JSX.Element {
+  return (
+    <svg width={size} height={size} viewBox="0 0 24 24" className={className} {...base}>
+      <rect x="5" y="3" width="14" height="18" rx="1.5" />
+      <path d="M9 3v18" />
+      <path d="M12.5 7.5h3M12.5 11h4M12.5 14.5h2.5" />
+    </svg>
+  )
+}

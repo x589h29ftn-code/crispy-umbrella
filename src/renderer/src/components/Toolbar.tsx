@@ -4,6 +4,7 @@ import { useStudioStore } from '../store'
 import { useClickOutside } from '../hooks/useClickOutside'
 import { exportActivePdf, exportAllZip } from '../lib/exportActions'
 import { printActiveGroup } from '../lib/printActions'
+import { shareActiveToRemarkable } from '../lib/remarkableActions'
 import {
   IconArchive,
   IconCheck,
@@ -19,6 +20,7 @@ import {
   IconMoon,
   IconPlus,
   IconPrinter,
+  IconRemarkable,
   IconRedo,
   IconSearch,
   IconSignature,
@@ -339,6 +341,16 @@ export default function Toolbar({ zoomPct, onZoomIn, onZoomOut, onZoomReset, onZ
       >
         <IconPrinter size={15} />
         <span className="sidebar-btn__label">Afdrukken</span>
+      </button>
+      <button
+        type="button"
+        className="sidebar-btn"
+        disabled={!activeGroup}
+        onClick={() => void shareActiveToRemarkable()}
+        title="Deel het actieve document met je reMarkable-cloud (map &quot;PDF Studio&quot;)"
+      >
+        <IconRemarkable size={15} />
+        <span className="sidebar-btn__label">Deel met reMarkable</span>
       </button>
       <button
         type="button"
