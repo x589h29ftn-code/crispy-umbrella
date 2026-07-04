@@ -691,17 +691,35 @@ async function buildPdf(group: DocGroup, sources: Map<string, SourceFile>): Prom
       const viewport = await getScale1Viewport(src, page.sourcePageIndex, page.rotation)
       const rotateDeg = computeRotationCompensationDegrees(viewport)
       if (annotation.type === 'highlight') {
-        // Multiply blend keeps the underlying text readable, like a real highlighter.
-        targetPage.drawRectangle({
-          x: annotation.x - ox,
-          y: annotation.y - oy,
-          width: annotation.width,
-          height: annotation.height,
-          color: hexToRgb(annotation.color),
-          opacity: Math.max(0, Math.min(1, annotation.opacity)),
-          rotate: degrees(rotateDeg),
-          blendMode: BlendMode.Multiply
-        })
+        const style = annotation.style ?? 'fill'
+        if (style === 'fill') {
+          // Multiply blend keeps the underlying text readable, like a real highlighter.
+          targetPage.drawRectangle({
+            x: annotation.x - ox,
+            y: annotation.y - oy,
+            width: annotation.width,
+            height: annotation.height,
+            color: hexToRgb(annotation.color),
+            opacity: Math.max(0, Math.min(1, annotation.opacity)),
+            rotate: degrees(rotateDeg),
+            blendMode: BlendMode.Multiply
+          })
+        } else {
+          // Underline sits at the bottom of the box, strike through the middle:
+          // a thin bar shifted along the box's local "up" axis.
+          const bar = Math.max(0.8, annotation.height * 0.08)
+          const offset = style === 'underline' ? 0 : annotation.height / 2 - bar / 2
+          const theta = (rotateDeg * Math.PI) / 180
+          targetPage.drawRectangle({
+            x: annotation.x - ox - Math.sin(theta) * offset,
+            y: annotation.y - oy + Math.cos(theta) * offset,
+            width: annotation.width,
+            height: bar,
+            color: hexToRgb(annotation.color),
+            opacity: Math.max(0, Math.min(1, annotation.opacity)),
+            rotate: degrees(rotateDeg)
+          })
+        }
       } else if (annotation.type === 'ink') {
         if (annotation.points.length >= 2) {
           // Points are stored in content space, so the stroke is anchored to the

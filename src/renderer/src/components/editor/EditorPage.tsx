@@ -14,6 +14,7 @@ import {
 } from '../../lib/pdfEngine'
 import { ANNOTATION_FONT_CSS } from '../../lib/annotationStyle'
 import { getTextLineBoxes, type TextLineBox } from '../../lib/textLines'
+import { renderTextSelectionLayer, selectionLineRects, type SelectionLineRect } from '../../lib/textLayer'
 import { useStudioStore } from '../../store'
 import { formatCommentTime } from '../Lightbox'
 import type {
@@ -26,7 +27,7 @@ import type {
   SourceFile,
   TextAnnotation
 } from '../../types'
-import { IconCheck, IconClose, IconComment, IconTrash } from '../icons'
+import { IconCheck, IconClose, IconComment, IconCopy, IconHighlighter, IconStrike, IconTrash, IconUnderline } from '../icons'
 
 export type EditorMode =
   | 'view'
@@ -136,6 +137,10 @@ export default function EditorPage({
   const [newComment, setNewComment] = useState<{ visualX: number; visualY: number; value: string } | null>(null)
   const [replyDraft, setReplyDraft] = useState('')
   const imgRef = useRef<HTMLImageElement>(null)
+  const textLayerRef = useRef<HTMLDivElement>(null)
+  const [selPopup, setSelPopup] = useState<{ x: number; y: number; text: string; rects: SelectionLineRect[] } | null>(
+    null
+  )
   const dragOriginRef = useRef<DragTarget | null>(null)
 
   const scale = pageVisualSize ? cssWidth / pageVisualSize.width : 1
@@ -212,6 +217,21 @@ export default function EditorPage({
       cancelled = true
     }
   }, [source, page])
+
+  // Selectable text layer (kopiëren + tekst-volgend markeren) in view mode.
+  useEffect(() => {
+    const el = textLayerRef.current
+    if (!el || !source || !image) return
+    let cancelled = false
+    const timer = window.setTimeout(() => {
+      renderTextSelectionLayer(el, source, page.sourcePageIndex, page.rotation, scale).catch(() => undefined)
+    }, 150)
+    return () => {
+      cancelled = true
+      void cancelled
+      window.clearTimeout(timer)
+    }
+  }, [source, image, page.sourcePageIndex, page.rotation, scale])
 
   useEffect(() => {
     let cancelled = false
@@ -541,6 +561,45 @@ export default function EditorPage({
     setOpenCommentId(comment.id)
   }
 
+  function onSurfaceMouseUp(): void {
+    if (mode !== 'view') return
+    // Wait a tick so the browser finalizes the selection.
+    window.setTimeout(() => {
+      const img = imgRef.current
+      if (!img) return
+      const found = selectionLineRects(img.parentElement as HTMLElement)
+      if (!found) {
+        setSelPopup(null)
+        return
+      }
+      const first = found.rects[0]
+      setSelPopup({ x: first.x, y: Math.max(0, first.y - 40), text: found.text, rects: found.rects })
+    }, 10)
+  }
+
+  async function annotateSelection(style: 'fill' | 'underline' | 'strike'): Promise<void> {
+    const popup = selPopup
+    if (!popup || !source || !pageVisualSize) return
+    setSelPopup(null)
+    window.getSelection()?.removeAllRanges()
+    for (const rect of popup.rects) {
+      const contentRect = await visualRectToContentRect(source, page.sourcePageIndex, page.rotation, {
+        xPct: rect.x / scale / pageVisualSize.width,
+        yPct: rect.y / scale / pageVisualSize.height,
+        wPct: rect.width / scale / pageVisualSize.width,
+        hPct: rect.height / scale / pageVisualSize.height
+      })
+      addAnnotation(page.id, {
+        id: nanoid(),
+        type: 'highlight',
+        ...contentRect,
+        color: settings.highlightColor,
+        opacity: style === 'fill' ? settings.highlightOpacity : 0.9,
+        style
+      })
+    }
+  }
+
   const overlaysPassive = mode !== 'view' && mode !== 'erase'
 
   function inkOverlay(annotation: InkAnnotation): JSX.Element | null {
@@ -665,8 +724,12 @@ export default function EditorPage({
           <div className={`annotation-overlay__redact annotation-overlay__redact--${annotation.fill}`} />
         ) : annotation.type === 'highlight' ? (
           <div
-            className="annotation-overlay__fill"
-            style={{ background: annotation.color, opacity: annotation.opacity }}
+            className={`annotation-overlay__fill annotation-overlay__fill--${annotation.style ?? 'fill'}`}
+            style={{
+              background: (annotation.style ?? 'fill') === 'fill' ? annotation.color : 'transparent',
+              opacity: annotation.opacity,
+              ['--hl-color' as string]: annotation.color
+            }}
           />
         ) : (
           <div
@@ -739,6 +802,46 @@ export default function EditorPage({
           <img ref={imgRef} src={image} alt={`Pagina ${pageNumber}`} draggable={false} />
         ) : (
           <div className="editor-page__loading" style={{ height: cssWidth * 1.35 }} />
+        )}
+        <div
+          ref={textLayerRef}
+          className={`text-select-layer${mode === 'view' ? '' : ' text-select-layer--passive'}`}
+          onMouseUp={onSurfaceMouseUp}
+        />
+        {selPopup && mode === 'view' && (
+          <div
+            className="selection-popup"
+            style={{ left: selPopup.x, top: selPopup.y }}
+            onPointerDown={(e) => e.stopPropagation()}
+            onClick={(e) => e.stopPropagation()}
+          >
+            <button
+              type="button"
+              className="selection-popup__btn"
+              title="Kopiëren"
+              onClick={() => {
+                void navigator.clipboard.writeText(selPopup.text)
+                window.getSelection()?.removeAllRanges()
+                setSelPopup(null)
+              }}
+            >
+              <IconCopy size={14} />
+            </button>
+            <button type="button" className="selection-popup__btn" title="Markeren" onClick={() => void annotateSelection('fill')}>
+              <IconHighlighter size={14} />
+            </button>
+            <button
+              type="button"
+              className="selection-popup__btn"
+              title="Onderstrepen"
+              onClick={() => void annotateSelection('underline')}
+            >
+              <IconUnderline size={14} />
+            </button>
+            <button type="button" className="selection-popup__btn" title="Doorhalen" onClick={() => void annotateSelection('strike')}>
+              <IconStrike size={14} />
+            </button>
+          </div>
         )}
         {page.annotations.map((annotation) => annotationOverlay(annotation))}
         {page.signatures.map((placement: SignaturePlacement) => {

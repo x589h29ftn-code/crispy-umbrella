@@ -2682,3 +2682,90 @@ button.group-row__date:hover {
 .editor-tools__spacer {
   flex: 1;
 }
+
+/* ---------- Tekstlaag: selecteren & kopiëren ---------- */
+.text-select-layer {
+  position: absolute;
+  inset: 0;
+  overflow: hidden;
+  line-height: 1;
+  text-size-adjust: none;
+  forced-color-adjust: none;
+  transform-origin: 0 0;
+  z-index: 2;
+  caret-color: transparent;
+  user-select: text;
+}
+
+.text-select-layer--passive {
+  pointer-events: none;
+  user-select: none;
+}
+
+.text-select-layer :is(span, br) {
+  position: absolute;
+  color: transparent;
+  white-space: pre;
+  cursor: text;
+  transform-origin: 0% 0%;
+  user-select: text;
+}
+
+.text-select-layer ::selection {
+  background: rgba(79, 140, 255, 0.35);
+}
+
+.selection-popup {
+  position: absolute;
+  display: flex;
+  gap: 2px;
+  background: var(--panel);
+  border-radius: 999px;
+  box-shadow: var(--shadow-lg);
+  padding: 4px;
+  z-index: 20;
+  animation: dropdown-in 0.1s ease;
+}
+
+.selection-popup__btn {
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  border: none;
+  background: transparent;
+  color: var(--text-dim);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+}
+
+.selection-popup__btn:hover {
+  background: var(--panel-hover);
+  color: var(--accent);
+}
+
+/* Onderstrepen/doorhalen: dunne balk in het markeervak */
+.annotation-overlay__fill--underline,
+.annotation-overlay__fill--strike {
+  position: relative;
+}
+
+.annotation-overlay__fill--underline::after,
+.annotation-overlay__fill--strike::after {
+  content: '';
+  position: absolute;
+  left: 0;
+  right: 0;
+  height: 8%;
+  min-height: 2px;
+  background: var(--hl-color);
+}
+
+.annotation-overlay__fill--underline::after {
+  bottom: 0;
+}
+
+.annotation-overlay__fill--strike::after {
+  top: 46%;
+}

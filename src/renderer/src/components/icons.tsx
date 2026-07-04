@@ -229,6 +229,31 @@ export function IconType({ size = 16, className }: IconProps): JSX.Element {
   )
 }
 
+export function IconCopy({ size = 16, className }: IconProps): JSX.Element {
+  return (
+    <svg width={size} height={size} viewBox="0 0 24 24" className={className} {...base}>
+      <rect x="9" y="9" width="11" height="11" rx="2" />
+      <path d="M15 5H6a2 2 0 0 0-2 2v9" />
+    </svg>
+  )
+}
+
+export function IconUnderline({ size = 16, className }: IconProps): JSX.Element {
+  return (
+    <svg width={size} height={size} viewBox="0 0 24 24" className={className} {...base}>
+      <path d="M6.5 4v7a5.5 5.5 0 0 0 11 0V4M5 20.5h14" />
+    </svg>
+  )
+}
+
+export function IconStrike({ size = 16, className }: IconProps): JSX.Element {
+  return (
+    <svg width={size} height={size} viewBox="0 0 24 24" className={className} {...base}>
+      <path d="M7 6.5c.8-1.7 2.6-2.5 5-2.5 2.9 0 4.6 1.3 5 3M17 15.5c0 2.8-2.2 4.5-5 4.5-2.6 0-4.4-1-5-3M4 12h16" />
+    </svg>
+  )
+}
+
 export function IconGridView({ size = 16, className }: IconProps): JSX.Element {
   return (
     <svg width={size} height={size} viewBox="0 0 24 24" className={className} {...base}>

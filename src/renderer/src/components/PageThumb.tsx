@@ -226,15 +226,16 @@ export default function PageThumb({ page, source, index }: Props): JSX.Element {
               ) : annotation.type === 'highlight' && box ? (
                 <div
                   key={annotation.id}
-                  className="page-decoration page-decoration--highlight"
+                  className={`page-decoration page-decoration--highlight annotation-overlay__fill--${annotation.style ?? 'fill'}`}
                   style={{
                     left: box.pivotX * decorScale,
                     top: (box.pivotY - box.height) * decorScale,
                     width: box.width * decorScale,
                     height: box.height * decorScale,
                     transform: `rotate(${box.rotateDeg}deg)`,
-                    background: annotation.color,
-                    opacity: annotation.opacity
+                    background: (annotation.style ?? 'fill') === 'fill' ? annotation.color : 'transparent',
+                    opacity: annotation.opacity,
+                    ['--hl-color' as string]: annotation.color
                   }}
                 />
               ) : annotation.type === 'text' && box ? (

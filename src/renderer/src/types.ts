@@ -27,6 +27,8 @@ export interface HighlightAnnotation {
   height: number
   color: string
   opacity: number
+  /** fill = marker (default); underline/strike are thin bars over the same box. */
+  style?: 'fill' | 'underline' | 'strike'
 }
 
 export interface TextAnnotation {
