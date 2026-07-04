@@ -66,8 +66,11 @@ function useDecorations(page: PageRef, source: SourceFile | undefined): Decorati
             box: await getPlacementVisualBox(source, page.sourcePageIndex, page.rotation, {
               x: annotation.x,
               y: annotation.y,
-              width: annotation.type === 'highlight' ? annotation.width : 0,
-              height: annotation.type === 'highlight' ? annotation.height : textAnnotationBlockHeight(annotation)
+              width: annotation.type === 'highlight' || annotation.type === 'redact' ? annotation.width : 0,
+              height:
+                annotation.type === 'highlight' || annotation.type === 'redact'
+                  ? annotation.height
+                  : textAnnotationBlockHeight(annotation)
             })
           }
         })
@@ -193,6 +196,19 @@ export default function PageThumb({ page, source, index }: Props): JSX.Element {
                     />
                   </svg>
                 ) : null
+              ) : annotation.type === 'redact' && box ? (
+                <div
+                  key={annotation.id}
+                  className="page-decoration"
+                  style={{
+                    left: box.pivotX * decorScale,
+                    top: (box.pivotY - box.height) * decorScale,
+                    width: box.width * decorScale,
+                    height: box.height * decorScale,
+                    transform: `rotate(${box.rotateDeg}deg)`,
+                    background: annotation.fill === 'white' ? '#fff' : '#000'
+                  }}
+                />
               ) : annotation.type === 'highlight' && box ? (
                 <div
                   key={annotation.id}

@@ -23,11 +23,13 @@ import {
 import { useStudioStore } from '../store'
 import { usePressDrag } from '../hooks/usePressDrag'
 import { useClickOutside } from '../hooks/useClickOutside'
+import { getTextLineBoxes, type TextLineBox } from '../lib/textLines'
 import type {
   Annotation,
   AnnotationFont,
   HighlightAnnotation,
   InkAnnotation,
+  RedactAnnotation,
   SignaturePlacement,
   TextAnnotation
 } from '../types'
@@ -37,11 +39,13 @@ import {
   IconChevronRight,
   IconClose,
   IconCursor,
+  IconEditText,
   IconEraser,
   IconHighlighter,
   IconMinus,
   IconPen,
   IconPlus,
+  IconRedact,
   IconRotate,
   IconType
 } from './icons'
@@ -51,7 +55,7 @@ const DEFAULT_SIGNATURE_WIDTH_PCT = 0.28
 const MIN_HIGHLIGHT_SIZE_PX = 5
 const MAX_PAGE_ZOOM = 5
 
-type EditMode = 'view' | 'highlight' | 'text' | 'draw' | 'erase'
+type EditMode = 'view' | 'highlight' | 'text' | 'draw' | 'erase' | 'redact' | 'edittext'
 
 interface DragTarget {
   kind: 'move' | 'resize'
@@ -75,6 +79,8 @@ interface TextEditorState {
   visualX: number
   visualY: number
   value: string
+  /** In-place text editing: white-out box (visual units) placed over the original line on commit. */
+  coverVisualRect?: { x: number; y: number; width: number; height: number }
 }
 
 export default function Lightbox(): JSX.Element | null {
@@ -132,6 +138,7 @@ export default function Lightbox(): JSX.Element | null {
   const bandRef = useRef<{ x1: number; y1: number } | null>(null)
   const [liveStroke, setLiveStroke] = useState<{ x: number; y: number }[] | null>(null)
   const liveStrokeRef = useRef<{ x: number; y: number }[] | null>(null)
+  const [textLines, setTextLines] = useState<TextLineBox[] | null>(null)
   const [sigPickerOpen, setSigPickerOpen] = useState(false)
   const sigPickerRef = useRef<HTMLDivElement>(null)
   useClickOutside(sigPickerRef, sigPickerOpen, () => setSigPickerOpen(false))
@@ -189,7 +196,24 @@ export default function Lightbox(): JSX.Element | null {
     liveStrokeRef.current = null
     setPageZoom(1)
     setPagePan({ x: 0, y: 0 })
+    setTextLines(null)
   }, [lightbox.pageId])
+
+  // In-place text editing needs the native text line positions.
+  useEffect(() => {
+    let cancelled = false
+    if (mode !== 'edittext' || !context) return
+    const source = sources.get(context.page.sourceId)
+    if (!source) return
+    getTextLineBoxes(source, context.page.sourcePageIndex, context.page.rotation)
+      .then((lines) => {
+        if (!cancelled) setTextLines(lines)
+      })
+      .catch(() => undefined)
+    return () => {
+      cancelled = true
+    }
+  }, [mode, context, sources])
 
   useEffect(() => {
     function isTyping(target: EventTarget | null): boolean {
@@ -289,10 +313,13 @@ export default function Lightbox(): JSX.Element | null {
         boxAnnotations.map(async (a) => [
           a.id,
           await getPlacementVisualBox(source, context.page.sourcePageIndex, context.page.rotation, {
-            x: (a as HighlightAnnotation | TextAnnotation).x,
-            y: (a as HighlightAnnotation | TextAnnotation).y,
-            width: a.type === 'highlight' ? a.width : 0,
-            height: a.type === 'highlight' ? a.height : textAnnotationBlockHeight(a as TextAnnotation)
+            x: (a as HighlightAnnotation | RedactAnnotation | TextAnnotation).x,
+            y: (a as HighlightAnnotation | RedactAnnotation | TextAnnotation).y,
+            width: a.type === 'highlight' || a.type === 'redact' ? a.width : 0,
+            height:
+              a.type === 'highlight' || a.type === 'redact'
+                ? a.height
+                : textAnnotationBlockHeight(a as TextAnnotation)
           })
         ] as const)
       ),
@@ -448,7 +475,7 @@ export default function Lightbox(): JSX.Element | null {
     const inside =
       e.clientX >= rect.left && e.clientX <= rect.right && e.clientY >= rect.top && e.clientY <= rect.bottom
 
-    if (mode === 'highlight' && inside) {
+    if ((mode === 'highlight' || mode === 'redact') && inside) {
       e.preventDefault()
       e.currentTarget.setPointerCapture(e.pointerId)
       const point = stagePointToVisual(e.clientX, e.clientY)!
@@ -530,15 +557,13 @@ export default function Lightbox(): JSX.Element | null {
         hPct: height / pageVisualSize.height
       }
       const pageId = context.page.id
+      const bandMode = mode
       void visualRectToContentRect(source, context.page.sourcePageIndex, context.page.rotation, visual).then(
         (rect) => {
-          const annotation: HighlightAnnotation = {
-            id: nanoid(),
-            type: 'highlight',
-            ...rect,
-            color: highlightColor,
-            opacity: highlightOpacity
-          }
+          const annotation: Annotation =
+            bandMode === 'redact'
+              ? { id: nanoid(), type: 'redact', ...rect, fill: 'black' }
+              : { id: nanoid(), type: 'highlight', ...rect, color: highlightColor, opacity: highlightOpacity }
           addAnnotation(pageId, annotation)
           setSelectedAnnotationId(annotation.id)
         }
@@ -585,6 +610,20 @@ export default function Lightbox(): JSX.Element | null {
     setTextEditor(null)
     const value = editor.value.replace(/\s+$/, '')
     const pageId = context.page.id
+
+    // In-place editing: put a white-out box over the original line first. An
+    // empty value means "remove this line" — then only the white-out remains.
+    if (editor.coverVisualRect && pageVisualSize) {
+      const cover = editor.coverVisualRect
+      const rect = await visualRectToContentRect(source, context.page.sourcePageIndex, context.page.rotation, {
+        xPct: cover.x / pageVisualSize.width,
+        yPct: cover.y / pageVisualSize.height,
+        wPct: cover.width / pageVisualSize.width,
+        hPct: cover.height / pageVisualSize.height
+      })
+      const whiteout: RedactAnnotation = { id: nanoid(), type: 'redact', ...rect, fill: 'white' }
+      addAnnotation(pageId, whiteout)
+    }
 
     if (editor.annotationId) {
       const existing = context.page.annotations.find(
@@ -636,6 +675,43 @@ export default function Lightbox(): JSX.Element | null {
     }
     addAnnotation(context.page.id, annotation)
     setSelectedAnnotationId(annotation.id)
+  }
+
+  // In-place editing: click on a native text line → prefilled editor over it;
+  // on commit a white-out covers the original and the new text is placed on top.
+  function startEditLine(line: TextLineBox): void {
+    const pad = 1.5
+    setTextFont('arial')
+    setTextSize(Math.max(6, Math.round(line.fontSize)))
+    setTextBold(false)
+    setTextItalic(false)
+    setTextColor('#111111')
+    setSelectedAnnotationId(null)
+    setTextEditor({
+      annotationId: null,
+      visualX: line.visual.x,
+      visualY: line.visual.y,
+      value: line.str,
+      coverVisualRect: {
+        x: line.visual.x - pad,
+        y: line.visual.y - pad,
+        width: line.visual.width + pad * 2,
+        height: line.visual.height + pad * 2
+      }
+    })
+  }
+
+  /** Lines already covered by a white-out shouldn't be clickable again. */
+  function lineCovered(line: TextLineBox): boolean {
+    if (!context) return false
+    const cx = line.visual.x + line.visual.width / 2
+    const cy = line.visual.y + line.visual.height / 2
+    return context.page.annotations.some((a) => {
+      if (a.type !== 'redact') return false
+      const b = annoBoxes[a.id]
+      if (!b) return false
+      return cx >= b.pivotX && cx <= b.pivotX + b.width && cy >= b.pivotY - b.height && cy <= b.pivotY
+    })
   }
 
   function openTextEditorFor(annotation: TextAnnotation): void {
@@ -779,7 +855,7 @@ export default function Lightbox(): JSX.Element | null {
           overlaysPassive || mode === 'erase' ? ' annotation-overlay--passive' : ''
         }`}
         style={
-          annotation.type === 'highlight'
+          annotation.type === 'highlight' || annotation.type === 'redact'
             ? { ...common, width: box.width * layoutScale, height: box.height * layoutScale }
             : common
         }
@@ -795,7 +871,11 @@ export default function Lightbox(): JSX.Element | null {
           if (annotation.type === 'text') openTextEditorFor(annotation)
         }}
       >
-        {annotation.type === 'highlight' ? (
+        {annotation.type === 'redact' ? (
+          <div
+            className={`annotation-overlay__redact annotation-overlay__redact--${annotation.fill}`}
+          />
+        ) : annotation.type === 'highlight' ? (
           <div
             className="annotation-overlay__fill"
             style={{ background: annotation.color, opacity: annotation.opacity }}
@@ -830,7 +910,7 @@ export default function Lightbox(): JSX.Element | null {
             >
               <IconClose size={11} />
             </button>
-            {annotation.type === 'highlight' && (
+            {(annotation.type === 'highlight' || annotation.type === 'redact') && (
               <div
                 className="signature-overlay__resize"
                 onPointerDown={(e) => beginDrag(e, 'annotation', 'resize', annotation.id, box)}
@@ -845,7 +925,7 @@ export default function Lightbox(): JSX.Element | null {
   }
 
   const wrapModeClass =
-    mode === 'highlight'
+    mode === 'highlight' || mode === 'redact'
       ? ' lightbox__page-wrap--highlighting'
       : mode === 'text'
         ? ' lightbox__page-wrap--texting'
@@ -920,6 +1000,28 @@ export default function Lightbox(): JSX.Element | null {
           </button>
           <button
             type="button"
+            className={`editbar__mode${mode === 'edittext' ? ' editbar__mode--active' : ''}`}
+            onClick={() => {
+              setMode((m) => (m === 'edittext' ? 'view' : 'edittext'))
+              setSelectedAnnotationId(null)
+            }}
+            title="Tekst bewerken: klik op een bestaande tekstregel om hem aan te passen of te verwijderen"
+          >
+            <IconEditText size={14} /> Tekst bewerken
+          </button>
+          <button
+            type="button"
+            className={`editbar__mode${mode === 'redact' ? ' editbar__mode--active' : ''}`}
+            onClick={() => {
+              setMode((m) => (m === 'redact' ? 'view' : 'redact'))
+              setSelectedAnnotationId(null)
+            }}
+            title="Redigeren: sleep een zwart vak — bij export wordt de onderliggende tekst écht verwijderd"
+          >
+            <IconRedact size={14} /> Redigeren
+          </button>
+          <button
+            type="button"
             className={`editbar__mode${mode === 'erase' ? ' editbar__mode--active' : ''}`}
             onClick={() => {
               setMode((m) => (m === 'erase' ? 'view' : 'erase'))
@@ -930,6 +1032,17 @@ export default function Lightbox(): JSX.Element | null {
             <IconEraser size={14} /> Gum
           </button>
         </div>
+
+        {mode === 'redact' && (
+          <div className="editbar__group">
+            <span className="editbar__note">Sleep een vak — bij export verdwijnt de onderliggende inhoud echt</span>
+          </div>
+        )}
+        {mode === 'edittext' && textLines && textLines.length === 0 && (
+          <div className="editbar__group">
+            <span className="editbar__note">Geen tekstlaag op deze pagina — gebruik Tekst of voer eerst OCR uit</span>
+          </div>
+        )}
 
         {showHighlightControls && (
           <div className="editbar__group">
@@ -1216,11 +1329,33 @@ export default function Lightbox(): JSX.Element | null {
                     top: Math.min(band.y1, band.y2) * layoutScale,
                     width: Math.abs(band.x2 - band.x1) * layoutScale,
                     height: Math.abs(band.y2 - band.y1) * layoutScale,
-                    background: shownHighlightColor,
-                    opacity: shownHighlightOpacity
+                    background: mode === 'redact' ? '#000' : shownHighlightColor,
+                    opacity: mode === 'redact' ? 0.85 : shownHighlightOpacity
                   }}
                 />
               )}
+              {mode === 'edittext' &&
+                textLines &&
+                textLines
+                  .filter((line) => !lineCovered(line))
+                  .map((line, idx) => (
+                    <div
+                      key={idx}
+                      className="text-line-target"
+                      title="Klik om deze tekstregel te bewerken"
+                      style={{
+                        left: line.visual.x * layoutScale,
+                        top: line.visual.y * layoutScale,
+                        width: line.visual.width * layoutScale,
+                        height: line.visual.height * layoutScale
+                      }}
+                      onPointerDown={(e) => e.stopPropagation()}
+                      onClick={(e) => {
+                        e.stopPropagation()
+                        startEditLine(line)
+                      }}
+                    />
+                  ))}
               {liveStroke && liveStroke.length >= 2 && pageVisualSize && (
                 <svg
                   className="ink-overlay ink-overlay--live"

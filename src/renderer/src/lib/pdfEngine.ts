@@ -11,7 +11,15 @@ import openSansBoldUrl from '../assets/fonts/OpenSans-Bold.ttf?url'
 import openSansItalicUrl from '../assets/fonts/OpenSans-Italic.ttf?url'
 import openSansBoldItalicUrl from '../assets/fonts/OpenSans-BoldItalic.ttf?url'
 import { getOcr } from './ocrStore'
-import type { AnnotationFont, DocGroup, PageRef, SignaturePlacement, SourceFile, TextAnnotation } from '../types'
+import type {
+  AnnotationFont,
+  DocGroup,
+  PageRef,
+  RedactAnnotation,
+  SignaturePlacement,
+  SourceFile,
+  TextAnnotation
+} from '../types'
 
 const A4_WIDTH = 595.28
 const A4_HEIGHT = 841.89
@@ -400,6 +408,116 @@ function dataUrlToBytes(dataUrl: string): { mime: string; bytes: Uint8Array } {
   return { mime: match[1], bytes }
 }
 
+/** True if content-space point (px, py) lies inside the redaction box (whose local frame is rotated by rotateDeg). */
+function insideRedaction(px: number, py: number, redaction: RedactAnnotation, rotateDeg: number): boolean {
+  const rad = (rotateDeg * Math.PI) / 180
+  const dx = px - redaction.x
+  const dy = py - redaction.y
+  const u = dx * Math.cos(rad) + dy * Math.sin(rad)
+  const v = -dx * Math.sin(rad) + dy * Math.cos(rad)
+  return u >= -1 && u <= redaction.width + 1 && v >= -1 && v <= redaction.height + 1
+}
+
+const REDACT_RASTER_SCALE = 200 / 72 // ~200 DPI
+
+/**
+ * True redaction: the page is re-rendered to an image with the redaction
+ * boxes burned into the pixels, and the original content (including the
+ * covered text) is dropped entirely. Native text outside the boxes is
+ * re-embedded as an invisible layer so the page stays searchable.
+ * Returns the freshly added page plus the media-box offset that all further
+ * content-space drawing on this page must subtract.
+ */
+async function rasterizeRedactedPage(
+  out: PDFDocument,
+  src: SourceFile,
+  pageRef: PageRef,
+  redactions: RedactAnnotation[],
+  invisibleFont: PDFFont
+): Promise<{ page: PDFPage; offsetX: number; offsetY: number }> {
+  const doc = await getPdfJsDocument(src)
+  const pdfJsPage = await doc.getPage(pageRef.sourcePageIndex + 1)
+  const totalRotation = (pdfJsPage.rotate + pageRef.rotation) % 360
+  const rasterViewport = pdfJsPage.getViewport({ scale: REDACT_RASTER_SCALE, rotation: 0 })
+  const compViewport = pdfJsPage.getViewport({ scale: 1, rotation: totalRotation })
+  const rotateDeg = computeRotationCompensationDegrees(compViewport)
+  const rad = (rotateDeg * Math.PI) / 180
+
+  const canvas = document.createElement('canvas')
+  canvas.width = Math.max(1, Math.round(rasterViewport.width))
+  canvas.height = Math.max(1, Math.round(rasterViewport.height))
+  const ctx = canvas.getContext('2d')
+  if (!ctx) throw new Error('Canvas 2D context unavailable')
+  ctx.fillStyle = '#ffffff'
+  ctx.fillRect(0, 0, canvas.width, canvas.height)
+  await pdfJsPage.render({ canvasContext: ctx, viewport: rasterViewport }).promise
+
+  // Burn the boxes into the pixels — after this the covered content is gone.
+  for (const redaction of redactions) {
+    const corners: [number, number][] = [
+      [redaction.x, redaction.y],
+      [redaction.x + redaction.width * Math.cos(rad), redaction.y + redaction.width * Math.sin(rad)],
+      [
+        redaction.x + redaction.width * Math.cos(rad) - redaction.height * Math.sin(rad),
+        redaction.y + redaction.width * Math.sin(rad) + redaction.height * Math.cos(rad)
+      ],
+      [redaction.x - redaction.height * Math.sin(rad), redaction.y + redaction.height * Math.cos(rad)]
+    ]
+    ctx.fillStyle = redaction.fill === 'white' ? '#ffffff' : '#000000'
+    ctx.beginPath()
+    corners.forEach(([cx, cy], idx) => {
+      const [px, py] = rasterViewport.convertToViewportPoint(cx, cy)
+      if (idx === 0) ctx.moveTo(px, py)
+      else ctx.lineTo(px, py)
+    })
+    ctx.closePath()
+    ctx.fill()
+  }
+
+  const { bytes } = dataUrlToBytes(canvas.toDataURL('image/jpeg', 0.9))
+  canvas.width = 0
+  canvas.height = 0
+  const image = await out.embedJpg(bytes)
+
+  const [x0, y0, x1, y1] = pdfJsPage.view
+  const width = x1 - x0
+  const height = y1 - y0
+  const newPage = out.addPage([width, height])
+  newPage.setRotation(degrees(totalRotation))
+  newPage.drawImage(image, { x: 0, y: 0, width, height })
+
+  // Keep the page searchable: re-embed the native text invisibly, except
+  // where it was redacted.
+  const content = await pdfJsPage.getTextContent()
+  for (const item of content.items) {
+    if (!('str' in item) || !item.str.trim()) continue
+    const [a, b, , , e, f] = item.transform
+    const size = Math.hypot(a, b) || 10
+    const itemWidth = item.width || size * item.str.length * 0.5
+    const samples: [number, number][] = [
+      [e, f],
+      [e + itemWidth / 2, f + size * 0.4],
+      [e + itemWidth, f]
+    ]
+    const redacted = samples.some(([px, py]) => redactions.some((r) => insideRedaction(px, py, r, rotateDeg)))
+    if (redacted) continue
+    try {
+      newPage.drawText(item.str, {
+        x: e - x0,
+        y: f - y0,
+        size,
+        font: invisibleFont,
+        opacity: 0,
+        rotate: degrees((Math.atan2(b, a) * 180) / Math.PI)
+      })
+    } catch {
+      // Glyphs outside the standard encoding — skip.
+    }
+  }
+
+  return { page: newPage, offsetX: x0, offsetY: y0 }
+}
+
 async function buildPdf(group: DocGroup, sources: Map<string, SourceFile>): Promise<Uint8Array> {
   const out = await PDFDocument.create()
   const byDoc = new Map<string, number[]>()
@@ -457,6 +575,21 @@ async function buildPdf(group: DocGroup, sources: Map<string, SourceFile>): Prom
     const totalRotation = (copiedPage.getRotation().angle + page.rotation) % 360
     copiedPage.setRotation(degrees(totalRotation))
 
+    // Pages with redactions are rebuilt from a rendered image (with the boxes
+    // burned in), so the covered content is truly removed from the file. All
+    // remaining content-space drawing then shifts by the media-box origin.
+    const redactions = page.annotations.filter((a): a is RedactAnnotation => a.type === 'redact')
+    let targetPage = copiedPage
+    let ox = 0
+    let oy = 0
+    if (redactions.length) {
+      const invisibleFont = await getFont({ kind: 'standard', ref: StandardFonts.Helvetica })
+      const flattened = await rasterizeRedactedPage(out, src, page, redactions, invisibleFont)
+      targetPage = flattened.page
+      ox = flattened.offsetX
+      oy = flattened.offsetY
+    }
+
     for (const signature of page.signatures) {
       let embedded = embeddedImages.get(signature.imageDataUrl)
       if (!embedded) {
@@ -466,9 +599,9 @@ async function buildPdf(group: DocGroup, sources: Map<string, SourceFile>): Prom
       }
       const viewport = await getScale1Viewport(src, page.sourcePageIndex, page.rotation)
       const rotateDeg = computeRotationCompensationDegrees(viewport)
-      copiedPage.drawImage(embedded, {
-        x: signature.x,
-        y: signature.y,
+      targetPage.drawImage(embedded, {
+        x: signature.x - ox,
+        y: signature.y - oy,
         width: signature.width,
         height: signature.height,
         rotate: degrees(rotateDeg)
@@ -476,13 +609,14 @@ async function buildPdf(group: DocGroup, sources: Map<string, SourceFile>): Prom
     }
 
     for (const annotation of page.annotations) {
+      if (annotation.type === 'redact') continue // burned into the raster above
       const viewport = await getScale1Viewport(src, page.sourcePageIndex, page.rotation)
       const rotateDeg = computeRotationCompensationDegrees(viewport)
       if (annotation.type === 'highlight') {
         // Multiply blend keeps the underlying text readable, like a real highlighter.
-        copiedPage.drawRectangle({
-          x: annotation.x,
-          y: annotation.y,
+        targetPage.drawRectangle({
+          x: annotation.x - ox,
+          y: annotation.y - oy,
           width: annotation.width,
           height: annotation.height,
           color: hexToRgb(annotation.color),
@@ -496,9 +630,9 @@ async function buildPdf(group: DocGroup, sources: Map<string, SourceFile>): Prom
           // page physically — no rotation compensation needed. drawSvgPath maps
           // SVG y-down onto page y-up, hence the negated y coordinates.
           const d = annotation.points
-            .map((p, i) => `${i === 0 ? 'M' : 'L'} ${p.x},${-p.y}`)
+            .map((p, i) => `${i === 0 ? 'M' : 'L'} ${p.x - ox},${-(p.y - oy)}`)
             .join(' ')
-          copiedPage.drawSvgPath(d, {
+          targetPage.drawSvgPath(d, {
             x: 0,
             y: 0,
             borderColor: hexToRgb(annotation.color),
@@ -518,9 +652,9 @@ async function buildPdf(group: DocGroup, sources: Map<string, SourceFile>): Prom
         for (let line = 0; line < lines.length; line += 1) {
           if (!lines[line]) continue
           const offset = (lines.length - 1 - line) * lineHeight + annotation.size * TEXT_BASELINE_FACTOR
-          copiedPage.drawText(lines[line], {
-            x: annotation.x + upX * offset,
-            y: annotation.y + upY * offset,
+          targetPage.drawText(lines[line], {
+            x: annotation.x - ox + upX * offset,
+            y: annotation.y - oy + upY * offset,
             size: annotation.size,
             font: textFont,
             color: hexToRgb(annotation.color),
@@ -538,10 +672,11 @@ async function buildPdf(group: DocGroup, sources: Map<string, SourceFile>): Prom
       const viewport = await getScale1Viewport(src, page.sourcePageIndex, page.rotation)
       const rotateDeg = computeRotationCompensationDegrees(viewport)
       for (const word of ocr.words) {
+        if (redactions.some((r) => insideRedaction(word.x, word.y, r, rotateDeg))) continue
         try {
-          copiedPage.drawText(word.text, {
-            x: word.x,
-            y: word.y,
+          targetPage.drawText(word.text, {
+            x: word.x - ox,
+            y: word.y - oy,
             size: word.size,
             font: invisibleFont,
             opacity: 0,
@@ -554,13 +689,13 @@ async function buildPdf(group: DocGroup, sources: Map<string, SourceFile>): Prom
     }
 
     if (group.watermark && font) {
-      drawWatermark(copiedPage, group.watermark.text, group.watermark.opacity, font)
+      drawWatermark(targetPage, group.watermark.text, group.watermark.opacity, font)
     }
     if (group.pageNumbers && font) {
-      drawPageNumber(copiedPage, i + 1, total, font)
+      drawPageNumber(targetPage, i + 1, total, font)
     }
 
-    out.addPage(copiedPage)
+    if (!redactions.length) out.addPage(copiedPage)
   }
 
   out.setTitle(group.name)

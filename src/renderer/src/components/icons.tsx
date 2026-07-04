@@ -229,6 +229,33 @@ export function IconType({ size = 16, className }: IconProps): JSX.Element {
   )
 }
 
+export function IconRedact({ size = 16, className }: IconProps): JSX.Element {
+  return (
+    <svg width={size} height={size} viewBox="0 0 24 24" className={className} {...base}>
+      <rect x="3.5" y="4.5" width="17" height="15" rx="2" />
+      <rect x="6.5" y="10" width="11" height="4.5" rx="1" fill="currentColor" stroke="none" />
+    </svg>
+  )
+}
+
+export function IconEditText({ size = 16, className }: IconProps): JSX.Element {
+  return (
+    <svg width={size} height={size} viewBox="0 0 24 24" className={className} {...base}>
+      <path d="M4 7V4.5h11V7M9.5 4.5v12M7 16.5h5" />
+      <path d="M14.5 19.5l6-6-2-2-6 6-.6 2.6z" />
+    </svg>
+  )
+}
+
+export function IconFilePlus({ size = 16, className }: IconProps): JSX.Element {
+  return (
+    <svg width={size} height={size} viewBox="0 0 24 24" className={className} {...base}>
+      <path d="M13 3.5H7a1.5 1.5 0 0 0-1.5 1.5v14A1.5 1.5 0 0 0 7 20.5h10a1.5 1.5 0 0 0 1.5-1.5V9z" />
+      <path d="M13 3.5V9h5.5M12 12.5v5M9.5 15h5" />
+    </svg>
+  )
+}
+
 export function IconSearch({ size = 16, className }: IconProps): JSX.Element {
   return (
     <svg width={size} height={size} viewBox="0 0 24 24" className={className} {...base}>

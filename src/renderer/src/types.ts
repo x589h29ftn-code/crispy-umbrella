@@ -52,7 +52,19 @@ export interface InkAnnotation {
   strokeWidth: number
 }
 
-export type Annotation = HighlightAnnotation | TextAnnotation | InkAnnotation
+export interface RedactAnnotation {
+  id: string
+  type: 'redact'
+  /** Same bottom-left-pivot convention as highlights. */
+  x: number
+  y: number
+  width: number
+  height: number
+  /** 'black' = redaction bar; 'white' = cover box behind in-place text edits. */
+  fill: 'black' | 'white'
+}
+
+export type Annotation = HighlightAnnotation | TextAnnotation | InkAnnotation | RedactAnnotation
 
 export interface PageRef {
   id: string

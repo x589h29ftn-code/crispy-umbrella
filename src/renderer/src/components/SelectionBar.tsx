@@ -1,5 +1,5 @@
 import { useStudioStore } from '../store'
-import { IconClose, IconDuplicate, IconRotateLeft, IconRotateRight, IconTrash } from './icons'
+import { IconClose, IconDuplicate, IconFilePlus, IconRotateLeft, IconRotateRight, IconTrash } from './icons'
 
 export default function SelectionBar(): JSX.Element | null {
   const selectionCount = useStudioStore((s) => s.selectedPageIds.size)
@@ -7,6 +7,7 @@ export default function SelectionBar(): JSX.Element | null {
   const rotatePages = useStudioStore((s) => s.rotatePages)
   const duplicatePages = useStudioStore((s) => s.duplicatePages)
   const deletePages = useStudioStore((s) => s.deletePages)
+  const createGroupWithPages = useStudioStore((s) => s.createGroupWithPages)
   const clearSelection = useStudioStore((s) => s.clearSelection)
 
   if (selectionCount === 0 || lightboxOpen) return null
@@ -42,6 +43,14 @@ export default function SelectionBar(): JSX.Element | null {
         onClick={() => duplicatePages(selectedIds())}
       >
         <IconDuplicate size={15} />
+      </button>
+      <button
+        type="button"
+        className="pill-btn"
+        title="Splitsen: verplaats de geselecteerde pagina's naar een nieuw document"
+        onClick={() => createGroupWithPages(selectedIds())}
+      >
+        <IconFilePlus size={15} /> Nieuw document
       </button>
       <button
         type="button"
