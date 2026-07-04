@@ -25,9 +25,17 @@ export interface OcrPageResult {
   words: OcrWord[]
 }
 
+export interface ConvertResult {
+  ok: boolean
+  data?: Uint8Array
+  error?: string
+}
+
 const api = {
   openPdfs: (): Promise<LoadedFile[]> => ipcRenderer.invoke('dialog:openPdfs'),
   ocrRecognize: (png: Uint8Array): Promise<OcrPageResult> => ipcRenderer.invoke('ocr:recognize', png),
+  convertOffice: (name: string, data: Uint8Array): Promise<ConvertResult> =>
+    ipcRenderer.invoke('office:convert', name, data),
   savePdf: (defaultName: string, data: Uint8Array): Promise<SaveResult> =>
     ipcRenderer.invoke('dialog:savePdf', defaultName, data),
   saveZip: (defaultName: string, data: Uint8Array): Promise<SaveResult> =>

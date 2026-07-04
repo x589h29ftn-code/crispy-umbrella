@@ -21,6 +21,7 @@
   },
   "dependencies": {
     "@cantoo/pdf-lib": "^2.7.1",
+    "@e965/xlsx": "^0.20.3",
     "@electron-toolkit/preload": "^3.0.1",
     "@electron-toolkit/utils": "^4.0.0",
     "@formkit/auto-animate": "^0.9.0",
@@ -29,6 +30,7 @@
     "d3-selection": "^3.0.0",
     "d3-zoom": "^3.0.0",
     "fflate": "^0.8.2",
+    "mammoth": "^1.12.0",
     "nanoid": "^5.1.16",
     "pdfjs-dist": "^4.7.76",
     "react": "^18.3.1",

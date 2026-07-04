@@ -54,10 +54,21 @@ app.whenReady().then(() => {
     optimizer.watchWindowShortcuts(window)
   })
 
+  ipcMain.handle('office:convert', async (_evt, name: string, data: Uint8Array) => {
+    const { convertOfficeToPdf } = await import('./officeConvert')
+    return convertOfficeToPdf(name, data)
+  })
+
   ipcMain.handle('dialog:openPdfs', async () => {
     const result = await dialog.showOpenDialog({
       properties: ['openFile', 'multiSelections'],
-      filters: [{ name: 'PDF-bestanden', extensions: ['pdf'] }]
+      filters: [
+        {
+          name: 'PDF- en Office-bestanden',
+          extensions: ['pdf', 'docx', 'doc', 'odt', 'rtf', 'xlsx', 'xls', 'ods', 'csv', 'pptx', 'ppt', 'odp']
+        },
+        { name: 'PDF-bestanden', extensions: ['pdf'] }
+      ]
     })
     if (result.canceled) return []
     return Promise.all(

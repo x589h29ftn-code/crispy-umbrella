@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { useAutoAnimate } from '@formkit/auto-animate/react'
-import { useStudioStore } from '../store'
+import { isImportableFileName, useStudioStore } from '../store'
 import { usePanZoom, type PanZoomTransform } from '../hooks/usePanZoom'
 import { mergeRefs } from '../lib/mergeRefs'
 import GroupRow from './GroupRow'
@@ -106,7 +106,7 @@ export default function Canvas({ onScaleChange, registerZoomControls }: Props): 
   async function addDroppedDocuments(fileList: FileList): Promise<void> {
     const files = await Promise.all(
       Array.from(fileList)
-        .filter((f) => f.name.toLowerCase().endsWith('.pdf'))
+        .filter((f) => isImportableFileName(f.name))
         .map(async (f) => ({ name: f.name, data: new Uint8Array(await f.arrayBuffer()) }))
     )
     if (files.length) await importFiles(files)

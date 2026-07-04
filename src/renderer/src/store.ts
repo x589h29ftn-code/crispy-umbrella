@@ -26,6 +26,41 @@ export type DropTarget =
 const BLANK_SOURCE_ID = 'blank-page-source'
 const HISTORY_LIMIT = 50
 
+const OFFICE_EXTENSIONS = ['docx', 'doc', 'odt', 'rtf', 'xlsx', 'xls', 'ods', 'csv', 'pptx', 'ppt', 'odp']
+
+/** PDF plus alle Office-formaten die we naar PDF kunnen omzetten. */
+export function isImportableFileName(name: string): boolean {
+  const ext = name.split('.').pop()?.toLowerCase() ?? ''
+  return ext === 'pdf' || OFFICE_EXTENSIONS.includes(ext)
+}
+
+/** Word/Excel/PowerPoint-bestanden worden eerst (in het main-proces) naar PDF omgezet. */
+async function prepareImportFiles(
+  files: { name: string; data: Uint8Array }[],
+  addToast: StudioState['addToast']
+): Promise<{ name: string; data: Uint8Array }[]> {
+  const prepared: { name: string; data: Uint8Array }[] = []
+  for (const file of files) {
+    const ext = file.name.split('.').pop()?.toLowerCase() ?? ''
+    if (!OFFICE_EXTENSIONS.includes(ext)) {
+      prepared.push(file)
+      continue
+    }
+    if (typeof window.api.convertOffice !== 'function') {
+      addToast('error', `"${file.name}" overgeslagen — Office-conversie werkt alleen in de desktop-app`)
+      continue
+    }
+    addToast('info', `"${file.name}" wordt omgezet naar PDF…`)
+    const result = await window.api.convertOffice(file.name, file.data)
+    if (!result.ok || !result.data) {
+      addToast('error', result.error ?? `Kon "${file.name}" niet omzetten naar PDF`)
+      continue
+    }
+    prepared.push({ name: file.name.replace(/\.[^.]+$/, '.pdf'), data: result.data })
+  }
+  return prepared
+}
+
 export type Theme = 'dark' | 'light'
 
 const THEME_STORAGE_KEY = 'pdf-studio-theme'
@@ -322,6 +357,7 @@ export const useStudioStore = create<StudioState>((set, get) => ({
     if (!files.length) return
     set({ isImporting: true })
     try {
+      files = await prepareImportFiles(files, get().addToast)
       const newGroups: DocGroup[] = []
       const sources = new Map(get().sources)
       for (const file of files) {
@@ -362,6 +398,7 @@ export const useStudioStore = create<StudioState>((set, get) => ({
     if (!files.length) return
     set({ isImporting: true })
     try {
+      files = await prepareImportFiles(files, get().addToast)
       const sources = new Map(get().sources)
       const newPages: PageRef[] = []
       for (const file of files) {

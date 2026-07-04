@@ -1,6 +1,6 @@
 import { useRef, useState } from 'react'
 import { useAutoAnimate } from '@formkit/auto-animate/react'
-import { useStudioStore } from '../store'
+import { isImportableFileName, useStudioStore } from '../store'
 import { useClickOutside } from '../hooks/useClickOutside'
 import { usePressDrag } from '../hooks/usePressDrag'
 import { beginGroupDrag, cancelDrag, finishDrag, updateDrag } from '../lib/dragController'
@@ -78,7 +78,7 @@ export default function GroupRow({ group, index, isLast, sources, isActive }: Pr
   async function addDroppedFiles(fileList: FileList): Promise<void> {
     const files = await Promise.all(
       Array.from(fileList)
-        .filter((f) => f.name.toLowerCase().endsWith('.pdf'))
+        .filter((f) => isImportableFileName(f.name))
         .map(async (f) => ({ name: f.name, data: new Uint8Array(await f.arrayBuffer()) }))
     )
     if (files.length) await addPagesToGroup(group.id, files)
