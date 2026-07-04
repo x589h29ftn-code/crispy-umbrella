@@ -37,25 +37,60 @@ import {
 
 const DEFAULT_SIGNATURE_WIDTH_PCT = 0.28
 
+/** Single-letter tool shortcuts in the editor (shown in the tooltips). */
+const MODE_SHORTCUTS: Record<string, EditorMode> = {
+  v: 'view',
+  m: 'highlight',
+  p: 'draw',
+  s: 'shape',
+  k: 'stamp',
+  f: 'form',
+  t: 'text',
+  b: 'edittext',
+  r: 'redact',
+  c: 'comment',
+  e: 'erase'
+}
+
+const MODE_KEY_LABEL: Partial<Record<EditorMode, string>> = Object.fromEntries(
+  Object.entries(MODE_SHORTCUTS).map(([key, mode]) => [mode, key.toUpperCase()])
+)
+
 interface Props {
   groupId: string
 }
 
-/** Small page thumbnail in the left rail. */
+/** Small page thumbnail in the left rail; press-and-drag reorders the page. */
 function RailThumb({
   page,
   source,
   index,
   active,
-  onClick
+  dragging,
+  onClick,
+  onDragStart,
+  onDragMove,
+  onDragEnd
 }: {
   page: PageRef
   source: SourceFile | undefined
   index: number
   active: boolean
+  dragging: boolean
   onClick: () => void
+  onDragStart: (index: number) => void
+  onDragMove: (clientY: number) => void
+  onDragEnd: (commit: boolean) => void
 }): JSX.Element {
   const [thumb, setThumb] = useState<string | null>(null)
+  const drag = usePressDrag({
+    onStart: () => {
+      onDragStart(index)
+    },
+    onMove: (_x, y) => onDragMove(y),
+    onEnd: () => onDragEnd(true),
+    onCancel: () => onDragEnd(false)
+  })
   useEffect(() => {
     let cancelled = false
     if (!source) return
@@ -69,7 +104,13 @@ function RailThumb({
     }
   }, [source, page.sourcePageIndex, page.rotation])
   return (
-    <button type="button" className={`editor-rail__thumb${active ? ' editor-rail__thumb--active' : ''}`} onClick={onClick}>
+    <button
+      type="button"
+      className={`editor-rail__thumb${active ? ' editor-rail__thumb--active' : ''}${dragging ? ' editor-rail__thumb--dragging' : ''}`}
+      title="Klik om te tonen; sleep om de pagina te verplaatsen"
+      onClick={onClick}
+      {...drag}
+    >
       {thumb ? <img src={thumb} alt={`Pagina ${index + 1}`} draggable={false} /> : <span className="editor-rail__ph" />}
       <span>{index + 1}</span>
     </button>
@@ -96,6 +137,7 @@ export default function EditorView({ groupId }: Props): JSX.Element | null {
   const markHistory = useStudioStore((s) => s.markHistory)
   const flattenForms = useStudioStore((s) => s.flattenForms)
   const setFlattenForms = useStudioStore((s) => s.setFlattenForms)
+  const movePages = useStudioStore((s) => s.movePages)
 
   const [mode, setMode] = useState<EditorMode>('view')
   const [selection, setSelection] = useState<EditorSelection | null>(null)
@@ -158,22 +200,47 @@ export default function EditorView({ groupId }: Props): JSX.Element | null {
     if (group && currentPage >= group.pages.length) setCurrentPage(Math.max(0, group.pages.length - 1))
   }, [group, currentPage])
 
-  // Delete removes the selected annotation; Escape leaves the active tool.
+  // Delete removes the selected annotation; Escape leaves the active tool;
+  // single letters switch tools (see the tooltips in the tools panel).
   useEffect(() => {
     function onKey(e: KeyboardEvent): void {
       const el = e.target as HTMLElement | null
-      if (el && (el.tagName === 'INPUT' || el.tagName === 'TEXTAREA' || el.isContentEditable)) return
+      if (el && (el.tagName === 'INPUT' || el.tagName === 'TEXTAREA' || el.tagName === 'SELECT' || el.isContentEditable)) return
       if ((e.key === 'Delete' || e.key === 'Backspace') && selection) {
         removeAnnotation(selection.pageId, selection.annotationId)
         setSelection(null)
-      } else if (e.key === 'Escape') {
+        return
+      }
+      if (e.key === 'Escape') {
         if (mode !== 'view') setMode('view')
         else setSelection(null)
+        return
+      }
+      if (e.ctrlKey || e.metaKey || e.altKey) return
+      const toolMode = MODE_SHORTCUTS[e.key.toLowerCase()]
+      if (toolMode) {
+        e.preventDefault()
+        setMode(toolMode)
+        setSelection(null)
       }
     }
     window.addEventListener('keydown', onKey)
     return () => window.removeEventListener('keydown', onKey)
   }, [selection, mode, removeAnnotation])
+
+  // Rail drag-reorder state: which thumb is being dragged and where it lands.
+  const [railDrag, setRailDrag] = useState<{ fromIndex: number; toIndex: number } | null>(null)
+  const railDragRef = useRef<{ fromIndex: number; toIndex: number } | null>(null)
+  railDragRef.current = railDrag
+
+  function railIndexFromY(clientY: number): number {
+    const thumbs = Array.from(document.querySelectorAll('.editor-view .editor-rail__thumb'))
+    for (let i = 0; i < thumbs.length; i += 1) {
+      const rect = thumbs[i].getBoundingClientRect()
+      if (clientY < rect.top + rect.height / 2) return i
+    }
+    return thumbs.length
+  }
 
   // Ctrl+wheel zooms the pages.
   useEffect(() => {
@@ -295,21 +362,36 @@ export default function EditorView({ groupId }: Props): JSX.Element | null {
     <div className="editor-view">
       <div className="editor-rail">
         {group.pages.map((page, i) => (
-          <RailThumb
-            key={page.id}
-            page={page}
-            source={sources.get(page.sourceId)}
-            index={i}
-            active={viewMode === 'single' ? i === currentPage : false}
-            onClick={() => {
-              if (viewMode === 'single') setCurrentPage(i)
-              else
-                document
-                  .querySelector(`.editor-view .editor-page[data-page-id="${page.id}"]`)
-                  ?.scrollIntoView({ behavior: 'smooth', block: 'start' })
-            }}
-          />
+          <div key={page.id} className="editor-rail__slot">
+            {railDrag && railDrag.toIndex === i && <div className="editor-rail__indicator" />}
+            <RailThumb
+              page={page}
+              source={sources.get(page.sourceId)}
+              index={i}
+              active={viewMode === 'single' ? i === currentPage : false}
+              dragging={railDrag?.fromIndex === i}
+              onClick={() => {
+                if (viewMode === 'single') setCurrentPage(i)
+                else
+                  document
+                    .querySelector(`.editor-view .editor-page[data-page-id="${page.id}"]`)
+                    ?.scrollIntoView({ behavior: 'smooth', block: 'start' })
+              }}
+              onDragStart={(fromIndex) => setRailDrag({ fromIndex, toIndex: fromIndex })}
+              onDragMove={(clientY) =>
+                setRailDrag((cur) => (cur ? { ...cur, toIndex: railIndexFromY(clientY) } : cur))
+              }
+              onDragEnd={(commit) => {
+                const cur = railDragRef.current
+                setRailDrag(null)
+                if (commit && cur && group && cur.toIndex !== cur.fromIndex && cur.toIndex !== cur.fromIndex + 1) {
+                  movePages([group.pages[cur.fromIndex].id], group.id, cur.toIndex)
+                }
+              }}
+            />
+          </div>
         ))}
+        {railDrag && railDrag.toIndex === group.pages.length && <div className="editor-rail__indicator" />}
       </div>
 
       <div className="editor-center" ref={centerRef}>
@@ -405,7 +487,7 @@ export default function EditorView({ groupId }: Props): JSX.Element | null {
             key={m.key}
             type="button"
             className={`editor-tools__btn${mode === m.key ? ' editor-tools__btn--active' : ''}`}
-            title={m.title}
+            title={`${m.title}${MODE_KEY_LABEL[m.key] ? ` — sneltoets ${MODE_KEY_LABEL[m.key]}` : ''}`}
             onClick={() => {
               setMode((cur) => (cur === m.key && m.key !== 'view' ? 'view' : m.key))
               setSelection(null)
@@ -413,6 +495,7 @@ export default function EditorView({ groupId }: Props): JSX.Element | null {
           >
             {m.icon}
             <span>{m.label}</span>
+            {MODE_KEY_LABEL[m.key] && <kbd className="editor-tools__key">{MODE_KEY_LABEL[m.key]}</kbd>}
           </button>
         ))}
 
