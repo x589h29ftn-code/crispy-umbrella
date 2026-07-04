@@ -620,7 +620,14 @@ function addCommentAnnotations(out: PDFDocument, page: PDFPage, comments: PageCo
   }
 }
 
-async function buildPdf(group: DocGroup, sources: Map<string, SourceFile>): Promise<Uint8Array> {
+export interface ExportOptions {
+  /** Ingevulde formulierwaarden per bron (sourceId → veldnaam → waarde). */
+  formValues?: Record<string, Record<string, string | boolean>>
+  /** Velden platslaan: waarden worden vaste pagina-inhoud. */
+  flattenForms?: boolean
+}
+
+async function buildPdf(group: DocGroup, sources: Map<string, SourceFile>, options: ExportOptions = {}): Promise<Uint8Array> {
   const out = await PDFDocument.create()
   const byDoc = new Map<string, number[]>()
   const order: { sourceId: string; localIndex: number; page: PageRef }[] = []
@@ -636,7 +643,22 @@ async function buildPdf(group: DocGroup, sources: Map<string, SourceFile>): Prom
   for (const [sourceId, indices] of byDoc) {
     const src = sources.get(sourceId)
     if (!src) continue
-    const libDoc = await getPdfLibDocument(src)
+    let libDoc = await getPdfLibDocument(src)
+    const values = options.formValues?.[sourceId]
+    if (values && Object.keys(values).length) {
+      // Fill a fresh copy (never the shared cached document) so the values —
+      // and optionally the flattening — travel with the copied pages.
+      libDoc = await PDFDocument.load(src.data.slice(), { ignoreEncryption: true })
+      const { applyFormValues } = await import('./forms')
+      applyFormValues(libDoc, values)
+      if (options.flattenForms) {
+        try {
+          libDoc.getForm().flatten()
+        } catch {
+          // Flattening can fail on exotic appearance streams; keep the filled form.
+        }
+      }
+    }
     const copied = await out.copyPages(libDoc, indices)
     copiedByDoc.set(sourceId, copied)
   }
@@ -906,6 +928,8 @@ async function buildPdf(group: DocGroup, sources: Map<string, SourceFile>): Prom
     if (!redactions.length) out.addPage(copiedPage)
   }
 
+  if (!options.flattenForms) rebuildAcroForm(out)
+
   out.setTitle(group.name)
   if (group.documentDate) {
     // Parse the ISO date at local noon so timezone offsets can't shift it a day.
@@ -949,6 +973,46 @@ function drawPageNumber(page: PDFPage, pageNumber: number, total: number, font: 
   })
 }
 
-export async function exportGroupToPdf(group: DocGroup, sources: Map<string, SourceFile>): Promise<Uint8Array> {
-  return buildPdf(group, sources)
+/**
+ * copyPages drops the document-level /AcroForm, which would leave copied form
+ * widgets orphaned. Re-register every copied field (walking widget → root
+ * parent) in a fresh AcroForm so the merged PDF keeps a working form.
+ */
+function rebuildAcroForm(out: PDFDocument): void {
+  const fieldRefs = new Set<PDFRef>()
+  for (const page of out.getPages()) {
+    const annots = page.node.Annots()
+    if (!annots) continue
+    for (let i = 0; i < annots.size(); i += 1) {
+      const entry = annots.get(i)
+      if (!(entry instanceof PDFRef)) continue
+      const dict = out.context.lookup(entry)
+      if (!(dict instanceof PDFDict)) continue
+      if (String(dict.get(PDFName.of('Subtype'))) !== '/Widget') continue
+      let fieldRef = entry
+      let fieldDict = dict
+      for (;;) {
+        const parent = fieldDict.get(PDFName.of('Parent'))
+        const parentDict = parent instanceof PDFRef ? out.context.lookup(parent) : null
+        if (parent instanceof PDFRef && parentDict instanceof PDFDict) {
+          fieldRef = parent
+          fieldDict = parentDict
+        } else {
+          break
+        }
+      }
+      fieldRefs.add(fieldRef)
+    }
+  }
+  if (!fieldRefs.size) return
+  const acroForm = out.context.obj({ Fields: [...fieldRefs], NeedAppearances: true })
+  out.catalog.set(PDFName.of('AcroForm'), out.context.register(acroForm))
+}
+
+export async function exportGroupToPdf(
+  group: DocGroup,
+  sources: Map<string, SourceFile>,
+  options: ExportOptions = {}
+): Promise<Uint8Array> {
+  return buildPdf(group, sources, options)
 }

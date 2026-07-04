@@ -12,6 +12,11 @@ async function maybeEncrypt(bytes: Uint8Array): Promise<Uint8Array> {
   return encryptPdfBytes(bytes, password)
 }
 
+function exportOptions(): { formValues: Record<string, Record<string, string | boolean>>; flattenForms: boolean } {
+  const state = useStudioStore.getState()
+  return { formValues: state.formValues, flattenForms: state.flattenForms }
+}
+
 /** Exports the active document as a single PDF via a save dialog. */
 export async function exportActivePdf(): Promise<void> {
   const state = useStudioStore.getState()
@@ -19,7 +24,7 @@ export async function exportActivePdf(): Promise<void> {
   if (!group || state.busyExport) return
   state.setBusyExport('pdf')
   try {
-    const bytes = await maybeEncrypt(await exportGroupToPdf(group, state.sources))
+    const bytes = await maybeEncrypt(await exportGroupToPdf(group, state.sources, exportOptions()))
     const result = await window.api.savePdf(`${sanitizeFileName(group.name)}.pdf`, bytes)
     if (result.saved) state.addToast('success', `"${group.name}" opgeslagen`)
   } catch {
@@ -39,7 +44,7 @@ export async function exportAllZip(): Promise<void> {
     const usedNames = new Set<string>()
     for (const group of state.groups) {
       if (!group.pages.length) continue
-      const bytes = await maybeEncrypt(await exportGroupToPdf(group, state.sources))
+      const bytes = await maybeEncrypt(await exportGroupToPdf(group, state.sources, exportOptions()))
       let fileName = `${sanitizeFileName(group.name)}.pdf`
       let n = 2
       while (usedNames.has(fileName)) {

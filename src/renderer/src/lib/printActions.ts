@@ -20,7 +20,11 @@ export async function printActiveGroup(): Promise<void> {
   }
   state.addToast('info', `"${group.name}" wordt voorbereid om af te drukken…`)
   try {
-    const bytes = await exportGroupToPdf(group, state.sources)
+    // Print with flattened form values so the filled fields are visible in the raster.
+    const bytes = await exportGroupToPdf(group, state.sources, {
+      formValues: state.formValues,
+      flattenForms: true
+    })
     const doc = await pdfjsLib.getDocument({ data: bytes }).promise
     const pages: string[] = []
     for (let i = 1; i <= doc.numPages; i += 1) {

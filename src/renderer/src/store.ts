@@ -106,7 +106,13 @@ interface StudioState {
   searchHighlight: { pageId: string; query: string } | null
   /** Naam die bij nieuwe opmerkingen en in de PDF-export wordt gezet. */
   authorName: string
+  /** Ingevulde formulierwaarden per bron-PDF (sourceId → veldnaam → waarde). */
+  formValues: Record<string, Record<string, string | boolean>>
+  /** Formulieren platslaan bij export (velden worden vaste inhoud). */
+  flattenForms: boolean
 
+  setFormValue: (sourceId: string, fieldName: string, value: string | boolean) => void
+  setFlattenForms: (flatten: boolean) => void
   setAuthorName: (name: string) => void
   setSearchHighlight: (value: { pageId: string; query: string } | null) => void
   openEditorTab: (groupId: string) => void
@@ -258,6 +264,19 @@ export const useStudioStore = create<StudioState>((set, get) => ({
   editorViewMode: 'scroll',
   searchHighlight: null,
   authorName: window.localStorage.getItem(AUTHOR_STORAGE_KEY) ?? '',
+  formValues: {},
+  flattenForms: false,
+
+  setFormValue: (sourceId, fieldName, value) => {
+    set((state) => ({
+      formValues: {
+        ...state.formValues,
+        [sourceId]: { ...state.formValues[sourceId], [fieldName]: value }
+      }
+    }))
+  },
+
+  setFlattenForms: (flatten) => set({ flattenForms: flatten }),
 
   setAuthorName: (name) => {
     window.localStorage.setItem(AUTHOR_STORAGE_KEY, name)

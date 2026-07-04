@@ -18,6 +18,7 @@ import { renderTextSelectionLayer, selectionLineRects, type SelectionLineRect } 
 import { findSearchHitRects, type SearchHitRect } from '../../lib/searchHits'
 import { useStudioStore } from '../../store'
 import { formatCommentTime } from '../Lightbox'
+import FormLayer from '../FormLayer'
 import { buildStampSub, ShapeGeometry, STAMP_PRESETS } from '../../lib/shapes'
 import type {
   Annotation,
@@ -45,6 +46,7 @@ export type EditorMode =
   | 'comment'
   | 'shape'
   | 'stamp'
+  | 'form'
 
 export interface ToolSettings {
   highlightColor: string
@@ -981,6 +983,15 @@ export default function EditorPage({
           className={`text-select-layer${mode === 'view' ? '' : ' text-select-layer--passive'}`}
           onMouseUp={onSurfaceMouseUp}
         />
+        {source && (
+          <FormLayer
+            source={source}
+            pageIndex={page.sourcePageIndex}
+            rotation={page.rotation}
+            scale={scale}
+            active={mode === 'form'}
+          />
+        )}
         {selPopup && mode === 'view' && (
           <div
             className="selection-popup"

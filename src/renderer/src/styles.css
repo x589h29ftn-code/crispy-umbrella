@@ -2940,3 +2940,78 @@ button.group-row__date:hover {
 .page-decoration.annotation-overlay__stamp {
   position: absolute;
 }
+
+/* ---- Formuliervelden invullen (taak 29) ---- */
+
+.form-layer {
+  position: absolute;
+  inset: 0;
+}
+
+.form-layer__field {
+  position: absolute;
+  transform-origin: top left;
+  background: rgba(59, 130, 246, 0.08);
+  border: 1px solid rgba(59, 130, 246, 0.55);
+  border-radius: 2px;
+  color: #111;
+  font-family: 'Helvetica Neue', Arial, sans-serif;
+  padding: 0 3px;
+  box-sizing: border-box;
+}
+
+.form-layer__field:focus {
+  outline: none;
+  border-color: #2563eb;
+  background: rgba(59, 130, 246, 0.14);
+}
+
+.form-layer__textarea {
+  resize: none;
+  line-height: 1.25;
+  padding: 2px 3px;
+}
+
+.form-layer__select {
+  appearance: auto;
+}
+
+.form-layer__check,
+.form-layer__radio {
+  position: absolute;
+  transform-origin: top left;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(59, 130, 246, 0.08);
+  border: 1px solid rgba(59, 130, 246, 0.55);
+  cursor: pointer;
+  color: #1d4ed8;
+  padding: 0;
+}
+
+.form-layer__radio {
+  border-radius: 50%;
+}
+
+.form-layer__radio--on::after {
+  content: '';
+  width: 55%;
+  height: 55%;
+  border-radius: 50%;
+  background: #1d4ed8;
+}
+
+.form-layer__check--on {
+  background: rgba(59, 130, 246, 0.18);
+}
+
+.editbar__checkbox {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 11.5px;
+  color: var(--text);
+  cursor: pointer;
+  white-space: nowrap;
+}

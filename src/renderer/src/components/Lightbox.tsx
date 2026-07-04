@@ -49,6 +49,7 @@ import {
   IconCursor,
   IconEditText,
   IconEraser,
+  IconForm,
   IconHighlighter,
   IconMinus,
   IconPen,
@@ -61,6 +62,7 @@ import {
   IconType
 } from './icons'
 import LightboxFilmstrip from './LightboxFilmstrip'
+import FormLayer from './FormLayer'
 
 const DEFAULT_SIGNATURE_WIDTH_PCT = 0.28
 const MIN_HIGHLIGHT_SIZE_PX = 5
@@ -77,6 +79,7 @@ type EditMode =
   | 'comment'
   | 'shape'
   | 'stamp'
+  | 'form'
 
 export function formatCommentTime(ms: number): string {
   const d = new Date(ms)
@@ -161,6 +164,9 @@ export default function Lightbox(): JSX.Element | null {
   const [shapeWidth, setShapeWidth] = useState(INK_WIDTHS[1])
   const [stampKey, setStampKey] = useState(STAMP_PRESETS[0].key)
   const authorName = useStudioStore((st) => st.authorName)
+  const flattenForms = useStudioStore((st) => st.flattenForms)
+  const setFlattenForms = useStudioStore((st) => st.setFlattenForms)
+  const [formFieldCount, setFormFieldCount] = useState<number | null>(null)
   const [textFont, setTextFont] = useState<AnnotationFont>('arial')
   const [textSize, setTextSize] = useState(16)
   const [textBold, setTextBold] = useState(false)
@@ -244,6 +250,7 @@ export default function Lightbox(): JSX.Element | null {
     setOpenCommentId(null)
     setNewComment(null)
     setReplyDraft('')
+    setFormFieldCount(null)
   }, [lightbox.pageId])
 
   // Flash de zoektreffers op de pagina na een klik in het zoekpaneel.
@@ -1305,6 +1312,17 @@ export default function Lightbox(): JSX.Element | null {
           </button>
           <button
             type="button"
+            className={`editbar__mode${mode === 'form' ? ' editbar__mode--active' : ''}`}
+            onClick={() => {
+              setMode((m) => (m === 'form' ? 'view' : 'form'))
+              setSelectedAnnotationId(null)
+            }}
+            title="Formulier: vul formuliervelden in dit document in"
+          >
+            <IconForm size={14} /> Formulier
+          </button>
+          <button
+            type="button"
             className={`editbar__mode${mode === 'text' ? ' editbar__mode--active' : ''}`}
             onClick={() => {
               setMode((m) => (m === 'text' ? 'view' : 'text'))
@@ -1363,6 +1381,15 @@ export default function Lightbox(): JSX.Element | null {
         {mode === 'redact' && (
           <div className="editbar__group">
             <span className="editbar__note">Sleep een vak — bij export verdwijnt de onderliggende inhoud echt</span>
+          </div>
+        )}
+        {mode === 'form' && (
+          <div className="editbar__group">
+            {formFieldCount === 0 && <span className="editbar__note">Geen formuliervelden op deze pagina</span>}
+            <label className="editbar__checkbox" title="Bij het platslaan worden de velden vaste inhoud die niet meer te wijzigen is">
+              <input type="checkbox" checked={flattenForms} onChange={(e) => setFlattenForms(e.target.checked)} />
+              Platslaan bij export
+            </label>
           </div>
         )}
         {mode === 'edittext' && textLines && textLines.length === 0 && (
@@ -1805,6 +1832,16 @@ export default function Lightbox(): JSX.Element | null {
                     strokeLinejoin="round"
                   />
                 </svg>
+              )}
+              {source && (
+                <FormLayer
+                  source={source}
+                  pageIndex={context.page.sourcePageIndex}
+                  rotation={context.page.rotation}
+                  scale={layoutScale}
+                  active={mode === 'form'}
+                  onFieldCount={setFormFieldCount}
+                />
               )}
               {context.page.comments.map((comment) => {
                 const pin = commentPins[comment.id]

@@ -405,3 +405,13 @@ export function IconShapes({ size = 16, className }: IconProps): JSX.Element {
     </svg>
   )
 }
+
+export function IconForm({ size = 16, className }: IconProps): JSX.Element {
+  return (
+    <svg width={size} height={size} viewBox="0 0 24 24" className={className} {...base}>
+      <rect x="3.5" y="4" width="17" height="16" rx="2" />
+      <path d="M7 9h6M7 13h10M7 17h4" />
+      <path d="M16.2 8.2l1.3 1.3 2.3-2.6" />
+    </svg>
+  )
+}

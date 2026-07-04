@@ -23,6 +23,7 @@ import {
   IconCursor,
   IconEditText,
   IconEraser,
+  IconForm,
   IconGrip,
   IconHighlighter,
   IconMinus,
@@ -93,6 +94,8 @@ export default function EditorView({ groupId }: Props): JSX.Element | null {
   const updateAnnotation = useStudioStore((s) => s.updateAnnotation)
   const removeAnnotation = useStudioStore((s) => s.removeAnnotation)
   const markHistory = useStudioStore((s) => s.markHistory)
+  const flattenForms = useStudioStore((s) => s.flattenForms)
+  const setFlattenForms = useStudioStore((s) => s.setFlattenForms)
 
   const [mode, setMode] = useState<EditorMode>('view')
   const [selection, setSelection] = useState<EditorSelection | null>(null)
@@ -280,6 +283,7 @@ export default function EditorView({ groupId }: Props): JSX.Element | null {
     { key: 'draw', label: 'Tekenen', icon: <IconPen size={15} />, title: 'Vrij tekenen of schrijven' },
     { key: 'shape', label: 'Vormen', icon: <IconShapes size={15} />, title: 'Sleep een pijl, lijn, rechthoek of ovaal' },
     { key: 'stamp', label: 'Stempel', icon: <IconStamp size={15} />, title: 'Klik op de pagina om een stempel te plaatsen' },
+    { key: 'form', label: 'Formulier', icon: <IconForm size={15} />, title: 'Vul formuliervelden in dit document in' },
     { key: 'text', label: 'Tekst', icon: <IconType size={15} />, title: 'Klik op de pagina om tekst te plaatsen' },
     { key: 'edittext', label: 'Tekst bewerken', icon: <IconEditText size={15} />, title: 'Klik op een bestaande tekstregel' },
     { key: 'redact', label: 'Redigeren', icon: <IconRedact size={15} />, title: 'Zwartlakken — inhoud verdwijnt echt bij export' },
@@ -461,6 +465,20 @@ export default function EditorView({ groupId }: Props): JSX.Element | null {
                 </button>
               ))}
             </div>
+          </div>
+        )}
+
+        {mode === 'form' && (
+          <div className="editor-tools__settings">
+            <label className="editbar__checkbox" title="Bij het platslaan worden de velden vaste inhoud die niet meer te wijzigen is">
+              <input
+                type="checkbox"
+                checked={flattenForms}
+                onChange={(e) => setFlattenForms(e.target.checked)}
+              />
+              Platslaan bij export
+            </label>
+            <div className="editor-tools__hint">Klik in een veld op de pagina om het in te vullen</div>
           </div>
         )}
 
