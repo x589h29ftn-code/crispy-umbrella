@@ -395,3 +395,13 @@ export function IconFolderOpen({ size = 16, className }: IconProps): JSX.Element
     </svg>
   )
 }
+
+export function IconShapes({ size = 16, className }: IconProps): JSX.Element {
+  return (
+    <svg width={size} height={size} viewBox="0 0 24 24" className={className} {...base}>
+      <path d="M8.5 3.5l4.5 7.5H4z" />
+      <circle cx="16.5" cy="16" r="4.5" />
+      <rect x="3.5" y="13.5" width="6.5" height="6.5" rx="1" />
+    </svg>
+  )
+}

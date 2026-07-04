@@ -27,6 +27,7 @@ import openSansBoldUrl from '../assets/fonts/OpenSans-Bold.ttf?url'
 import openSansItalicUrl from '../assets/fonts/OpenSans-Italic.ttf?url'
 import openSansBoldItalicUrl from '../assets/fonts/OpenSans-BoldItalic.ttf?url'
 import { getOcr } from './ocrStore'
+import { arrowHeadPoints } from './shapes'
 import type {
   AnnotationFont,
   DocGroup,
@@ -760,6 +761,89 @@ async function buildPdf(group: DocGroup, sources: Map<string, SourceFile>): Prom
             borderColor: hexToRgb(annotation.color),
             borderWidth: annotation.strokeWidth,
             borderLineCap: LineCapStyle.Round
+          })
+        }
+      } else if (annotation.type === 'shape') {
+        if (annotation.points.length >= 2) {
+          // Endpoints live in content space (like ink), so shapes stay glued to
+          // the page content whatever the page rotation is.
+          const color = hexToRgb(annotation.color)
+          const thickness = annotation.strokeWidth
+          const a = { x: annotation.points[0].x - ox, y: annotation.points[0].y - oy }
+          const b = { x: annotation.points[1].x - ox, y: annotation.points[1].y - oy }
+          if (annotation.shape === 'rect') {
+            targetPage.drawRectangle({
+              x: Math.min(a.x, b.x),
+              y: Math.min(a.y, b.y),
+              width: Math.abs(b.x - a.x),
+              height: Math.abs(b.y - a.y),
+              borderColor: color,
+              borderWidth: thickness
+            })
+          } else if (annotation.shape === 'ellipse') {
+            targetPage.drawEllipse({
+              x: (a.x + b.x) / 2,
+              y: (a.y + b.y) / 2,
+              xScale: Math.abs(b.x - a.x) / 2,
+              yScale: Math.abs(b.y - a.y) / 2,
+              borderColor: color,
+              borderWidth: thickness
+            })
+          } else {
+            targetPage.drawLine({ start: a, end: b, color, thickness, lineCap: LineCapStyle.Round })
+            if (annotation.shape === 'arrow') {
+              for (const tip of arrowHeadPoints(a, b, thickness)) {
+                targetPage.drawLine({ start: b, end: tip, color, thickness, lineCap: LineCapStyle.Round })
+              }
+            }
+          }
+        }
+      } else if (annotation.type === 'stamp') {
+        // Border + centered label + sub line, in the box's local (possibly
+        // rotation-compensated) frame anchored at the bottom-left pivot.
+        const color = hexToRgb(annotation.color)
+        const stampFont = await getFont({ kind: 'embedded', ref: FONT_VARIANTS.arial.variants[1] })
+        const theta = (rotateDeg * Math.PI) / 180
+        const local = (dx: number, dy: number): { x: number; y: number } => ({
+          x: annotation.x - ox + Math.cos(theta) * dx - Math.sin(theta) * dy,
+          y: annotation.y - oy + Math.sin(theta) * dx + Math.cos(theta) * dy
+        })
+        targetPage.drawRectangle({
+          x: annotation.x - ox,
+          y: annotation.y - oy,
+          width: annotation.width,
+          height: annotation.height,
+          borderColor: color,
+          borderWidth: Math.max(1.2, annotation.height * 0.045),
+          rotate: degrees(rotateDeg)
+        })
+        const padX = annotation.width * 0.07
+        const hasSub = Boolean(annotation.sub.trim())
+        let labelSize = annotation.height * (hasSub ? 0.4 : 0.5)
+        labelSize = Math.min(labelSize, (annotation.width - padX * 2) / Math.max(0.01, stampFont.widthOfTextAtSize(annotation.label, 1)))
+        const labelWidth = stampFont.widthOfTextAtSize(annotation.label, labelSize)
+        const labelBase = hasSub ? annotation.height * 0.42 : (annotation.height - labelSize * 0.7) / 2
+        const labelPos = local((annotation.width - labelWidth) / 2, labelBase)
+        targetPage.drawText(annotation.label, {
+          x: labelPos.x,
+          y: labelPos.y,
+          size: labelSize,
+          font: stampFont,
+          color,
+          rotate: degrees(rotateDeg)
+        })
+        if (hasSub) {
+          let subSize = annotation.height * 0.19
+          subSize = Math.min(subSize, (annotation.width - padX * 2) / Math.max(0.01, stampFont.widthOfTextAtSize(annotation.sub, 1)))
+          const subWidth = stampFont.widthOfTextAtSize(annotation.sub, subSize)
+          const subPos = local((annotation.width - subWidth) / 2, annotation.height * 0.14)
+          targetPage.drawText(annotation.sub, {
+            x: subPos.x,
+            y: subPos.y,
+            size: subSize,
+            font: stampFont,
+            color,
+            rotate: degrees(rotateDeg)
           })
         }
       } else {

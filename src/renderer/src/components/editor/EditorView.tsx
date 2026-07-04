@@ -12,7 +12,8 @@ import {
   INK_WIDTHS,
   TEXT_COLORS
 } from '../../lib/annotationStyle'
-import type { AnnotationFont, PageRef, SourceFile } from '../../types'
+import { ShapePreviewIcon, SHAPE_LABELS, STAMP_PRESETS } from '../../lib/shapes'
+import type { AnnotationFont, PageRef, ShapeKind, SourceFile } from '../../types'
 import EditorPage, { type EditorMode, type EditorSelection, type ToolSettings } from './EditorPage'
 import {
   IconChevronDown,
@@ -28,6 +29,8 @@ import {
   IconPen,
   IconPlus,
   IconRedact,
+  IconShapes,
+  IconStamp,
   IconType
 } from '../icons'
 
@@ -109,7 +112,11 @@ export default function EditorView({ groupId }: Props): JSX.Element | null {
     textSize: 16,
     textBold: false,
     textItalic: false,
-    textColor: TEXT_COLORS[0]
+    textColor: TEXT_COLORS[0],
+    shapeKind: 'arrow',
+    shapeColor: TEXT_COLORS[1],
+    shapeWidth: INK_WIDTHS[1],
+    stampKey: STAMP_PRESETS[0].key
   })
 
   const selectedAnnotation = useMemo(() => {
@@ -253,6 +260,9 @@ export default function EditorView({ groupId }: Props): JSX.Element | null {
   const showHighlight = mode === 'highlight' || selectedAnnotation?.type === 'highlight'
   const showInk = mode === 'draw' || selectedAnnotation?.type === 'ink'
   const showText = mode === 'text' || mode === 'edittext' || selectedAnnotation?.type === 'text'
+  const showShape = mode === 'shape' || selectedAnnotation?.type === 'shape'
+  const showStamp = mode === 'stamp'
+  const shownShape = selectedAnnotation?.type === 'shape' ? selectedAnnotation : null
 
   const gap = 28
   const pageWidth =
@@ -268,6 +278,8 @@ export default function EditorView({ groupId }: Props): JSX.Element | null {
     { key: 'view', label: 'Selecteren', icon: <IconCursor size={15} />, title: 'Selecteren en verplaatsen' },
     { key: 'highlight', label: 'Markeren', icon: <IconHighlighter size={15} />, title: 'Sleep een vak over de tekst' },
     { key: 'draw', label: 'Tekenen', icon: <IconPen size={15} />, title: 'Vrij tekenen of schrijven' },
+    { key: 'shape', label: 'Vormen', icon: <IconShapes size={15} />, title: 'Sleep een pijl, lijn, rechthoek of ovaal' },
+    { key: 'stamp', label: 'Stempel', icon: <IconStamp size={15} />, title: 'Klik op de pagina om een stempel te plaatsen' },
     { key: 'text', label: 'Tekst', icon: <IconType size={15} />, title: 'Klik op de pagina om tekst te plaatsen' },
     { key: 'edittext', label: 'Tekst bewerken', icon: <IconEditText size={15} />, title: 'Klik op een bestaande tekstregel' },
     { key: 'redact', label: 'Redigeren', icon: <IconRedact size={15} />, title: 'Zwartlakken — inhoud verdwijnt echt bij export' },
@@ -400,7 +412,76 @@ export default function EditorView({ groupId }: Props): JSX.Element | null {
           </button>
         ))}
 
-        {(showHighlight || showInk || showText) && <div className="editor-tools__divider" />}
+        {(showHighlight || showInk || showText || showShape || showStamp) && <div className="editor-tools__divider" />}
+
+        {showShape && (
+          <div className="editor-tools__settings">
+            <div className="editor-tools__shapes">
+              {(Object.keys(SHAPE_LABELS) as ShapeKind[]).map((kind) => (
+                <button
+                  key={kind}
+                  type="button"
+                  className={`editbar__toggle${(shownShape?.shape ?? settings.shapeKind) === kind ? ' editbar__toggle--active' : ''}`}
+                  title={SHAPE_LABELS[kind]}
+                  onClick={() => {
+                    setSettings((s) => ({ ...s, shapeKind: kind }))
+                    if (shownShape) patchSelected({ shape: kind })
+                  }}
+                >
+                  <ShapePreviewIcon kind={kind} />
+                </button>
+              ))}
+            </div>
+            <div className="editor-tools__swatches">
+              {TEXT_COLORS.map((color) => (
+                <button
+                  key={color}
+                  type="button"
+                  className={`editbar__swatch${(shownShape?.color ?? settings.shapeColor) === color ? ' editbar__swatch--active' : ''}`}
+                  style={{ background: color }}
+                  onClick={() => {
+                    setSettings((s) => ({ ...s, shapeColor: color }))
+                    if (shownShape) patchSelected({ color })
+                  }}
+                />
+              ))}
+            </div>
+            <div className="editbar__widths">
+              {INK_WIDTHS.map((width) => (
+                <button
+                  key={width}
+                  type="button"
+                  className={`editbar__width${(shownShape?.strokeWidth ?? settings.shapeWidth) === width ? ' editbar__width--active' : ''}`}
+                  onClick={() => {
+                    setSettings((s) => ({ ...s, shapeWidth: width }))
+                    if (shownShape) patchSelected({ strokeWidth: width })
+                  }}
+                >
+                  <span style={{ width: 4 + width * 2, height: 4 + width * 2 }} />
+                </button>
+              ))}
+            </div>
+          </div>
+        )}
+
+        {showStamp && (
+          <div className="editor-tools__settings">
+            <div className="editor-tools__stamps">
+              {STAMP_PRESETS.map((preset) => (
+                <button
+                  key={preset.key}
+                  type="button"
+                  className={`stamp-chip${settings.stampKey === preset.key ? ' stamp-chip--active' : ''}`}
+                  style={{ ['--stamp-color' as string]: preset.color }}
+                  onClick={() => setSettings((s) => ({ ...s, stampKey: preset.key }))}
+                >
+                  {preset.label}
+                </button>
+              ))}
+            </div>
+            <div className="editor-tools__hint">Klik op een pagina om de stempel met datum te plaatsen</div>
+          </div>
+        )}
 
         {showHighlight && (
           <div className="editor-tools__settings">

@@ -66,7 +66,41 @@ export interface RedactAnnotation {
   fill: 'black' | 'white'
 }
 
-export type Annotation = HighlightAnnotation | TextAnnotation | InkAnnotation | RedactAnnotation
+export type ShapeKind = 'arrow' | 'line' | 'rect' | 'ellipse'
+
+export interface ShapeAnnotation {
+  id: string
+  type: 'shape'
+  shape: ShapeKind
+  /** Start- and endpoint (2 points) in content space, like ink strokes. */
+  points: { x: number; y: number }[]
+  color: string
+  /** Stroke width in PDF points. */
+  strokeWidth: number
+}
+
+export interface StampAnnotation {
+  id: string
+  type: 'stamp'
+  /** Same bottom-left-pivot convention as highlights. */
+  x: number
+  y: number
+  width: number
+  height: number
+  /** Main text, e.g. AKKOORD / CONCEPT / BETAALD / KOPIE. */
+  label: string
+  /** Sub line, e.g. date + name. */
+  sub: string
+  color: string
+}
+
+export type Annotation =
+  | HighlightAnnotation
+  | TextAnnotation
+  | InkAnnotation
+  | RedactAnnotation
+  | ShapeAnnotation
+  | StampAnnotation
 
 export interface CommentReply {
   id: string

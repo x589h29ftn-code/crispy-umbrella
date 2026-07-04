@@ -2866,3 +2866,77 @@ button.group-row__date:hover {
   text-overflow: ellipsis;
   max-width: 90px;
 }
+
+/* ---- Vormen & stempels (taak 27) ---- */
+
+.editbar__shapes,
+.editor-tools__shapes {
+  display: flex;
+  gap: 3px;
+}
+
+.editor-tools__shapes {
+  flex-wrap: wrap;
+}
+
+.editbar__stamps,
+.editor-tools__stamps {
+  display: flex;
+  gap: 5px;
+  flex-wrap: wrap;
+}
+
+.stamp-chip {
+  font-size: 10px;
+  font-weight: 800;
+  letter-spacing: 0.06em;
+  color: var(--stamp-color);
+  border: 1.5px solid var(--stamp-color);
+  border-radius: 4px;
+  background: transparent;
+  padding: 3px 8px;
+  cursor: pointer;
+  opacity: 0.65;
+}
+
+.stamp-chip:hover {
+  opacity: 0.9;
+}
+
+.stamp-chip--active {
+  opacity: 1;
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--stamp-color) 30%, transparent);
+}
+
+.annotation-overlay__stamp {
+  width: 100%;
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: calc(var(--stamp-h) * 0.04);
+  border: calc(var(--stamp-h) * 0.045) solid var(--stamp-color);
+  border-radius: calc(var(--stamp-h) * 0.08);
+  color: var(--stamp-color);
+  overflow: hidden;
+  pointer-events: none;
+  line-height: 1;
+  white-space: nowrap;
+}
+
+.annotation-overlay__stamp-label {
+  font-weight: 800;
+  letter-spacing: 0.08em;
+  font-size: calc(var(--stamp-h) * 0.34);
+}
+
+.annotation-overlay__stamp-sub {
+  font-weight: 600;
+  font-size: calc(var(--stamp-h) * 0.16);
+  opacity: 0.9;
+}
+
+.page-decoration.annotation-overlay__stamp {
+  position: absolute;
+}

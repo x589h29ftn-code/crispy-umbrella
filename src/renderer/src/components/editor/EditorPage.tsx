@@ -18,14 +18,18 @@ import { renderTextSelectionLayer, selectionLineRects, type SelectionLineRect } 
 import { findSearchHitRects, type SearchHitRect } from '../../lib/searchHits'
 import { useStudioStore } from '../../store'
 import { formatCommentTime } from '../Lightbox'
+import { buildStampSub, ShapeGeometry, STAMP_PRESETS } from '../../lib/shapes'
 import type {
   Annotation,
   HighlightAnnotation,
   InkAnnotation,
   PageComment,
   RedactAnnotation,
+  ShapeAnnotation,
+  ShapeKind,
   SignaturePlacement,
   SourceFile,
+  StampAnnotation,
   TextAnnotation
 } from '../../types'
 import { IconCheck, IconClose, IconComment, IconCopy, IconHighlighter, IconStrike, IconTrash, IconUnderline } from '../icons'
@@ -39,6 +43,8 @@ export type EditorMode =
   | 'redact'
   | 'edittext'
   | 'comment'
+  | 'shape'
+  | 'stamp'
 
 export interface ToolSettings {
   highlightColor: string
@@ -50,6 +56,10 @@ export interface ToolSettings {
   textBold: boolean
   textItalic: boolean
   textColor: string
+  shapeKind: ShapeKind
+  shapeColor: string
+  shapeWidth: number
+  stampKey: string
 }
 
 export interface EditorSelection {
@@ -119,6 +129,7 @@ export default function EditorPage({
   const removeComment = useStudioStore((s) => s.removeComment)
   const focusCommentId = useStudioStore((s) => s.focusCommentId)
   const clearFocusComment = useStudioStore((s) => s.clearFocusComment)
+  const authorName = useStudioStore((s) => s.authorName)
 
   const [image, setImage] = useState<string | null>(null)
   const [pageVisualSize, setPageVisualSize] = useState<{ width: number; height: number } | null>(null)
@@ -173,8 +184,10 @@ export default function EditorPage({
   useEffect(() => {
     let cancelled = false
     if (!source) return
-    const boxAnnotations = page.annotations.filter((a) => a.type !== 'ink')
-    const inkAnnotations = page.annotations.filter((a): a is InkAnnotation => a.type === 'ink')
+    const boxAnnotations = page.annotations.filter((a) => a.type !== 'ink' && a.type !== 'shape')
+    const inkAnnotations = page.annotations.filter(
+      (a): a is InkAnnotation | ShapeAnnotation => a.type === 'ink' || a.type === 'shape'
+    )
     Promise.all([
       Promise.all(
         page.signatures.map(async (s) => [
@@ -186,11 +199,11 @@ export default function EditorPage({
         boxAnnotations.map(async (a) => [
           a.id,
           await getPlacementVisualBox(source, page.sourcePageIndex, page.rotation, {
-            x: (a as HighlightAnnotation | RedactAnnotation | TextAnnotation).x,
-            y: (a as HighlightAnnotation | RedactAnnotation | TextAnnotation).y,
-            width: a.type === 'highlight' || a.type === 'redact' ? a.width : 0,
+            x: (a as HighlightAnnotation | RedactAnnotation | TextAnnotation | StampAnnotation).x,
+            y: (a as HighlightAnnotation | RedactAnnotation | TextAnnotation | StampAnnotation).y,
+            width: a.type === 'highlight' || a.type === 'redact' || a.type === 'stamp' ? a.width : 0,
             height:
-              a.type === 'highlight' || a.type === 'redact'
+              a.type === 'highlight' || a.type === 'redact' || a.type === 'stamp'
                 ? a.height
                 : textAnnotationBlockHeight(a as TextAnnotation)
           })
@@ -371,7 +384,7 @@ export default function EditorPage({
     const point = pointToVisual(e.clientX, e.clientY)
     if (!point) return
 
-    if (mode === 'highlight' || mode === 'redact') {
+    if (mode === 'highlight' || mode === 'redact' || mode === 'shape') {
       e.preventDefault()
       e.currentTarget.setPointerCapture(e.pointerId)
       bandRef.current = { x1: point.x, y1: point.y }
@@ -409,6 +422,28 @@ export default function EditorPage({
       bandRef.current = null
       const finished = band
       setBand(null)
+
+      if (mode === 'shape') {
+        // Keep the drag direction (matters for arrows).
+        if (Math.hypot(finished.x2 - finished.x1, finished.y2 - finished.y1) * scale < 8) return
+        void visualPointsToContentPoints(source, page.sourcePageIndex, page.rotation, [
+          { x: finished.x1, y: finished.y1 },
+          { x: finished.x2, y: finished.y2 }
+        ]).then((points) => {
+          const annotation: ShapeAnnotation = {
+            id: nanoid(),
+            type: 'shape',
+            shape: settings.shapeKind,
+            points,
+            color: settings.shapeColor,
+            strokeWidth: settings.shapeWidth
+          }
+          addAnnotation(page.id, annotation)
+          onSelect({ pageId: page.id, annotationId: annotation.id })
+        })
+        return
+      }
+
       const left = Math.min(finished.x1, finished.x2)
       const top = Math.min(finished.y1, finished.y2)
       const width = Math.abs(finished.x2 - finished.x1)
@@ -464,6 +499,28 @@ export default function EditorPage({
     } else if (mode === 'comment') {
       setOpenCommentId(null)
       setNewComment({ visualX: point.x, visualY: point.y, value: '' })
+    } else if (mode === 'stamp') {
+      if (!source || !pageVisualSize) return
+      const preset = STAMP_PRESETS.find((p) => p.key === settings.stampKey) ?? STAMP_PRESETS[0]
+      const w = Math.min(220, Math.max(110, pageVisualSize.width * 0.26))
+      const h = w * 0.34
+      void visualRectToContentRect(source, page.sourcePageIndex, page.rotation, {
+        xPct: (point.x - w / 2) / pageVisualSize.width,
+        yPct: (point.y - h / 2) / pageVisualSize.height,
+        wPct: w / pageVisualSize.width,
+        hPct: h / pageVisualSize.height
+      }).then((rect) => {
+        const annotation: StampAnnotation = {
+          id: nanoid(),
+          type: 'stamp',
+          ...rect,
+          label: preset.label,
+          sub: buildStampSub(authorName),
+          color: preset.color
+        }
+        addAnnotation(page.id, annotation)
+        onSelect({ pageId: page.id, annotationId: annotation.id })
+      })
     } else if (mode === 'view') {
       onSelect(null)
       setOpenCommentId(null)
@@ -702,8 +759,92 @@ export default function EditorPage({
     )
   }
 
+  function shapeOverlay(annotation: ShapeAnnotation): JSX.Element | null {
+    const points = inkVisual[annotation.id]
+    if (!points || points.length < 2 || !pageVisualSize) return null
+    const [p1, p2] = points
+    const isSelected = annotation.id === selectedAnnotationId
+    const bounds = {
+      minX: Math.min(p1.x, p2.x),
+      minY: Math.min(p1.y, p2.y),
+      maxX: Math.max(p1.x, p2.x),
+      maxY: Math.max(p1.y, p2.y)
+    }
+    function eraseHit(e: React.PointerEvent): void {
+      if (mode === 'erase' && (e.buttons & 1 || e.type === 'pointerdown')) {
+        e.stopPropagation()
+        removeAnnotation(page.id, annotation.id)
+        if (isSelected) onSelect(null)
+      }
+    }
+    const hitProps = {
+      className: `ink-overlay__hit${overlaysPassive ? ' ink-overlay__hit--passive' : ''}${mode === 'erase' ? ' ink-overlay__hit--erase' : ''}`,
+      onPointerDown: (e: React.PointerEvent) => {
+        if (mode === 'erase') {
+          eraseHit(e)
+          return
+        }
+        onSelect({ pageId: page.id, annotationId: annotation.id })
+        beginDrag(
+          e,
+          'annotation',
+          'move',
+          annotation.id,
+          {
+            pivotX: bounds.minX,
+            pivotY: bounds.maxY,
+            width: bounds.maxX - bounds.minX,
+            height: bounds.maxY - bounds.minY,
+            rotateDeg: 0
+          },
+          annotation.points
+        )
+      },
+      onPointerEnter: eraseHit,
+      onPointerMove: onOverlayPointerMove,
+      onPointerUp: endDrag,
+      onClick: (e: React.MouseEvent) => e.stopPropagation()
+    }
+    const hitStroke = Math.max(14, annotation.strokeWidth + 10)
+    return (
+      <svg
+        key={annotation.id}
+        className="ink-overlay"
+        width={pageVisualSize.width * scale}
+        height={pageVisualSize.height * scale}
+        viewBox={`0 0 ${pageVisualSize.width} ${pageVisualSize.height}`}
+      >
+        {isSelected && (
+          <rect
+            x={bounds.minX - 6}
+            y={bounds.minY - 6}
+            width={bounds.maxX - bounds.minX + 12}
+            height={bounds.maxY - bounds.minY + 12}
+            className="ink-overlay__selection"
+          />
+        )}
+        <ShapeGeometry shape={annotation.shape} p1={p1} p2={p2} color={annotation.color} strokeWidth={annotation.strokeWidth} />
+        {annotation.shape === 'rect' || annotation.shape === 'ellipse' ? (
+          <rect
+            x={bounds.minX}
+            y={bounds.minY}
+            width={Math.max(1, bounds.maxX - bounds.minX)}
+            height={Math.max(1, bounds.maxY - bounds.minY)}
+            fill="transparent"
+            stroke="transparent"
+            strokeWidth={hitStroke}
+            {...hitProps}
+          />
+        ) : (
+          <line x1={p1.x} y1={p1.y} x2={p2.x} y2={p2.y} stroke="transparent" strokeWidth={hitStroke} {...hitProps} />
+        )}
+      </svg>
+    )
+  }
+
   function annotationOverlay(annotation: Annotation): JSX.Element | null {
     if (annotation.type === 'ink') return inkOverlay(annotation)
+    if (annotation.type === 'shape') return shapeOverlay(annotation)
     const box = annoBoxes[annotation.id]
     if (!box) return null
     const isSelected = annotation.id === selectedAnnotationId
@@ -719,7 +860,7 @@ export default function EditorPage({
           overlaysPassive || mode === 'erase' ? ' annotation-overlay--passive' : ''
         }`}
         style={
-          annotation.type === 'highlight' || annotation.type === 'redact'
+          annotation.type === 'highlight' || annotation.type === 'redact' || annotation.type === 'stamp'
             ? { ...common, width: box.width * scale, height: box.height * scale }
             : common
         }
@@ -746,6 +887,14 @@ export default function EditorPage({
       >
         {annotation.type === 'redact' ? (
           <div className={`annotation-overlay__redact annotation-overlay__redact--${annotation.fill}`} />
+        ) : annotation.type === 'stamp' ? (
+          <div
+            className="annotation-overlay__stamp"
+            style={{ ['--stamp-color' as string]: annotation.color, ['--stamp-h' as string]: `${box.height * scale}px` }}
+          >
+            <span className="annotation-overlay__stamp-label">{annotation.label}</span>
+            {annotation.sub && <span className="annotation-overlay__stamp-sub">{annotation.sub}</span>}
+          </div>
         ) : annotation.type === 'highlight' ? (
           <div
             className={`annotation-overlay__fill annotation-overlay__fill--${annotation.style ?? 'fill'}`}
@@ -785,7 +934,7 @@ export default function EditorPage({
             >
               <IconClose size={11} />
             </button>
-            {(annotation.type === 'highlight' || annotation.type === 'redact') && (
+            {(annotation.type === 'highlight' || annotation.type === 'redact' || annotation.type === 'stamp') && (
               <div
                 className="signature-overlay__resize"
                 onPointerDown={(e) => beginDrag(e, 'annotation', 'resize', annotation.id, box)}
@@ -800,9 +949,9 @@ export default function EditorPage({
   }
 
   const modeClass =
-    mode === 'highlight' || mode === 'redact'
+    mode === 'highlight' || mode === 'redact' || mode === 'shape'
       ? ' lightbox__page-wrap--highlighting'
-      : mode === 'text'
+      : mode === 'text' || mode === 'stamp'
         ? ' lightbox__page-wrap--texting'
         : mode === 'draw'
           ? ' lightbox__page-wrap--drawing'
@@ -927,7 +1076,23 @@ export default function EditorPage({
             </button>
           </div>
         )}
-        {band && (
+        {band && mode === 'shape' && pageVisualSize && (
+          <svg
+            className="ink-overlay ink-overlay--live"
+            width={pageVisualSize.width * scale}
+            height={pageVisualSize.height * scale}
+            viewBox={`0 0 ${pageVisualSize.width} ${pageVisualSize.height}`}
+          >
+            <ShapeGeometry
+              shape={settings.shapeKind}
+              p1={{ x: band.x1, y: band.y1 }}
+              p2={{ x: band.x2, y: band.y2 }}
+              color={settings.shapeColor}
+              strokeWidth={settings.shapeWidth}
+            />
+          </svg>
+        )}
+        {band && mode !== 'shape' && (
           <div
             className="highlight-band"
             style={{

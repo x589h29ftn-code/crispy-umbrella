@@ -25,6 +25,7 @@ import { usePressDrag } from '../hooks/usePressDrag'
 import { useClickOutside } from '../hooks/useClickOutside'
 import { getTextLineBoxes, type TextLineBox } from '../lib/textLines'
 import { findSearchHitRects, type SearchHitRect } from '../lib/searchHits'
+import { buildStampSub, ShapeGeometry, ShapePreviewIcon, SHAPE_LABELS, STAMP_PRESETS } from '../lib/shapes'
 import type {
   Annotation,
   AnnotationFont,
@@ -32,7 +33,10 @@ import type {
   InkAnnotation,
   PageComment,
   RedactAnnotation,
+  ShapeAnnotation,
+  ShapeKind,
   SignaturePlacement,
+  StampAnnotation,
   TextAnnotation
 } from '../types'
 import {
@@ -51,6 +55,8 @@ import {
   IconPlus,
   IconRedact,
   IconRotate,
+  IconShapes,
+  IconStamp,
   IconTrash,
   IconType
 } from './icons'
@@ -60,7 +66,17 @@ const DEFAULT_SIGNATURE_WIDTH_PCT = 0.28
 const MIN_HIGHLIGHT_SIZE_PX = 5
 const MAX_PAGE_ZOOM = 5
 
-type EditMode = 'view' | 'highlight' | 'text' | 'draw' | 'erase' | 'redact' | 'edittext' | 'comment'
+type EditMode =
+  | 'view'
+  | 'highlight'
+  | 'text'
+  | 'draw'
+  | 'erase'
+  | 'redact'
+  | 'edittext'
+  | 'comment'
+  | 'shape'
+  | 'stamp'
 
 export function formatCommentTime(ms: number): string {
   const d = new Date(ms)
@@ -140,6 +156,11 @@ export default function Lightbox(): JSX.Element | null {
   const [highlightOpacity, setHighlightOpacity] = useState(0.4)
   const [inkColor, setInkColor] = useState(HIGHLIGHT_COLORS[1])
   const [inkWidth, setInkWidth] = useState(INK_WIDTHS[1])
+  const [shapeKind, setShapeKind] = useState<ShapeKind>('arrow')
+  const [shapeColor, setShapeColor] = useState(TEXT_COLORS[1])
+  const [shapeWidth, setShapeWidth] = useState(INK_WIDTHS[1])
+  const [stampKey, setStampKey] = useState(STAMP_PRESETS[0].key)
+  const authorName = useStudioStore((st) => st.authorName)
   const [textFont, setTextFont] = useState<AnnotationFont>('arial')
   const [textSize, setTextSize] = useState(16)
   const [textBold, setTextBold] = useState(false)
@@ -380,8 +401,10 @@ export default function Lightbox(): JSX.Element | null {
     }
     const source = sources.get(context.page.sourceId)
     if (!source) return
-    const boxAnnotations = context.page.annotations.filter((a) => a.type !== 'ink')
-    const inkAnnotations = context.page.annotations.filter((a): a is InkAnnotation => a.type === 'ink')
+    const boxAnnotations = context.page.annotations.filter((a) => a.type !== 'ink' && a.type !== 'shape')
+    const inkAnnotations = context.page.annotations.filter(
+      (a): a is InkAnnotation | ShapeAnnotation => a.type === 'ink' || a.type === 'shape'
+    )
     Promise.all([
       Promise.all(
         context.page.signatures.map(async (s) => [
@@ -393,11 +416,11 @@ export default function Lightbox(): JSX.Element | null {
         boxAnnotations.map(async (a) => [
           a.id,
           await getPlacementVisualBox(source, context.page.sourcePageIndex, context.page.rotation, {
-            x: (a as HighlightAnnotation | RedactAnnotation | TextAnnotation).x,
-            y: (a as HighlightAnnotation | RedactAnnotation | TextAnnotation).y,
-            width: a.type === 'highlight' || a.type === 'redact' ? a.width : 0,
+            x: (a as HighlightAnnotation | RedactAnnotation | TextAnnotation | StampAnnotation).x,
+            y: (a as HighlightAnnotation | RedactAnnotation | TextAnnotation | StampAnnotation).y,
+            width: a.type === 'highlight' || a.type === 'redact' || a.type === 'stamp' ? a.width : 0,
             height:
-              a.type === 'highlight' || a.type === 'redact'
+              a.type === 'highlight' || a.type === 'redact' || a.type === 'stamp'
                 ? a.height
                 : textAnnotationBlockHeight(a as TextAnnotation)
           })
@@ -555,7 +578,7 @@ export default function Lightbox(): JSX.Element | null {
     const inside =
       e.clientX >= rect.left && e.clientX <= rect.right && e.clientY >= rect.top && e.clientY <= rect.bottom
 
-    if ((mode === 'highlight' || mode === 'redact') && inside) {
+    if ((mode === 'highlight' || mode === 'redact' || mode === 'shape') && inside) {
       e.preventDefault()
       e.currentTarget.setPointerCapture(e.pointerId)
       const point = stagePointToVisual(e.clientX, e.clientY)!
@@ -624,6 +647,29 @@ export default function Lightbox(): JSX.Element | null {
       const finished = band
       setBand(null)
       if (!start || !finished || !source || !context || !pageVisualSize) return
+
+      if (mode === 'shape') {
+        // Keep the drag direction (matters for arrows).
+        if (Math.hypot(finished.x2 - finished.x1, finished.y2 - finished.y1) * screenScale < 8) return
+        const pageId = context.page.id
+        void visualPointsToContentPoints(source, context.page.sourcePageIndex, context.page.rotation, [
+          { x: finished.x1, y: finished.y1 },
+          { x: finished.x2, y: finished.y2 }
+        ]).then((points) => {
+          const annotation: ShapeAnnotation = {
+            id: nanoid(),
+            type: 'shape',
+            shape: shapeKind,
+            points,
+            color: shapeColor,
+            strokeWidth: shapeWidth
+          }
+          addAnnotation(pageId, annotation)
+          setSelectedAnnotationId(annotation.id)
+        })
+        return
+      }
+
       const left = Math.min(finished.x1, finished.x2)
       const top = Math.min(finished.y1, finished.y2)
       const width = Math.abs(finished.x2 - finished.x1)
@@ -685,6 +731,32 @@ export default function Lightbox(): JSX.Element | null {
       if (!point) return
       setOpenCommentId(null)
       setNewComment({ visualX: point.x, visualY: point.y, value: '' })
+      return
+    }
+    if (mode === 'stamp') {
+      const point = stagePointToVisual(e.clientX, e.clientY)
+      if (!point || !source || !context || !pageVisualSize) return
+      const preset = STAMP_PRESETS.find((p) => p.key === stampKey) ?? STAMP_PRESETS[0]
+      const w = Math.min(220, Math.max(110, pageVisualSize.width * 0.26))
+      const h = w * 0.34
+      const pageId = context.page.id
+      void visualRectToContentRect(source, context.page.sourcePageIndex, context.page.rotation, {
+        xPct: (point.x - w / 2) / pageVisualSize.width,
+        yPct: (point.y - h / 2) / pageVisualSize.height,
+        wPct: w / pageVisualSize.width,
+        hPct: h / pageVisualSize.height
+      }).then((rect) => {
+        const annotation: StampAnnotation = {
+          id: nanoid(),
+          type: 'stamp',
+          ...rect,
+          label: preset.label,
+          sub: buildStampSub(authorName),
+          color: preset.color
+        }
+        addAnnotation(pageId, annotation)
+        setSelectedAnnotationId(annotation.id)
+      })
       return
     }
     if (mode === 'view') {
@@ -864,6 +936,13 @@ export default function Lightbox(): JSX.Element | null {
     }
   }
 
+  function applyShapePatch(patch: Partial<ShapeAnnotation>): void {
+    if (context && selectedAnnotation?.type === 'shape') {
+      markHistory()
+      updateAnnotation(context.page.id, selectedAnnotation.id, patch)
+    }
+  }
+
   const shownHighlightColor = selectedAnnotation?.type === 'highlight' ? selectedAnnotation.color : highlightColor
   const shownHighlightOpacity =
     selectedAnnotation?.type === 'highlight' ? selectedAnnotation.opacity : highlightOpacity
@@ -875,9 +954,15 @@ export default function Lightbox(): JSX.Element | null {
   const shownTextItalic = selectedAnnotation?.type === 'text' ? selectedAnnotation.italic : textItalic
   const shownTextColor = selectedAnnotation?.type === 'text' ? selectedAnnotation.color : textColor
 
+  const shownShapeKind = selectedAnnotation?.type === 'shape' ? selectedAnnotation.shape : shapeKind
+  const shownShapeColor = selectedAnnotation?.type === 'shape' ? selectedAnnotation.color : shapeColor
+  const shownShapeWidth = selectedAnnotation?.type === 'shape' ? selectedAnnotation.strokeWidth : shapeWidth
+
   const showHighlightControls = mode === 'highlight' || selectedAnnotation?.type === 'highlight'
   const showInkControls = mode === 'draw' || selectedAnnotation?.type === 'ink'
   const showTextControls = mode === 'text' || selectedAnnotation?.type === 'text'
+  const showShapeControls = mode === 'shape' || selectedAnnotation?.type === 'shape'
+  const showStampControls = mode === 'stamp'
 
   const overlaysPassive = mode !== 'view' && mode !== 'erase'
 
@@ -955,8 +1040,92 @@ export default function Lightbox(): JSX.Element | null {
     )
   }
 
+  function shapeOverlay(annotation: ShapeAnnotation): JSX.Element | null {
+    const points = inkVisual[annotation.id]
+    if (!points || points.length < 2 || !pageVisualSize) return null
+    const [p1, p2] = points
+    const isSelected = annotation.id === selectedAnnotationId
+    const bounds = {
+      minX: Math.min(p1.x, p2.x),
+      minY: Math.min(p1.y, p2.y),
+      maxX: Math.max(p1.x, p2.x),
+      maxY: Math.max(p1.y, p2.y)
+    }
+    function eraseHit(e: React.PointerEvent): void {
+      if (mode === 'erase' && (e.buttons & 1 || e.type === 'pointerdown')) {
+        e.stopPropagation()
+        removeAnnotation(context!.page.id, annotation.id)
+        if (annotation.id === selectedAnnotationId) setSelectedAnnotationId(null)
+      }
+    }
+    const hitProps = {
+      className: `ink-overlay__hit${overlaysPassive ? ' ink-overlay__hit--passive' : ''}${mode === 'erase' ? ' ink-overlay__hit--erase' : ''}`,
+      onPointerDown: (e: React.PointerEvent) => {
+        if (mode === 'erase') {
+          eraseHit(e)
+          return
+        }
+        setSelectedAnnotationId(annotation.id)
+        beginDrag(
+          e,
+          'annotation',
+          'move',
+          annotation.id,
+          {
+            pivotX: bounds.minX,
+            pivotY: bounds.maxY,
+            width: bounds.maxX - bounds.minX,
+            height: bounds.maxY - bounds.minY,
+            rotateDeg: 0
+          },
+          annotation.points
+        )
+      },
+      onPointerEnter: eraseHit,
+      onPointerMove: onOverlayPointerMove,
+      onPointerUp: endDrag,
+      onClick: (e: React.MouseEvent) => e.stopPropagation()
+    }
+    const hitStroke = Math.max(14, annotation.strokeWidth + 10)
+    return (
+      <svg
+        key={annotation.id}
+        className="ink-overlay"
+        width={pageVisualSize.width * layoutScale}
+        height={pageVisualSize.height * layoutScale}
+        viewBox={`0 0 ${pageVisualSize.width} ${pageVisualSize.height}`}
+      >
+        {isSelected && (
+          <rect
+            x={bounds.minX - 6}
+            y={bounds.minY - 6}
+            width={bounds.maxX - bounds.minX + 12}
+            height={bounds.maxY - bounds.minY + 12}
+            className="ink-overlay__selection"
+          />
+        )}
+        <ShapeGeometry shape={annotation.shape} p1={p1} p2={p2} color={annotation.color} strokeWidth={annotation.strokeWidth} />
+        {annotation.shape === 'rect' || annotation.shape === 'ellipse' ? (
+          <rect
+            x={bounds.minX}
+            y={bounds.minY}
+            width={Math.max(1, bounds.maxX - bounds.minX)}
+            height={Math.max(1, bounds.maxY - bounds.minY)}
+            fill="transparent"
+            stroke="transparent"
+            strokeWidth={hitStroke}
+            {...hitProps}
+          />
+        ) : (
+          <line x1={p1.x} y1={p1.y} x2={p2.x} y2={p2.y} stroke="transparent" strokeWidth={hitStroke} {...hitProps} />
+        )}
+      </svg>
+    )
+  }
+
   function annotationOverlay(annotation: Annotation): JSX.Element | null {
     if (annotation.type === 'ink') return inkOverlay(annotation)
+    if (annotation.type === 'shape') return shapeOverlay(annotation)
     const box = annoBoxes[annotation.id]
     if (!box) return null
     const isSelected = annotation.id === selectedAnnotationId
@@ -972,7 +1141,7 @@ export default function Lightbox(): JSX.Element | null {
           overlaysPassive || mode === 'erase' ? ' annotation-overlay--passive' : ''
         }`}
         style={
-          annotation.type === 'highlight' || annotation.type === 'redact'
+          annotation.type === 'highlight' || annotation.type === 'redact' || annotation.type === 'stamp'
             ? { ...common, width: box.width * layoutScale, height: box.height * layoutScale }
             : common
         }
@@ -992,6 +1161,14 @@ export default function Lightbox(): JSX.Element | null {
           <div
             className={`annotation-overlay__redact annotation-overlay__redact--${annotation.fill}`}
           />
+        ) : annotation.type === 'stamp' ? (
+          <div
+            className="annotation-overlay__stamp"
+            style={{ ['--stamp-color' as string]: annotation.color, ['--stamp-h' as string]: `${box.height * layoutScale}px` }}
+          >
+            <span className="annotation-overlay__stamp-label">{annotation.label}</span>
+            {annotation.sub && <span className="annotation-overlay__stamp-sub">{annotation.sub}</span>}
+          </div>
         ) : annotation.type === 'highlight' ? (
           <div
             className="annotation-overlay__fill"
@@ -1027,7 +1204,7 @@ export default function Lightbox(): JSX.Element | null {
             >
               <IconClose size={11} />
             </button>
-            {(annotation.type === 'highlight' || annotation.type === 'redact') && (
+            {(annotation.type === 'highlight' || annotation.type === 'redact' || annotation.type === 'stamp') && (
               <div
                 className="signature-overlay__resize"
                 onPointerDown={(e) => beginDrag(e, 'annotation', 'resize', annotation.id, box)}
@@ -1042,9 +1219,9 @@ export default function Lightbox(): JSX.Element | null {
   }
 
   const wrapModeClass =
-    mode === 'highlight' || mode === 'redact'
+    mode === 'highlight' || mode === 'redact' || mode === 'shape'
       ? ' lightbox__page-wrap--highlighting'
-      : mode === 'text'
+      : mode === 'text' || mode === 'stamp'
         ? ' lightbox__page-wrap--texting'
         : mode === 'draw'
           ? ' lightbox__page-wrap--drawing'
@@ -1103,6 +1280,28 @@ export default function Lightbox(): JSX.Element | null {
             title="Tekenen: schrijf of teken vrij op de pagina"
           >
             <IconPen size={14} /> Tekenen
+          </button>
+          <button
+            type="button"
+            className={`editbar__mode${mode === 'shape' ? ' editbar__mode--active' : ''}`}
+            onClick={() => {
+              setMode((m) => (m === 'shape' ? 'view' : 'shape'))
+              setSelectedAnnotationId(null)
+            }}
+            title="Vormen: sleep een pijl, lijn, rechthoek of ovaal"
+          >
+            <IconShapes size={14} /> Vormen
+          </button>
+          <button
+            type="button"
+            className={`editbar__mode${mode === 'stamp' ? ' editbar__mode--active' : ''}`}
+            onClick={() => {
+              setMode((m) => (m === 'stamp' ? 'view' : 'stamp'))
+              setSelectedAnnotationId(null)
+            }}
+            title="Stempel: klik op de pagina om een stempel te plaatsen"
+          >
+            <IconStamp size={14} /> Stempel
           </button>
           <button
             type="button"
@@ -1239,6 +1438,76 @@ export default function Lightbox(): JSX.Element | null {
                 </button>
               ))}
             </div>
+          </div>
+        )}
+
+        {showShapeControls && (
+          <div className="editbar__group">
+            <div className="editbar__shapes">
+              {(Object.keys(SHAPE_LABELS) as ShapeKind[]).map((kind) => (
+                <button
+                  key={kind}
+                  type="button"
+                  className={`editbar__toggle${shownShapeKind === kind ? ' editbar__toggle--active' : ''}`}
+                  title={SHAPE_LABELS[kind]}
+                  onClick={() => {
+                    setShapeKind(kind)
+                    applyShapePatch({ shape: kind })
+                  }}
+                >
+                  <ShapePreviewIcon kind={kind} />
+                </button>
+              ))}
+            </div>
+            <div className="editbar__swatches">
+              {TEXT_COLORS.map((color) => (
+                <button
+                  key={color}
+                  type="button"
+                  className={`editbar__swatch${shownShapeColor === color ? ' editbar__swatch--active' : ''}`}
+                  style={{ background: color }}
+                  title={color}
+                  onClick={() => {
+                    setShapeColor(color)
+                    applyShapePatch({ color })
+                  }}
+                />
+              ))}
+            </div>
+            <div className="editbar__widths" title="Lijndikte">
+              {INK_WIDTHS.map((width) => (
+                <button
+                  key={width}
+                  type="button"
+                  className={`editbar__width${shownShapeWidth === width ? ' editbar__width--active' : ''}`}
+                  onClick={() => {
+                    setShapeWidth(width)
+                    applyShapePatch({ strokeWidth: width })
+                  }}
+                >
+                  <span style={{ width: 4 + width * 2, height: 4 + width * 2 }} />
+                </button>
+              ))}
+            </div>
+          </div>
+        )}
+
+        {showStampControls && (
+          <div className="editbar__group">
+            <div className="editbar__stamps">
+              {STAMP_PRESETS.map((preset) => (
+                <button
+                  key={preset.key}
+                  type="button"
+                  className={`stamp-chip${stampKey === preset.key ? ' stamp-chip--active' : ''}`}
+                  style={{ ['--stamp-color' as string]: preset.color }}
+                  onClick={() => setStampKey(preset.key)}
+                >
+                  {preset.label}
+                </button>
+              ))}
+            </div>
+            <span className="editbar__note">Klik op de pagina — met datum{authorName.trim() ? ' en naam' : ''}</span>
           </div>
         )}
 
@@ -1469,7 +1738,23 @@ export default function Lightbox(): JSX.Element | null {
                   </button>
                 </div>
               )}
-              {band && (
+              {band && mode === 'shape' && pageVisualSize && (
+                <svg
+                  className="ink-overlay ink-overlay--live"
+                  width={pageVisualSize.width * layoutScale}
+                  height={pageVisualSize.height * layoutScale}
+                  viewBox={`0 0 ${pageVisualSize.width} ${pageVisualSize.height}`}
+                >
+                  <ShapeGeometry
+                    shape={shapeKind}
+                    p1={{ x: band.x1, y: band.y1 }}
+                    p2={{ x: band.x2, y: band.y2 }}
+                    color={shapeColor}
+                    strokeWidth={shapeWidth}
+                  />
+                </svg>
+              )}
+              {band && mode !== 'shape' && (
                 <div
                   className="highlight-band"
                   style={{

@@ -9,6 +9,7 @@ import {
   type SignatureVisualBox
 } from '../lib/pdfEngine'
 import { ANNOTATION_FONT_CSS } from '../lib/annotationStyle'
+import { ShapeGeometry } from '../lib/shapes'
 import { beginPagesDrag, cancelDrag, consumeDragClick, finishDrag, updateDrag } from '../lib/dragController'
 import { usePressDrag } from '../hooks/usePressDrag'
 import { useStudioStore } from '../store'
@@ -54,7 +55,7 @@ function useDecorations(page: PageRef, source: SourceFile | undefined): Decorati
       )
       const annotations = await Promise.all(
         page.annotations.map(async (annotation) => {
-          if (annotation.type === 'ink') {
+          if (annotation.type === 'ink' || annotation.type === 'shape') {
             return {
               annotation,
               box: null,
@@ -67,9 +68,12 @@ function useDecorations(page: PageRef, source: SourceFile | undefined): Decorati
             box: await getPlacementVisualBox(source, page.sourcePageIndex, page.rotation, {
               x: annotation.x,
               y: annotation.y,
-              width: annotation.type === 'highlight' || annotation.type === 'redact' ? annotation.width : 0,
+              width:
+                annotation.type === 'highlight' || annotation.type === 'redact' || annotation.type === 'stamp'
+                  ? annotation.width
+                  : 0,
               height:
-                annotation.type === 'highlight' || annotation.type === 'redact'
+                annotation.type === 'highlight' || annotation.type === 'redact' || annotation.type === 'stamp'
                   ? annotation.height
                   : textAnnotationBlockHeight(annotation)
             })
@@ -210,6 +214,41 @@ export default function PageThumb({ page, source, index }: Props): JSX.Element {
                     />
                   </svg>
                 ) : null
+              ) : annotation.type === 'shape' ? (
+                points && points.length >= 2 ? (
+                  <svg
+                    key={annotation.id}
+                    className="page-decoration page-decoration--ink"
+                    style={{ left: 0, top: 0 }}
+                    width={decorations.pageWidth * decorScale}
+                    height={decorations.pageHeight * decorScale}
+                    viewBox={`0 0 ${decorations.pageWidth} ${decorations.pageHeight}`}
+                  >
+                    <ShapeGeometry
+                      shape={annotation.shape}
+                      p1={points[0]}
+                      p2={points[1]}
+                      color={annotation.color}
+                      strokeWidth={annotation.strokeWidth}
+                    />
+                  </svg>
+                ) : null
+              ) : annotation.type === 'stamp' && box ? (
+                <div
+                  key={annotation.id}
+                  className="page-decoration annotation-overlay__stamp"
+                  style={{
+                    left: box.pivotX * decorScale,
+                    top: (box.pivotY - box.height) * decorScale,
+                    width: box.width * decorScale,
+                    height: box.height * decorScale,
+                    transform: `rotate(${box.rotateDeg}deg)`,
+                    ['--stamp-color' as string]: annotation.color,
+                    ['--stamp-h' as string]: `${box.height * decorScale}px`
+                  }}
+                >
+                  <span className="annotation-overlay__stamp-label">{annotation.label}</span>
+                </div>
               ) : annotation.type === 'redact' && box ? (
                 <div
                   key={annotation.id}
