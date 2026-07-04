@@ -229,6 +229,15 @@ export function IconType({ size = 16, className }: IconProps): JSX.Element {
   )
 }
 
+export function IconPrinter({ size = 16, className }: IconProps): JSX.Element {
+  return (
+    <svg width={size} height={size} viewBox="0 0 24 24" className={className} {...base}>
+      <path d="M7 8V3.5h10V8M7 17H4.5a1 1 0 0 1-1-1v-6a2 2 0 0 1 2-2h13a2 2 0 0 1 2 2v6a1 1 0 0 1-1 1H17" />
+      <rect x="7" y="14.5" width="10" height="6" rx="1" />
+    </svg>
+  )
+}
+
 export function IconCopy({ size = 16, className }: IconProps): JSX.Element {
   return (
     <svg width={size} height={size} viewBox="0 0 24 24" className={className} {...base}>

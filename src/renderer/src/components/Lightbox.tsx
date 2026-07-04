@@ -24,6 +24,7 @@ import { useStudioStore } from '../store'
 import { usePressDrag } from '../hooks/usePressDrag'
 import { useClickOutside } from '../hooks/useClickOutside'
 import { getTextLineBoxes, type TextLineBox } from '../lib/textLines'
+import { findSearchHitRects, type SearchHitRect } from '../lib/searchHits'
 import type {
   Annotation,
   AnnotationFont,
@@ -154,6 +155,9 @@ export default function Lightbox(): JSX.Element | null {
   const [liveStroke, setLiveStroke] = useState<{ x: number; y: number }[] | null>(null)
   const liveStrokeRef = useRef<{ x: number; y: number }[] | null>(null)
   const [textLines, setTextLines] = useState<TextLineBox[] | null>(null)
+  const [searchHits, setSearchHits] = useState<SearchHitRect[]>([])
+  const searchHighlight = useStudioStore((st) => st.searchHighlight)
+  const setSearchHighlight = useStudioStore((st) => st.setSearchHighlight)
   const [commentPins, setCommentPins] = useState<Record<string, { x: number; y: number }>>({})
   const [openCommentId, setOpenCommentId] = useState<string | null>(null)
   const [newComment, setNewComment] = useState<{ visualX: number; visualY: number; value: string } | null>(null)
@@ -220,6 +224,25 @@ export default function Lightbox(): JSX.Element | null {
     setNewComment(null)
     setReplyDraft('')
   }, [lightbox.pageId])
+
+  // Flash de zoektreffers op de pagina na een klik in het zoekpaneel.
+  useEffect(() => {
+    let cancelled = false
+    if (!context || !searchHighlight || searchHighlight.pageId !== context.page.id) {
+      setSearchHits([])
+      return
+    }
+    const source = sources.get(context.page.sourceId)
+    if (!source) return
+    findSearchHitRects(source, context.page.sourcePageIndex, context.page.rotation, searchHighlight.query)
+      .then((rects) => {
+        if (!cancelled) setSearchHits(rects)
+      })
+      .catch(() => undefined)
+    return () => {
+      cancelled = true
+    }
+  }, [context, sources, searchHighlight])
 
   // A click in the comments timeline jumps straight to that thread.
   useEffect(() => {
@@ -1426,6 +1449,26 @@ export default function Lightbox(): JSX.Element | null {
                   </div>
                 )
               })}
+              {searchHits.map((rect, i) => (
+                <div
+                  key={i}
+                  className="search-hit-flash"
+                  style={{
+                    left: rect.x * layoutScale,
+                    top: rect.y * layoutScale,
+                    width: rect.width * layoutScale,
+                    height: rect.height * layoutScale
+                  }}
+                />
+              ))}
+              {searchHits.length > 0 && (
+                <div className="search-hit-chip" onPointerDown={(e) => e.stopPropagation()}>
+                  {searchHits.length} {searchHits.length === 1 ? 'treffer' : 'treffers'}
+                  <button type="button" className="icon-btn icon-btn--chrome" onClick={() => setSearchHighlight(null)}>
+                    <IconClose size={11} />
+                  </button>
+                </div>
+              )}
               {band && (
                 <div
                   className="highlight-band"

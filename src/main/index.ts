@@ -1,6 +1,7 @@
 import { app, shell, BrowserWindow, ipcMain, dialog } from 'electron'
 import { join } from 'path'
-import { readFile, writeFile } from 'fs/promises'
+import { mkdtemp, readFile, rm, writeFile } from 'fs/promises'
+import { tmpdir } from 'os'
 import { electronApp, optimizer, is } from '@electron-toolkit/utils'
 import icon from '../../resources/icon.png?asset'
 
@@ -52,6 +53,26 @@ app.whenReady().then(() => {
 
   app.on('browser-window-created', (_, window) => {
     optimizer.watchWindowShortcuts(window)
+  })
+
+  ipcMain.handle('print:html', async (_evt, html: string) => {
+    // The document is rendered to page images in the renderer; here we load
+    // them into a hidden window and hand off to the native print dialog.
+    const dir = await mkdtemp(join(tmpdir(), 'pdfstudio-print-'))
+    const htmlPath = join(dir, 'print.html')
+    await writeFile(htmlPath, html, 'utf-8')
+    const win = new BrowserWindow({ show: false, webPreferences: { sandbox: true, javascript: false } })
+    try {
+      await win.loadFile(htmlPath)
+      return await new Promise((resolve) => {
+        win.webContents.print({ silent: false, printBackground: true }, (success, failureReason) => {
+          resolve({ ok: success, reason: failureReason })
+        })
+      })
+    } finally {
+      win.destroy()
+      await rm(dir, { recursive: true, force: true }).catch(() => undefined)
+    }
   })
 
   ipcMain.handle('office:convert', async (_evt, name: string, data: Uint8Array) => {

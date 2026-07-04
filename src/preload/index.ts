@@ -36,6 +36,7 @@ const api = {
   ocrRecognize: (png: Uint8Array): Promise<OcrPageResult> => ipcRenderer.invoke('ocr:recognize', png),
   convertOffice: (name: string, data: Uint8Array): Promise<ConvertResult> =>
     ipcRenderer.invoke('office:convert', name, data),
+  printHtml: (html: string): Promise<{ ok: boolean; reason?: string }> => ipcRenderer.invoke('print:html', html),
   savePdf: (defaultName: string, data: Uint8Array): Promise<SaveResult> =>
     ipcRenderer.invoke('dialog:savePdf', defaultName, data),
   saveZip: (defaultName: string, data: Uint8Array): Promise<SaveResult> =>

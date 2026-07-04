@@ -15,6 +15,7 @@ export default function SearchPanel(): JSX.Element | null {
   const groups = useStudioStore((s) => s.groups)
   const sources = useStudioStore((s) => s.sources)
   const openLightbox = useStudioStore((s) => s.openLightbox)
+  const setSearchHighlight = useStudioStore((s) => s.setSearchHighlight)
   const addToast = useStudioStore((s) => s.addToast)
 
   const [query, setQuery] = useState('')
@@ -127,6 +128,7 @@ export default function SearchPanel(): JSX.Element | null {
               className="search-panel__hit"
               onClick={() => {
                 setOpen(false)
+                setSearchHighlight({ pageId: hit.pageId, query: query.trim() })
                 openLightbox(hit.pageId)
               }}
             >

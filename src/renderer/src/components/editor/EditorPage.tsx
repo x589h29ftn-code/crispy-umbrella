@@ -15,6 +15,7 @@ import {
 import { ANNOTATION_FONT_CSS } from '../../lib/annotationStyle'
 import { getTextLineBoxes, type TextLineBox } from '../../lib/textLines'
 import { renderTextSelectionLayer, selectionLineRects, type SelectionLineRect } from '../../lib/textLayer'
+import { findSearchHitRects, type SearchHitRect } from '../../lib/searchHits'
 import { useStudioStore } from '../../store'
 import { formatCommentTime } from '../Lightbox'
 import type {
@@ -136,6 +137,9 @@ export default function EditorPage({
   const [openCommentId, setOpenCommentId] = useState<string | null>(null)
   const [newComment, setNewComment] = useState<{ visualX: number; visualY: number; value: string } | null>(null)
   const [replyDraft, setReplyDraft] = useState('')
+  const searchHighlight = useStudioStore((st) => st.searchHighlight)
+  const setSearchHighlight = useStudioStore((st) => st.setSearchHighlight)
+  const [searchHits, setSearchHits] = useState<SearchHitRect[]>([])
   const imgRef = useRef<HTMLImageElement>(null)
   const textLayerRef = useRef<HTMLDivElement>(null)
   const [selPopup, setSelPopup] = useState<{ x: number; y: number; text: string; rects: SelectionLineRect[] } | null>(
@@ -217,6 +221,26 @@ export default function EditorPage({
       cancelled = true
     }
   }, [source, page])
+
+  // Flash de zoektreffers op deze pagina na een klik in het zoekpaneel.
+  useEffect(() => {
+    let cancelled = false
+    if (!source || !searchHighlight || searchHighlight.pageId !== page.id) {
+      setSearchHits([])
+      return
+    }
+    findSearchHitRects(source, page.sourcePageIndex, page.rotation, searchHighlight.query)
+      .then((rects) => {
+        if (!cancelled) {
+          setSearchHits(rects)
+          imgRef.current?.scrollIntoView({ block: 'center' })
+        }
+      })
+      .catch(() => undefined)
+    return () => {
+      cancelled = true
+    }
+  }, [source, page.id, page.sourcePageIndex, page.rotation, searchHighlight])
 
   // Selectable text layer (kopiëren + tekst-volgend markeren) in view mode.
   useEffect(() => {
@@ -883,6 +907,26 @@ export default function EditorPage({
             </div>
           )
         })}
+        {searchHits.map((rect, i) => (
+          <div
+            key={i}
+            className="search-hit-flash"
+            style={{
+              left: rect.x * scale,
+              top: rect.y * scale,
+              width: rect.width * scale,
+              height: rect.height * scale
+            }}
+          />
+        ))}
+        {searchHits.length > 0 && (
+          <div className="search-hit-chip" onPointerDown={(e) => e.stopPropagation()}>
+            {searchHits.length} {searchHits.length === 1 ? 'treffer' : 'treffers'}
+            <button type="button" className="icon-btn icon-btn--chrome" onClick={() => setSearchHighlight(null)}>
+              <IconClose size={11} />
+            </button>
+          </div>
+        )}
         {band && (
           <div
             className="highlight-band"

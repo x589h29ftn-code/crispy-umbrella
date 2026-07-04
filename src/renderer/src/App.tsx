@@ -10,6 +10,7 @@ import CommentsPanel from './components/CommentsPanel'
 import TabStrip from './components/TabStrip'
 import EditorView from './components/editor/EditorView'
 import { exportAllZip } from './lib/exportActions'
+import { printActiveGroup } from './lib/printActions'
 import { cancelDrag, isDragActive } from './lib/dragController'
 import { useStudioStore } from './store'
 
@@ -55,6 +56,9 @@ export default function App(): JSX.Element {
       } else if (mod && key === 'e') {
         e.preventDefault()
         void exportAllZip()
+      } else if (mod && key === 'p') {
+        e.preventDefault()
+        void printActiveGroup()
       } else if (mod && key === 'd') {
         e.preventDefault()
         if (!state.lightbox.open && !state.activeEditorTab) state.duplicatePages([...state.selectedPageIds])

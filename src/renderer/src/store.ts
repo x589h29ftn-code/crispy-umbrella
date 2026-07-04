@@ -100,7 +100,10 @@ interface StudioState {
   /** Active tab; null = the Overzicht (canvas) tab. */
   activeEditorTab: string | null
   editorViewMode: 'scroll' | 'spread' | 'single'
+  /** Actieve zoekterm-markering op een pagina (na klik op een zoekresultaat). */
+  searchHighlight: { pageId: string; query: string } | null
 
+  setSearchHighlight: (value: { pageId: string; query: string } | null) => void
   openEditorTab: (groupId: string) => void
   closeEditorTab: (groupId: string) => void
   setActiveEditorTab: (groupId: string | null) => void
@@ -248,6 +251,9 @@ export const useStudioStore = create<StudioState>((set, get) => ({
   editorTabs: [],
   activeEditorTab: null,
   editorViewMode: 'scroll',
+  searchHighlight: null,
+
+  setSearchHighlight: (value) => set({ searchHighlight: value }),
 
   openEditorTab: (groupId) => {
     set((state) => ({

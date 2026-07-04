@@ -3,6 +3,7 @@ import { nanoid } from 'nanoid'
 import { useStudioStore } from '../store'
 import { useClickOutside } from '../hooks/useClickOutside'
 import { exportActivePdf, exportAllZip } from '../lib/exportActions'
+import { printActiveGroup } from '../lib/printActions'
 import {
   IconArchive,
   IconCheck,
@@ -16,6 +17,7 @@ import {
   IconMinus,
   IconMoon,
   IconPlus,
+  IconPrinter,
   IconRedo,
   IconSearch,
   IconSignature,
@@ -314,6 +316,16 @@ export default function Toolbar({ zoomPct, onZoomIn, onZoomOut, onZoomReset, onZ
       <button type="button" className="sidebar-btn" onClick={() => void handleOpen()} title="Openen (Ctrl+O)">
         <IconFolderOpen size={15} />
         <span className="sidebar-btn__label">Openen</span>
+      </button>
+      <button
+        type="button"
+        className="sidebar-btn"
+        disabled={!activeGroup}
+        onClick={() => void printActiveGroup()}
+        title="Druk het actieve document af (Ctrl+P)"
+      >
+        <IconPrinter size={15} />
+        <span className="sidebar-btn__label">Afdrukken</span>
       </button>
       <button
         type="button"

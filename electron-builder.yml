@@ -13,8 +13,8 @@ asarUnpack:
   - node_modules/tesseract.js/**
   - node_modules/tesseract.js-core/**
 extraResources:
-  - from: node_modules/@tesseract.js-data/nld/4.0.0_best_int/nld.traineddata.gz
-    to: tessdata/nld.traineddata.gz
+  - from: resources/tessdata
+    to: tessdata
 win:
   executableName: PDF-Studio
   target:

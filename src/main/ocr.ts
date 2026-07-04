@@ -25,10 +25,10 @@ export interface OcrPageResult {
 }
 
 function langDir(): string {
-  // Dutch traineddata ships with the app (electron-builder extraResources);
-  // in dev it is read directly from node_modules.
+  // Dutch + English traineddata ship with the app (electron-builder
+  // extraResources); in dev they are read from the repo's resources dir.
   return is.dev || !app.isPackaged
-    ? join(app.getAppPath(), 'node_modules/@tesseract.js-data/nld/4.0.0_best_int')
+    ? join(app.getAppPath(), 'resources/tessdata')
     : join(process.resourcesPath, 'tessdata')
 }
 
@@ -36,7 +36,7 @@ let workerPromise: Promise<Worker> | null = null
 
 function getWorker(): Promise<Worker> {
   if (!workerPromise) {
-    workerPromise = createWorker('nld', 1, {
+    workerPromise = createWorker('nld+eng', 1, {
       langPath: langDir(),
       gzip: true,
       cacheMethod: 'none'
