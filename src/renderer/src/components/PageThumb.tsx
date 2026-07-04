@@ -31,6 +31,7 @@ interface Decorations {
   pageHeight: number
   signatures: { placement: SignaturePlacement; box: SignatureVisualBox }[]
   annotations: { annotation: Annotation; box: SignatureVisualBox | null; points: { x: number; y: number }[] | null }[]
+  commentPins: { id: string; resolved: boolean; x: number; y: number }[]
 }
 
 /** Signature/annotation overlays so placed items are visible on the small thumbnail too. */
@@ -39,7 +40,7 @@ function useDecorations(page: PageRef, source: SourceFile | undefined): Decorati
 
   useEffect(() => {
     let cancelled = false
-    if (!source || (page.signatures.length === 0 && page.annotations.length === 0)) {
+    if (!source || (page.signatures.length === 0 && page.annotations.length === 0 && page.comments.length === 0)) {
       setDecorations(null)
       return
     }
@@ -75,12 +76,25 @@ function useDecorations(page: PageRef, source: SourceFile | undefined): Decorati
           }
         })
       )
-      if (!cancelled) setDecorations({ pageWidth: size.width, pageHeight: size.height, signatures, annotations })
+      const pinPoints = await contentPointsToVisualPoints(
+        source,
+        page.sourcePageIndex,
+        page.rotation,
+        page.comments.map((c) => ({ x: c.x, y: c.y }))
+      )
+      const commentPins = page.comments.map((c, i) => ({
+        id: c.id,
+        resolved: c.resolved,
+        x: pinPoints[i].x,
+        y: pinPoints[i].y
+      }))
+      if (!cancelled)
+        setDecorations({ pageWidth: size.width, pageHeight: size.height, signatures, annotations, commentPins })
     })().catch(() => undefined)
     return () => {
       cancelled = true
     }
-  }, [source, page.sourcePageIndex, page.rotation, page.signatures, page.annotations])
+  }, [source, page.sourcePageIndex, page.rotation, page.signatures, page.annotations, page.comments])
 
   return decorations
 }
@@ -243,6 +257,13 @@ export default function PageThumb({ page, source, index }: Props): JSX.Element {
                 </div>
               ) : null
             )}
+            {decorations.commentPins.map((pin) => (
+              <span
+                key={pin.id}
+                className={`page-decoration page-decoration--pin${pin.resolved ? ' page-decoration--pin-resolved' : ''}`}
+                style={{ left: pin.x * decorScale, top: pin.y * decorScale }}
+              />
+            ))}
             {decorations.signatures.map(({ placement, box }) => (
               <img
                 key={placement.id}

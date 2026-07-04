@@ -29,15 +29,18 @@ import type {
   AnnotationFont,
   HighlightAnnotation,
   InkAnnotation,
+  PageComment,
   RedactAnnotation,
   SignaturePlacement,
   TextAnnotation
 } from '../types'
 import {
+  IconCheck,
   IconChevronDown,
   IconChevronLeft,
   IconChevronRight,
   IconClose,
+  IconComment,
   IconCursor,
   IconEditText,
   IconEraser,
@@ -47,6 +50,7 @@ import {
   IconPlus,
   IconRedact,
   IconRotate,
+  IconTrash,
   IconType
 } from './icons'
 import LightboxFilmstrip from './LightboxFilmstrip'
@@ -55,7 +59,12 @@ const DEFAULT_SIGNATURE_WIDTH_PCT = 0.28
 const MIN_HIGHLIGHT_SIZE_PX = 5
 const MAX_PAGE_ZOOM = 5
 
-type EditMode = 'view' | 'highlight' | 'text' | 'draw' | 'erase' | 'redact' | 'edittext'
+type EditMode = 'view' | 'highlight' | 'text' | 'draw' | 'erase' | 'redact' | 'edittext' | 'comment'
+
+export function formatCommentTime(ms: number): string {
+  const d = new Date(ms)
+  return `${d.getDate()}-${d.getMonth() + 1}-${d.getFullYear()} ${d.getHours()}:${String(d.getMinutes()).padStart(2, '0')}`
+}
 
 interface DragTarget {
   kind: 'move' | 'resize'
@@ -100,6 +109,12 @@ export default function Lightbox(): JSX.Element | null {
   const addAnnotation = useStudioStore((s) => s.addAnnotation)
   const updateAnnotation = useStudioStore((s) => s.updateAnnotation)
   const removeAnnotation = useStudioStore((s) => s.removeAnnotation)
+  const addComment = useStudioStore((s) => s.addComment)
+  const updateComment = useStudioStore((s) => s.updateComment)
+  const addCommentReply = useStudioStore((s) => s.addCommentReply)
+  const removeComment = useStudioStore((s) => s.removeComment)
+  const focusCommentId = useStudioStore((s) => s.focusCommentId)
+  const clearFocusComment = useStudioStore((s) => s.clearFocusComment)
 
   const [image, setImage] = useState<string | null>(null)
   const [boxes, setBoxes] = useState<Record<string, SignatureVisualBox>>({})
@@ -139,6 +154,10 @@ export default function Lightbox(): JSX.Element | null {
   const [liveStroke, setLiveStroke] = useState<{ x: number; y: number }[] | null>(null)
   const liveStrokeRef = useRef<{ x: number; y: number }[] | null>(null)
   const [textLines, setTextLines] = useState<TextLineBox[] | null>(null)
+  const [commentPins, setCommentPins] = useState<Record<string, { x: number; y: number }>>({})
+  const [openCommentId, setOpenCommentId] = useState<string | null>(null)
+  const [newComment, setNewComment] = useState<{ visualX: number; visualY: number; value: string } | null>(null)
+  const [replyDraft, setReplyDraft] = useState('')
   const [sigPickerOpen, setSigPickerOpen] = useState(false)
   const sigPickerRef = useRef<HTMLDivElement>(null)
   useClickOutside(sigPickerRef, sigPickerOpen, () => setSigPickerOpen(false))
@@ -197,7 +216,45 @@ export default function Lightbox(): JSX.Element | null {
     setPageZoom(1)
     setPagePan({ x: 0, y: 0 })
     setTextLines(null)
+    setOpenCommentId(null)
+    setNewComment(null)
+    setReplyDraft('')
   }, [lightbox.pageId])
+
+  // A click in the comments timeline jumps straight to that thread.
+  useEffect(() => {
+    if (!focusCommentId || !context) return
+    if (context.page.comments.some((c) => c.id === focusCommentId)) {
+      setMode('view')
+      setOpenCommentId(focusCommentId)
+      clearFocusComment()
+    }
+  }, [focusCommentId, context, clearFocusComment])
+
+  // Comment pins need their anchor converted to visual coordinates.
+  useEffect(() => {
+    let cancelled = false
+    if (!context || context.page.comments.length === 0) {
+      setCommentPins({})
+      return
+    }
+    const source = sources.get(context.page.sourceId)
+    if (!source) return
+    contentPointsToVisualPoints(
+      source,
+      context.page.sourcePageIndex,
+      context.page.rotation,
+      context.page.comments.map((c) => ({ x: c.x, y: c.y }))
+    )
+      .then((points) => {
+        if (cancelled) return
+        setCommentPins(Object.fromEntries(context.page.comments.map((c, i) => [c.id, points[i]])))
+      })
+      .catch(() => undefined)
+    return () => {
+      cancelled = true
+    }
+  }, [context, sources])
 
   // In-place text editing needs the native text line positions.
   useEffect(() => {
@@ -600,7 +657,44 @@ export default function Lightbox(): JSX.Element | null {
       setTextEditor({ annotationId: null, visualX: point.x, visualY: point.y, value: '' })
       return
     }
-    if (mode === 'view') setSelectedAnnotationId(null)
+    if (mode === 'comment') {
+      const point = stagePointToVisual(e.clientX, e.clientY)
+      if (!point) return
+      setOpenCommentId(null)
+      setNewComment({ visualX: point.x, visualY: point.y, value: '' })
+      return
+    }
+    if (mode === 'view') {
+      setSelectedAnnotationId(null)
+      setOpenCommentId(null)
+      setNewComment(null)
+    }
+  }
+
+  async function commitNewComment(): Promise<void> {
+    const draft = newComment
+    if (!draft || !source || !context) return
+    setNewComment(null)
+    const text = draft.value.trim()
+    if (!text) return
+    const { x, y } = await visualPointToContentPoint(
+      source,
+      context.page.sourcePageIndex,
+      context.page.rotation,
+      draft.visualX,
+      draft.visualY
+    )
+    const comment: PageComment = {
+      id: nanoid(),
+      x,
+      y,
+      text,
+      createdAt: Date.now(),
+      resolved: false,
+      replies: []
+    }
+    addComment(context.page.id, comment)
+    setOpenCommentId(comment.id)
   }
 
   async function commitTextEditor(): Promise<void> {
@@ -1022,6 +1116,17 @@ export default function Lightbox(): JSX.Element | null {
           </button>
           <button
             type="button"
+            className={`editbar__mode${mode === 'comment' ? ' editbar__mode--active' : ''}`}
+            onClick={() => {
+              setMode((m) => (m === 'comment' ? 'view' : 'comment'))
+              setSelectedAnnotationId(null)
+            }}
+            title="Commentaar: klik op de pagina om een opmerking te plaatsen"
+          >
+            <IconComment size={14} /> Commentaar
+          </button>
+          <button
+            type="button"
             className={`editbar__mode${mode === 'erase' ? ' editbar__mode--active' : ''}`}
             onClick={() => {
               setMode((m) => (m === 'erase' ? 'view' : 'erase'))
@@ -1372,6 +1477,143 @@ export default function Lightbox(): JSX.Element | null {
                     strokeLinejoin="round"
                   />
                 </svg>
+              )}
+              {context.page.comments.map((comment) => {
+                const pin = commentPins[comment.id]
+                if (!pin) return null
+                return (
+                  <button
+                    key={comment.id}
+                    type="button"
+                    className={`comment-pin${comment.resolved ? ' comment-pin--resolved' : ''}${
+                      comment.id === openCommentId ? ' comment-pin--open' : ''
+                    }`}
+                    style={{ left: pin.x * layoutScale, top: pin.y * layoutScale }}
+                    title={comment.text}
+                    onPointerDown={(e) => e.stopPropagation()}
+                    onClick={(e) => {
+                      e.stopPropagation()
+                      setNewComment(null)
+                      setOpenCommentId((v) => (v === comment.id ? null : comment.id))
+                      setReplyDraft('')
+                    }}
+                  >
+                    {comment.resolved ? <IconCheck size={11} /> : <IconComment size={11} />}
+                  </button>
+                )
+              })}
+              {(() => {
+                const comment = context.page.comments.find((c) => c.id === openCommentId)
+                const pin = comment && commentPins[comment.id]
+                if (!comment || !pin) return null
+                return (
+                  <div
+                    className="comment-thread"
+                    style={{ left: pin.x * layoutScale + 14, top: pin.y * layoutScale + 6 }}
+                    onPointerDown={(e) => e.stopPropagation()}
+                    onClick={(e) => e.stopPropagation()}
+                  >
+                    <div className="comment-thread__head">
+                      <span className="comment-thread__time">{formatCommentTime(comment.createdAt)}</span>
+                      <label className="comment-thread__resolve" title="Markeer als afgehandeld">
+                        <input
+                          type="checkbox"
+                          checked={comment.resolved}
+                          onChange={(e) => updateComment(context.page.id, comment.id, { resolved: e.target.checked })}
+                        />
+                        Afgehandeld
+                      </label>
+                      <button
+                        type="button"
+                        className="icon-btn icon-btn--chrome icon-btn--danger"
+                        title="Opmerking verwijderen"
+                        onClick={() => {
+                          removeComment(context.page.id, comment.id)
+                          setOpenCommentId(null)
+                        }}
+                      >
+                        <IconTrash size={12} />
+                      </button>
+                      <button
+                        type="button"
+                        className="icon-btn icon-btn--chrome"
+                        title="Sluiten"
+                        onClick={() => setOpenCommentId(null)}
+                      >
+                        <IconClose size={12} />
+                      </button>
+                    </div>
+                    <div className="comment-thread__text">{comment.text}</div>
+                    {comment.replies.map((reply) => (
+                      <div key={reply.id} className="comment-thread__reply">
+                        <span className="comment-thread__time">{formatCommentTime(reply.createdAt)}</span>
+                        <div>{reply.text}</div>
+                      </div>
+                    ))}
+                    <input
+                      type="text"
+                      className="comment-thread__input"
+                      placeholder="Beantwoorden…"
+                      value={replyDraft}
+                      onChange={(e) => setReplyDraft(e.target.value)}
+                      onKeyDown={(e) => {
+                        if (e.key === 'Enter' && replyDraft.trim()) {
+                          addCommentReply(context.page.id, comment.id, replyDraft.trim())
+                          setReplyDraft('')
+                        }
+                        if (e.key === 'Escape') {
+                          e.stopPropagation()
+                          setOpenCommentId(null)
+                        }
+                      }}
+                    />
+                  </div>
+                )
+              })()}
+              {newComment && (
+                <div
+                  className="comment-thread"
+                  style={{ left: newComment.visualX * layoutScale + 14, top: newComment.visualY * layoutScale + 6 }}
+                  onPointerDown={(e) => e.stopPropagation()}
+                  onClick={(e) => e.stopPropagation()}
+                >
+                  <div className="comment-thread__head">
+                    <span className="comment-thread__time">Nieuwe opmerking</span>
+                    <button
+                      type="button"
+                      className="icon-btn icon-btn--chrome"
+                      title="Annuleren"
+                      onClick={() => setNewComment(null)}
+                    >
+                      <IconClose size={12} />
+                    </button>
+                  </div>
+                  <textarea
+                    autoFocus
+                    className="comment-thread__textarea"
+                    placeholder="Typ je opmerking…"
+                    value={newComment.value}
+                    onChange={(e) => setNewComment({ ...newComment, value: e.target.value })}
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter' && !e.shiftKey) {
+                        e.preventDefault()
+                        void commitNewComment()
+                      }
+                      if (e.key === 'Escape') {
+                        e.stopPropagation()
+                        setNewComment(null)
+                      }
+                    }}
+                  />
+                  <button
+                    type="button"
+                    className="pill-btn pill-btn--primary comment-thread__submit"
+                    disabled={!newComment.value.trim()}
+                    onClick={() => void commitNewComment()}
+                  >
+                    Plaatsen
+                  </button>
+                </div>
               )}
               {textEditor && (
                 <div

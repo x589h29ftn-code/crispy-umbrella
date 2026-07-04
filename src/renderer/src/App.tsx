@@ -6,6 +6,7 @@ import Toasts from './components/Toasts'
 import PasswordDialog from './components/PasswordDialog'
 import SelectionBar from './components/SelectionBar'
 import SearchPanel from './components/SearchPanel'
+import CommentsPanel from './components/CommentsPanel'
 import { exportAllZip } from './lib/exportActions'
 import { cancelDrag, isDragActive } from './lib/dragController'
 import { useStudioStore } from './store'
@@ -91,6 +92,7 @@ export default function App(): JSX.Element {
       <main className="app-main">
         <Canvas onScaleChange={onScaleChange} registerZoomControls={registerZoomControls} />
         <SearchPanel />
+        <CommentsPanel />
       </main>
       <Lightbox />
       <SelectionBar />

@@ -9,6 +9,7 @@ import {
   IconChevronLeft,
   IconChevronRight,
   IconClose,
+  IconComment,
   IconDownload,
   IconFolderOpen,
   IconLock,
@@ -65,6 +66,11 @@ export default function Toolbar({ zoomPct, onZoomIn, onZoomOut, onZoomReset, onZ
   const busyExport = useStudioStore((s) => s.busyExport)
   const searchOpen = useStudioStore((s) => s.searchOpen)
   const setSearchOpen = useStudioStore((s) => s.setSearchOpen)
+  const commentsPanelOpen = useStudioStore((s) => s.commentsPanelOpen)
+  const setCommentsPanelOpen = useStudioStore((s) => s.setCommentsPanelOpen)
+  const openCommentCount = useStudioStore((s) =>
+    s.groups.reduce((n, g) => n + g.pages.reduce((m, p) => m + p.comments.filter((c) => !c.resolved).length, 0), 0)
+  )
   const exportPassword = useStudioStore((s) => s.exportPassword)
   const setExportPassword = useStudioStore((s) => s.setExportPassword)
   const [showPasswordField, setShowPasswordField] = useState(false)
@@ -192,6 +198,17 @@ export default function Toolbar({ zoomPct, onZoomIn, onZoomOut, onZoomReset, onZ
       >
         <IconSearch size={15} />
         <span className="sidebar-btn__label">Zoeken</span>
+      </button>
+
+      <button
+        type="button"
+        className={`sidebar-btn${commentsPanelOpen ? ' sidebar-btn--active' : ''}`}
+        onClick={() => setCommentsPanelOpen(!commentsPanelOpen)}
+        title="Tijdlijn van alle opmerkingen"
+      >
+        <IconComment size={15} />
+        <span className="sidebar-btn__label">Opmerkingen</span>
+        {openCommentCount > 0 && <span className="sidebar-btn__badge">{openCommentCount}</span>}
       </button>
 
       <button

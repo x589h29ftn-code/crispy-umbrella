@@ -1,7 +1,7 @@
 import { create } from 'zustand'
 import { nanoid } from 'nanoid'
 import { createBlankPageSource, decryptPdfBytes, forgetSource, isPasswordError, loadSourceFile } from './lib/pdfEngine'
-import type { Annotation, DocGroup, PageRef, SignatureAsset, SignaturePlacement, SourceFile, Watermark } from './types'
+import type { Annotation, DocGroup, PageComment, PageRef, SignatureAsset, SignaturePlacement, SourceFile, Watermark } from './types'
 
 export interface LightboxState {
   open: boolean
@@ -104,6 +104,15 @@ interface StudioState {
   addSignaturePlacement: (pageId: string, placement: Omit<SignaturePlacement, 'id'>) => void
   updateSignaturePlacement: (pageId: string, placementId: string, patch: Partial<SignaturePlacement>) => void
   removeSignaturePlacement: (pageId: string, placementId: string) => void
+  commentsPanelOpen: boolean
+  focusCommentId: string | null
+  setCommentsPanelOpen: (open: boolean) => void
+  openCommentThread: (pageId: string, commentId: string) => void
+  clearFocusComment: () => void
+  addComment: (pageId: string, comment: PageComment) => void
+  updateComment: (pageId: string, commentId: string, patch: Partial<PageComment>) => void
+  addCommentReply: (pageId: string, commentId: string, text: string) => void
+  removeComment: (pageId: string, commentId: string) => void
   addAnnotation: (pageId: string, annotation: Annotation) => void
   updateAnnotation: (pageId: string, annotationId: string, patch: Partial<Annotation>) => void
   removeAnnotation: (pageId: string, annotationId: string) => void
@@ -329,7 +338,8 @@ export const useStudioStore = create<StudioState>((set, get) => ({
             sourcePageIndex: i,
             rotation: 0,
             signatures: [],
-            annotations: []
+            annotations: [],
+            comments: []
           })),
           watermark: null,
           pageNumbers: false,
@@ -365,7 +375,8 @@ export const useStudioStore = create<StudioState>((set, get) => ({
             sourcePageIndex: i,
             rotation: 0,
             signatures: [],
-            annotations: []
+            annotations: [],
+            comments: []
           })
         }
       }
@@ -391,7 +402,8 @@ export const useStudioStore = create<StudioState>((set, get) => ({
       sourcePageIndex: 0,
       rotation: 0,
       signatures: [],
-      annotations: []
+      annotations: [],
+      comments: []
     }
     get().markHistory()
     set((state) => ({
@@ -491,7 +503,12 @@ export const useStudioStore = create<StudioState>((set, get) => ({
                     ...p,
                     id: nanoid(),
                     signatures: p.signatures.map((s) => ({ ...s, id: nanoid() })),
-                    annotations: p.annotations.map((a) => ({ ...a, id: nanoid() }))
+                    annotations: p.annotations.map((a) => ({ ...a, id: nanoid() })),
+                    comments: p.comments.map((c) => ({
+                      ...c,
+                      id: nanoid(),
+                      replies: c.replies.map((r) => ({ ...r, id: nanoid() }))
+                    }))
                   }
                 ]
               : [p]
@@ -608,6 +625,74 @@ export const useStudioStore = create<StudioState>((set, get) => ({
         ...g,
         pages: g.pages.map((p) =>
           p.id !== pageId ? p : { ...p, signatures: p.signatures.filter((s) => s.id !== placementId) }
+        )
+      }))
+    }))
+  },
+
+  commentsPanelOpen: false,
+  focusCommentId: null,
+
+  setCommentsPanelOpen: (open) => set({ commentsPanelOpen: open }),
+
+  openCommentThread: (pageId, commentId) => {
+    set({ lightbox: { open: true, pageId }, focusCommentId: commentId, commentsPanelOpen: false })
+  },
+
+  clearFocusComment: () => set({ focusCommentId: null }),
+
+  addComment: (pageId, comment) => {
+    get().markHistory()
+    set((state) => ({
+      groups: state.groups.map((g) => ({
+        ...g,
+        pages: g.pages.map((p) => (p.id === pageId ? { ...p, comments: [...p.comments, comment] } : p))
+      }))
+    }))
+  },
+
+  updateComment: (pageId, commentId, patch) => {
+    get().markHistory()
+    set((state) => ({
+      groups: state.groups.map((g) => ({
+        ...g,
+        pages: g.pages.map((p) =>
+          p.id !== pageId
+            ? p
+            : { ...p, comments: p.comments.map((c) => (c.id === commentId ? { ...c, ...patch } : c)) }
+        )
+      }))
+    }))
+  },
+
+  addCommentReply: (pageId, commentId, text) => {
+    get().markHistory()
+    set((state) => ({
+      groups: state.groups.map((g) => ({
+        ...g,
+        pages: g.pages.map((p) =>
+          p.id !== pageId
+            ? p
+            : {
+                ...p,
+                comments: p.comments.map((c) =>
+                  c.id !== commentId
+                    ? c
+                    : { ...c, replies: [...c.replies, { id: nanoid(), text, createdAt: Date.now() }] }
+                )
+              }
+        )
+      }))
+    }))
+  },
+
+  removeComment: (pageId, commentId) => {
+    get().markHistory()
+    set((state) => ({
+      groups: state.groups.map((g) => ({
+        ...g,
+        pages: g.pages.map((p) =>
+          p.id !== pageId ? p : { ...p, comments: p.comments.filter((c) => c.id !== commentId) }
         )
       }))
     }))

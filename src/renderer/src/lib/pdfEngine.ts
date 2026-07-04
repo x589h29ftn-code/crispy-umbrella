@@ -1,6 +1,20 @@
 import * as pdfjsLib from 'pdfjs-dist'
 import pdfWorkerUrl from 'pdfjs-dist/build/pdf.worker.min.mjs?url'
-import { BlendMode, LineCapStyle, PDFDocument, PDFFont, PDFImage, PDFPage, StandardFonts, degrees, rgb } from '@cantoo/pdf-lib'
+import {
+  BlendMode,
+  LineCapStyle,
+  PDFArray,
+  PDFDocument,
+  PDFFont,
+  PDFHexString,
+  PDFImage,
+  PDFName,
+  PDFPage,
+  PDFString,
+  StandardFonts,
+  degrees,
+  rgb
+} from '@cantoo/pdf-lib'
 import fontkit from '@pdf-lib/fontkit'
 import arialRegularUrl from '../assets/fonts/LiberationSans-Regular.ttf?url'
 import arialBoldUrl from '../assets/fonts/LiberationSans-Bold.ttf?url'
@@ -14,6 +28,7 @@ import { getOcr } from './ocrStore'
 import type {
   AnnotationFont,
   DocGroup,
+  PageComment,
   PageRef,
   RedactAnnotation,
   SignaturePlacement,
@@ -518,6 +533,69 @@ async function rasterizeRedactedPage(
   return { page: newPage, offsetX: x0, offsetY: y0 }
 }
 
+/**
+ * Writes the page's comments as real PDF text annotations (sticky notes):
+ * replies become /IRT-linked annotations and a checked-off comment gets a
+ * Review/Completed state annotation, so Acrobat & co show the full thread.
+ */
+function addCommentAnnotations(out: PDFDocument, page: PDFPage, comments: PageComment[], ox: number, oy: number): void {
+  if (!comments.length) return
+  const context = out.context
+  const refs: ReturnType<typeof context.register>[] = []
+  for (const comment of comments) {
+    const rect = [comment.x - ox, comment.y - oy, comment.x - ox + 20, comment.y - oy + 20]
+    const parent = context.obj({
+      Type: 'Annot',
+      Subtype: 'Text',
+      Rect: rect,
+      Contents: PDFHexString.fromText(comment.text),
+      T: PDFHexString.fromText('PDF Studio'),
+      M: PDFString.fromDate(new Date(comment.createdAt)),
+      Name: 'Comment',
+      F: 4,
+      Open: false
+    })
+    const parentRef = context.register(parent)
+    refs.push(parentRef)
+    for (const reply of comment.replies) {
+      const replyDict = context.obj({
+        Type: 'Annot',
+        Subtype: 'Text',
+        Rect: rect,
+        Contents: PDFHexString.fromText(reply.text),
+        T: PDFHexString.fromText('PDF Studio'),
+        M: PDFString.fromDate(new Date(reply.createdAt)),
+        Name: 'Comment',
+        F: 4,
+        IRT: parentRef,
+        Open: false
+      })
+      refs.push(context.register(replyDict))
+    }
+    if (comment.resolved) {
+      const stateDict = context.obj({
+        Type: 'Annot',
+        Subtype: 'Text',
+        Rect: rect,
+        Contents: PDFHexString.fromText('Afgehandeld'),
+        T: PDFHexString.fromText('PDF Studio'),
+        M: PDFString.fromDate(new Date()),
+        F: 4,
+        IRT: parentRef,
+        State: PDFString.of('Completed'),
+        StateModel: PDFString.of('Review')
+      })
+      refs.push(context.register(stateDict))
+    }
+  }
+  const existing = page.node.get(PDFName.of('Annots'))
+  if (existing instanceof PDFArray) {
+    for (const ref of refs) existing.push(ref)
+  } else {
+    page.node.set(PDFName.of('Annots'), context.obj(refs))
+  }
+}
+
 async function buildPdf(group: DocGroup, sources: Map<string, SourceFile>): Promise<Uint8Array> {
   const out = await PDFDocument.create()
   const byDoc = new Map<string, number[]>()
@@ -694,6 +772,8 @@ async function buildPdf(group: DocGroup, sources: Map<string, SourceFile>): Prom
     if (group.pageNumbers && font) {
       drawPageNumber(targetPage, i + 1, total, font)
     }
+
+    addCommentAnnotations(out, targetPage, page.comments, ox, oy)
 
     if (!redactions.length) out.addPage(copiedPage)
   }

@@ -66,6 +66,24 @@ export interface RedactAnnotation {
 
 export type Annotation = HighlightAnnotation | TextAnnotation | InkAnnotation | RedactAnnotation
 
+export interface CommentReply {
+  id: string
+  text: string
+  /** Epoch ms. */
+  createdAt: number
+}
+
+export interface PageComment {
+  id: string
+  /** Anchor in PDF points, unrotated media-box space (like annotations). */
+  x: number
+  y: number
+  text: string
+  createdAt: number
+  resolved: boolean
+  replies: CommentReply[]
+}
+
 export interface PageRef {
   id: string
   sourceId: string
@@ -73,6 +91,7 @@ export interface PageRef {
   rotation: 0 | 90 | 180 | 270
   signatures: SignaturePlacement[]
   annotations: Annotation[]
+  comments: PageComment[]
 }
 
 export interface Watermark {

@@ -229,6 +229,14 @@ export function IconType({ size = 16, className }: IconProps): JSX.Element {
   )
 }
 
+export function IconComment({ size = 16, className }: IconProps): JSX.Element {
+  return (
+    <svg width={size} height={size} viewBox="0 0 24 24" className={className} {...base}>
+      <path d="M20.5 12a8.5 8.5 0 0 1-8.5 8.5c-1.4 0-2.7-.33-3.9-.92L3.5 20.5l1-4.4A8.5 8.5 0 1 1 20.5 12z" />
+    </svg>
+  )
+}
+
 export function IconRedact({ size = 16, className }: IconProps): JSX.Element {
   return (
     <svg width={size} height={size} viewBox="0 0 24 24" className={className} {...base}>
