@@ -1011,7 +1011,10 @@ export default function EditorPage({
             onClick={(e) => e.stopPropagation()}
           >
             <div className="comment-thread__head">
-              <span className="comment-thread__time">{formatCommentTime(openComment.createdAt)}</span>
+              <span className="comment-thread__time">
+                {openComment.author && <strong className="comment-thread__author">{openComment.author} · </strong>}
+                {formatCommentTime(openComment.createdAt)}
+              </span>
               <label className="comment-thread__resolve" title="Markeer als afgehandeld">
                 <input
                   type="checkbox"
@@ -1038,7 +1041,10 @@ export default function EditorPage({
             <div className="comment-thread__text">{openComment.text}</div>
             {openComment.replies.map((reply) => (
               <div key={reply.id} className="comment-thread__reply">
-                <span className="comment-thread__time">{formatCommentTime(reply.createdAt)}</span>
+                <span className="comment-thread__time">
+                  {reply.author && <strong className="comment-thread__author">{reply.author} · </strong>}
+                  {formatCommentTime(reply.createdAt)}
+                </span>
                 <div>{reply.text}</div>
               </div>
             ))}

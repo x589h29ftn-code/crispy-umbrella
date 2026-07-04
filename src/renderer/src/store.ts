@@ -1,6 +1,7 @@
 import { create } from 'zustand'
 import { nanoid } from 'nanoid'
 import { createBlankPageSource, decryptPdfBytes, forgetSource, isPasswordError, loadSourceFile } from './lib/pdfEngine'
+import { extractComments } from './lib/commentImport'
 import type { Annotation, DocGroup, PageComment, PageRef, SignatureAsset, SignaturePlacement, SourceFile, Watermark } from './types'
 
 export interface LightboxState {
@@ -64,6 +65,7 @@ async function prepareImportFiles(
 export type Theme = 'dark' | 'light'
 
 const THEME_STORAGE_KEY = 'pdf-studio-theme'
+const AUTHOR_STORAGE_KEY = 'pdf-studio-author'
 
 function getInitialTheme(): Theme {
   const stored = window.localStorage.getItem(THEME_STORAGE_KEY)
@@ -102,7 +104,10 @@ interface StudioState {
   editorViewMode: 'scroll' | 'spread' | 'single'
   /** Actieve zoekterm-markering op een pagina (na klik op een zoekresultaat). */
   searchHighlight: { pageId: string; query: string } | null
+  /** Naam die bij nieuwe opmerkingen en in de PDF-export wordt gezet. */
+  authorName: string
 
+  setAuthorName: (name: string) => void
   setSearchHighlight: (value: { pageId: string; query: string } | null) => void
   openEditorTab: (groupId: string) => void
   closeEditorTab: (groupId: string) => void
@@ -252,6 +257,12 @@ export const useStudioStore = create<StudioState>((set, get) => ({
   activeEditorTab: null,
   editorViewMode: 'scroll',
   searchHighlight: null,
+  authorName: window.localStorage.getItem(AUTHOR_STORAGE_KEY) ?? '',
+
+  setAuthorName: (name) => {
+    window.localStorage.setItem(AUTHOR_STORAGE_KEY, name)
+    set({ authorName: name })
+  },
 
   setSearchHighlight: (value) => set({ searchHighlight: value }),
 
@@ -404,6 +415,7 @@ export const useStudioStore = create<StudioState>((set, get) => ({
         const source = await loadFileInteractive(file, get().addToast)
         if (!source) continue
         sources.set(source.id, source)
+        const importedComments = await extractComments(source)
         const baseName = file.name.replace(/\.pdf$/i, '')
         newGroups.push({
           id: nanoid(),
@@ -415,7 +427,7 @@ export const useStudioStore = create<StudioState>((set, get) => ({
             rotation: 0,
             signatures: [],
             annotations: [],
-            comments: []
+            comments: importedComments.get(i) ?? []
           })),
           watermark: null,
           pageNumbers: false,
@@ -445,6 +457,7 @@ export const useStudioStore = create<StudioState>((set, get) => ({
         const source = await loadFileInteractive(file, get().addToast)
         if (!source) continue
         sources.set(source.id, source)
+        const importedComments = await extractComments(source)
         for (let i = 0; i < source.pageCount; i += 1) {
           newPages.push({
             id: nanoid(),
@@ -453,7 +466,7 @@ export const useStudioStore = create<StudioState>((set, get) => ({
             rotation: 0,
             signatures: [],
             annotations: [],
-            comments: []
+            comments: importedComments.get(i) ?? []
           })
         }
       }
@@ -720,10 +733,12 @@ export const useStudioStore = create<StudioState>((set, get) => ({
 
   addComment: (pageId, comment) => {
     get().markHistory()
+    const author = comment.author ?? (get().authorName.trim() || undefined)
+    const stamped = { ...comment, author }
     set((state) => ({
       groups: state.groups.map((g) => ({
         ...g,
-        pages: g.pages.map((p) => (p.id === pageId ? { ...p, comments: [...p.comments, comment] } : p))
+        pages: g.pages.map((p) => (p.id === pageId ? { ...p, comments: [...p.comments, stamped] } : p))
       }))
     }))
   },
@@ -755,7 +770,13 @@ export const useStudioStore = create<StudioState>((set, get) => ({
                 comments: p.comments.map((c) =>
                   c.id !== commentId
                     ? c
-                    : { ...c, replies: [...c.replies, { id: nanoid(), text, createdAt: Date.now() }] }
+                    : {
+                        ...c,
+                        replies: [
+                          ...c.replies,
+                          { id: nanoid(), text, createdAt: Date.now(), author: get().authorName.trim() || undefined }
+                        ]
+                      }
                 )
               }
         )

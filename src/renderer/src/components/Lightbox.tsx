@@ -1557,7 +1557,10 @@ export default function Lightbox(): JSX.Element | null {
                     onClick={(e) => e.stopPropagation()}
                   >
                     <div className="comment-thread__head">
-                      <span className="comment-thread__time">{formatCommentTime(comment.createdAt)}</span>
+                      <span className="comment-thread__time">
+                        {comment.author && <strong className="comment-thread__author">{comment.author} · </strong>}
+                        {formatCommentTime(comment.createdAt)}
+                      </span>
                       <label className="comment-thread__resolve" title="Markeer als afgehandeld">
                         <input
                           type="checkbox"
@@ -1589,7 +1592,10 @@ export default function Lightbox(): JSX.Element | null {
                     <div className="comment-thread__text">{comment.text}</div>
                     {comment.replies.map((reply) => (
                       <div key={reply.id} className="comment-thread__reply">
-                        <span className="comment-thread__time">{formatCommentTime(reply.createdAt)}</span>
+                        <span className="comment-thread__time">
+                          {reply.author && <strong className="comment-thread__author">{reply.author} · </strong>}
+                          {formatCommentTime(reply.createdAt)}
+                        </span>
                         <div>{reply.text}</div>
                       </div>
                     ))}

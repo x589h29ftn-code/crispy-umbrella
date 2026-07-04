@@ -1,6 +1,7 @@
 import { useMemo } from 'react'
 import { useStudioStore } from '../store'
 import { formatCommentTime } from './Lightbox'
+import { exportCommentSummary } from '../lib/commentSummary'
 import { IconCheck, IconClose, IconComment } from './icons'
 
 /**
@@ -13,6 +14,8 @@ export default function CommentsPanel(): JSX.Element | null {
   const groups = useStudioStore((s) => s.groups)
   const openCommentThread = useStudioStore((s) => s.openCommentThread)
   const updateComment = useStudioStore((s) => s.updateComment)
+  const authorName = useStudioStore((s) => s.authorName)
+  const setAuthorName = useStudioStore((s) => s.setAuthorName)
 
   const items = useMemo(
     () =>
@@ -43,6 +46,27 @@ export default function CommentsPanel(): JSX.Element | null {
           <IconClose size={13} />
         </button>
       </div>
+      <div className="comments-panel__settings">
+        <label className="comments-panel__author">
+          <span>Je naam</span>
+          <input
+            type="text"
+            value={authorName}
+            placeholder="bijv. Mark"
+            onChange={(e) => setAuthorName(e.target.value)}
+            title="Wordt bij nieuwe opmerkingen en in de PDF-export als auteur gezet"
+          />
+        </label>
+        <button
+          type="button"
+          className="pill-btn"
+          disabled={items.length === 0}
+          title="Exporteer alle opmerkingen als overzichts-PDF"
+          onClick={() => void exportCommentSummary()}
+        >
+          Overzicht exporteren
+        </button>
+      </div>
       {items.length === 0 ? (
         <div className="comments-panel__empty">
           Nog geen opmerkingen. Open een pagina en kies "Commentaar" om er een te plaatsen.
@@ -57,6 +81,7 @@ export default function CommentsPanel(): JSX.Element | null {
               title="Klik om naar deze opmerking te gaan"
             >
               <div className="comments-panel__meta">
+                {comment.author && <span className="comments-panel__author-name">{comment.author}</span>}
                 <span className="comments-panel__time">{formatCommentTime(comment.createdAt)}</span>
                 <span className="comments-panel__where">
                   {groupName} · pagina {pageNumber}

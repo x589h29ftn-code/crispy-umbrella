@@ -4,12 +4,14 @@ import {
   BlendMode,
   LineCapStyle,
   PDFArray,
+  PDFDict,
   PDFDocument,
   PDFFont,
   PDFHexString,
   PDFImage,
   PDFName,
   PDFPage,
+  PDFRef,
   PDFString,
   StandardFonts,
   degrees,
@@ -538,6 +540,27 @@ async function rasterizeRedactedPage(
  * replies become /IRT-linked annotations and a checked-off comment gets a
  * Review/Completed state annotation, so Acrobat & co show the full thread.
  */
+/**
+ * Removes sticky-note annotations (Subtype /Text) and their popups from a
+ * copied page. Imported comments live in our own model and are re-emitted by
+ * addCommentAnnotations — leaving the originals in would duplicate every note.
+ */
+function stripCommentAnnotations(out: PDFDocument, page: PDFPage): void {
+  const annotsRaw = page.node.get(PDFName.of('Annots'))
+  if (!(annotsRaw instanceof PDFArray)) return
+  const kept = out.context.obj([]) as PDFArray
+  for (let i = 0; i < annotsRaw.size(); i += 1) {
+    const entry = annotsRaw.get(i)
+    const dict = entry instanceof PDFRef ? out.context.lookup(entry) : entry
+    if (dict instanceof PDFDict) {
+      const subtype = String(dict.get(PDFName.of('Subtype')))
+      if (subtype === '/Text' || subtype === '/Popup') continue
+    }
+    kept.push(entry)
+  }
+  page.node.set(PDFName.of('Annots'), kept)
+}
+
 function addCommentAnnotations(out: PDFDocument, page: PDFPage, comments: PageComment[], ox: number, oy: number): void {
   if (!comments.length) return
   const context = out.context
@@ -549,7 +572,7 @@ function addCommentAnnotations(out: PDFDocument, page: PDFPage, comments: PageCo
       Subtype: 'Text',
       Rect: rect,
       Contents: PDFHexString.fromText(comment.text),
-      T: PDFHexString.fromText('PDF Studio'),
+      T: PDFHexString.fromText(comment.author ?? 'PDF Studio'),
       M: PDFString.fromDate(new Date(comment.createdAt)),
       Name: 'Comment',
       F: 4,
@@ -563,7 +586,7 @@ function addCommentAnnotations(out: PDFDocument, page: PDFPage, comments: PageCo
         Subtype: 'Text',
         Rect: rect,
         Contents: PDFHexString.fromText(reply.text),
-        T: PDFHexString.fromText('PDF Studio'),
+        T: PDFHexString.fromText(reply.author ?? 'PDF Studio'),
         M: PDFString.fromDate(new Date(reply.createdAt)),
         Name: 'Comment',
         F: 4,
@@ -652,6 +675,9 @@ async function buildPdf(group: DocGroup, sources: Map<string, SourceFile>): Prom
     const copiedPage = copied[localIndex]
     const totalRotation = (copiedPage.getRotation().angle + page.rotation) % 360
     copiedPage.setRotation(degrees(totalRotation))
+    // Sticky notes from the source were imported into our comment model and are
+    // re-emitted below; drop the copied originals so they don't show up twice.
+    stripCommentAnnotations(out, copiedPage)
 
     // Pages with redactions are rebuilt from a rendered image (with the boxes
     // burned in), so the covered content is truly removed from the file. All

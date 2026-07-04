@@ -2802,3 +2802,67 @@ button.group-row__date:hover {
   box-shadow: var(--shadow-md);
   z-index: 15;
 }
+
+/* ---- Auteursnaam & opmerkingen-overzicht (taak 28) ---- */
+
+.comment-thread__author {
+  color: var(--text);
+  font-weight: 600;
+}
+
+.comment-thread__time .comment-thread__author {
+  font-size: 10.5px;
+}
+
+.comments-panel__settings {
+  display: flex;
+  align-items: flex-end;
+  gap: var(--space-2);
+  padding: var(--space-2) var(--space-3);
+  border-bottom: 1px solid var(--border);
+}
+
+.comments-panel__author {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  flex: 1;
+  min-width: 0;
+}
+
+.comments-panel__author span {
+  font-size: 10px;
+  color: var(--text-dim);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.comments-panel__author input {
+  background: var(--panel-2);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  color: var(--text);
+  font: inherit;
+  font-size: 12px;
+  padding: 5px 8px;
+  min-width: 0;
+}
+
+.comments-panel__author input:focus {
+  outline: none;
+  border-color: var(--accent);
+}
+
+.comments-panel__settings .pill-btn {
+  white-space: nowrap;
+}
+
+.comments-panel__author-name {
+  font-size: 10.5px;
+  font-weight: 600;
+  color: var(--text);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 90px;
+}

@@ -73,6 +73,7 @@ export interface CommentReply {
   text: string
   /** Epoch ms. */
   createdAt: number
+  author?: string
 }
 
 export interface PageComment {
@@ -84,6 +85,7 @@ export interface PageComment {
   createdAt: number
   resolved: boolean
   replies: CommentReply[]
+  author?: string
 }
 
 export interface PageRef {
