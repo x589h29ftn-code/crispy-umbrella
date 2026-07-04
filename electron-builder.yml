@@ -15,6 +15,10 @@ asarUnpack:
 extraResources:
   - from: resources/tessdata
     to: tessdata
+publish:
+  provider: github
+  owner: x589h29ftn-code
+  repo: crispy-umbrella
 fileAssociations:
   - ext: pdf
     name: PDF-document

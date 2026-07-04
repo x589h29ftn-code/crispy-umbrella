@@ -142,6 +142,8 @@ app.on('second-instance', (_evt, argv) => {
 app.whenReady().then(() => {
   electronApp.setAppUserModelId('com.pdfstudio.app')
 
+  void import('./updater').then(({ initAutoUpdater }) => initAutoUpdater())
+
   app.on('browser-window-created', (_, window) => {
     optimizer.watchWindowShortcuts(window)
   })

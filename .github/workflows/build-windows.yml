@@ -35,7 +35,12 @@ jobs:
           if-no-files-found: error
 
       - name: Attach to GitHub release (tags only)
+        # latest.yml is the electron-updater feed: installed apps poll the
+        # newest release for it and update themselves when the version bumps.
         if: startsWith(github.ref, 'refs/tags/v')
         uses: softprops/action-gh-release@v2
         with:
-          files: dist/*.exe
+          files: |
+            dist/*.exe
+            dist/*.blockmap
+            dist/latest.yml

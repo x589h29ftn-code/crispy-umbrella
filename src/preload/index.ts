@@ -56,7 +56,14 @@ const api = {
   sessionSave: (stateJson: string): Promise<{ missing: string[] }> => ipcRenderer.invoke('session:save', stateJson),
   sessionSaveSources: (sources: { id: string; data: Uint8Array }[]): Promise<boolean> =>
     ipcRenderer.invoke('session:saveSources', sources),
-  sessionClear: (): Promise<boolean> => ipcRenderer.invoke('session:clear')
+  sessionClear: (): Promise<boolean> => ipcRenderer.invoke('session:clear'),
+  getAppVersion: (): Promise<string> => ipcRenderer.invoke('app:version'),
+  installUpdate: (): Promise<void> => ipcRenderer.invoke('update:install'),
+  onUpdateEvent: (callback: (event: { type: string; version?: string }) => void): (() => void) => {
+    const listener = (_evt: unknown, payload: { type: string; version?: string }): void => callback(payload)
+    ipcRenderer.on('update:event', listener)
+    return () => ipcRenderer.removeListener('update:event', listener)
+  }
 }
 
 try {

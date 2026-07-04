@@ -8,6 +8,8 @@ import SelectionBar from './components/SelectionBar'
 import SearchPanel from './components/SearchPanel'
 import CommentsPanel from './components/CommentsPanel'
 import BookmarksPanel from './components/BookmarksPanel'
+import WhatsNewDialog from './components/WhatsNewDialog'
+import UpdateBanner from './components/UpdateBanner'
 import TabStrip from './components/TabStrip'
 import EditorView from './components/editor/EditorView'
 import { exportAllZip } from './lib/exportActions'
@@ -111,6 +113,8 @@ export default function App(): JSX.Element {
       <Lightbox />
       <SelectionBar />
       <PasswordDialog />
+      <WhatsNewDialog />
+      <UpdateBanner />
       <Toasts />
     </div>
   )

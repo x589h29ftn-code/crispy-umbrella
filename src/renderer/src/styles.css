@@ -3127,3 +3127,52 @@ button.group-row__date:hover {
 .empty-state__recent-item:hover {
   border-color: var(--accent);
 }
+
+/* ---- Auto-update & "Wat is nieuw" (taak 35) ---- */
+
+.whatsnew-card {
+  max-width: 440px;
+}
+
+.whatsnew-list {
+  list-style: none;
+  margin: 12px 0 4px;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  text-align: left;
+}
+
+.whatsnew-list li {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  font-size: 12.5px;
+  line-height: 1.45;
+  color: var(--text);
+}
+
+.whatsnew-list li svg {
+  flex: none;
+  margin-top: 2px;
+  color: var(--accent);
+}
+
+.update-banner {
+  position: fixed;
+  left: 50%;
+  bottom: 18px;
+  transform: translateX(-50%);
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  box-shadow: 0 8px 30px rgba(0, 0, 0, 0.35);
+  padding: 10px 14px;
+  font-size: 12.5px;
+  color: var(--text);
+  z-index: 90;
+}
