@@ -7,7 +7,7 @@ import { beginGroupDrag, cancelDrag, finishDrag, updateDrag } from '../lib/dragC
 import type { DocGroup, SourceFile } from '../types'
 import PageThumb from './PageThumb'
 import AddTile from './AddTile'
-import { IconCalendar, IconCheck, IconClose, IconFolderOpen, IconGrip, IconHash, IconMore, IconPlus, IconStamp } from './icons'
+import { IconCalendar, IconCheck, IconClose, IconFolderOpen, IconGrip, IconHash, IconMore, IconPlus, IconStamp, IconTab } from './icons'
 
 interface Props {
   group: DocGroup
@@ -49,6 +49,7 @@ export default function GroupRow({ group, index, isLast, sources, isActive }: Pr
   const setGroupWatermark = useStudioStore((s) => s.setGroupWatermark)
   const toggleGroupPageNumbers = useStudioStore((s) => s.toggleGroupPageNumbers)
   const setGroupDocumentDate = useStudioStore((s) => s.setGroupDocumentDate)
+  const openEditorTab = useStudioStore((s) => s.openEditorTab)
 
   // Encoded drop indicator position for this row: page index * 2 (+1 for the
   // "after" edge), or -1 when the drag isn't targeting this document.
@@ -91,7 +92,16 @@ export default function GroupRow({ group, index, isLast, sources, isActive }: Pr
       data-group-index={index}
       onClick={() => setActiveGroup(group.id)}
     >
-      <header className="group-row__header" {...headerDrag}>
+      <header
+        className="group-row__header"
+        {...headerDrag}
+        onDoubleClick={(e) => {
+          const target = e.target as HTMLElement
+          if (target.closest('.group-row__name, input, button, .dropdown-menu')) return
+          openEditorTab(group.id)
+        }}
+        title="Dubbelklik om dit document in een tabblad te bewerken"
+      >
         <IconGrip size={14} className="group-row__grip" />
         <span className="group-row__number">{String(index + 1).padStart(2, '0')}</span>
         {editing ? (
@@ -128,6 +138,17 @@ export default function GroupRow({ group, index, isLast, sources, isActive }: Pr
           {group.pages.length} {group.pages.length === 1 ? 'pagina' : "pagina's"}
         </span>
         <div className="group-row__menu-wrap" ref={menuRef}>
+          <button
+            type="button"
+            className="icon-btn icon-btn--chrome"
+            title="Openen als tabblad om te bewerken"
+            onClick={(e) => {
+              e.stopPropagation()
+              openEditorTab(group.id)
+            }}
+          >
+            <IconTab size={14} />
+          </button>
           {group.documentDate ? (
             <button
               type="button"

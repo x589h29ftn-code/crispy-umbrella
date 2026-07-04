@@ -7,6 +7,8 @@ import PasswordDialog from './components/PasswordDialog'
 import SelectionBar from './components/SelectionBar'
 import SearchPanel from './components/SearchPanel'
 import CommentsPanel from './components/CommentsPanel'
+import TabStrip from './components/TabStrip'
+import EditorView from './components/editor/EditorView'
 import { exportAllZip } from './lib/exportActions'
 import { cancelDrag, isDragActive } from './lib/dragController'
 import { useStudioStore } from './store'
@@ -20,6 +22,7 @@ export default function App(): JSX.Element {
   const [zoomPct, setZoomPct] = useState(100)
   const controlsRef = useRef<{ zoomBy: (f: number) => void; zoomTo: (s: number) => void } | null>(null)
   const theme = useStudioStore((s) => s.theme)
+  const activeEditorTab = useStudioStore((s) => s.activeEditorTab)
 
   useEffect(() => window.api.onFilesOpened((files) => void useStudioStore.getState().importFiles(files)), [])
 
@@ -54,10 +57,10 @@ export default function App(): JSX.Element {
         void exportAllZip()
       } else if (mod && key === 'd') {
         e.preventDefault()
-        if (!state.lightbox.open) state.duplicatePages([...state.selectedPageIds])
-      } else if ((e.key === 'Delete' || e.key === 'Backspace') && !state.lightbox.open) {
+        if (!state.lightbox.open && !state.activeEditorTab) state.duplicatePages([...state.selectedPageIds])
+      } else if ((e.key === 'Delete' || e.key === 'Backspace') && !state.lightbox.open && !state.activeEditorTab) {
         state.deletePages([...state.selectedPageIds])
-      } else if (key === 'r' && !mod && !state.lightbox.open) {
+      } else if (key === 'r' && !mod && !state.lightbox.open && !state.activeEditorTab) {
         state.rotatePages([...state.selectedPageIds])
       } else if (e.key === 'Escape' && isDragActive()) {
         cancelDrag()
@@ -90,7 +93,12 @@ export default function App(): JSX.Element {
         onZoomTo={(scale) => controlsRef.current?.zoomTo(scale)}
       />
       <main className="app-main">
-        <Canvas onScaleChange={onScaleChange} registerZoomControls={registerZoomControls} />
+        <TabStrip />
+        {activeEditorTab ? (
+          <EditorView groupId={activeEditorTab} />
+        ) : (
+          <Canvas onScaleChange={onScaleChange} registerZoomControls={registerZoomControls} />
+        )}
         <SearchPanel />
         <CommentsPanel />
       </main>

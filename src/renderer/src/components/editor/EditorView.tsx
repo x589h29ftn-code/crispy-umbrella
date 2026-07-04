@@ -1,0 +1,605 @@
+import { useEffect, useMemo, useRef, useState } from 'react'
+import { useStudioStore } from '../../store'
+import { usePressDrag } from '../../hooks/usePressDrag'
+import {
+  getPageVisualSize,
+  renderThumbnail,
+  visualRectToSignaturePlacement
+} from '../../lib/pdfEngine'
+import {
+  ANNOTATION_FONT_LABELS,
+  HIGHLIGHT_COLORS,
+  INK_WIDTHS,
+  TEXT_COLORS
+} from '../../lib/annotationStyle'
+import type { AnnotationFont, PageRef, SourceFile } from '../../types'
+import EditorPage, { type EditorMode, type EditorSelection, type ToolSettings } from './EditorPage'
+import {
+  IconChevronDown,
+  IconChevronLeft,
+  IconChevronRight,
+  IconComment,
+  IconCursor,
+  IconEditText,
+  IconEraser,
+  IconGrip,
+  IconHighlighter,
+  IconMinus,
+  IconPen,
+  IconPlus,
+  IconRedact,
+  IconType
+} from '../icons'
+
+const DEFAULT_SIGNATURE_WIDTH_PCT = 0.28
+
+interface Props {
+  groupId: string
+}
+
+/** Small page thumbnail in the left rail. */
+function RailThumb({
+  page,
+  source,
+  index,
+  active,
+  onClick
+}: {
+  page: PageRef
+  source: SourceFile | undefined
+  index: number
+  active: boolean
+  onClick: () => void
+}): JSX.Element {
+  const [thumb, setThumb] = useState<string | null>(null)
+  useEffect(() => {
+    let cancelled = false
+    if (!source) return
+    renderThumbnail(source, page.sourcePageIndex, page.rotation, 180)
+      .then((url) => {
+        if (!cancelled) setThumb(url)
+      })
+      .catch(() => undefined)
+    return () => {
+      cancelled = true
+    }
+  }, [source, page.sourcePageIndex, page.rotation])
+  return (
+    <button type="button" className={`editor-rail__thumb${active ? ' editor-rail__thumb--active' : ''}`} onClick={onClick}>
+      {thumb ? <img src={thumb} alt={`Pagina ${index + 1}`} draggable={false} /> : <span className="editor-rail__ph" />}
+      <span>{index + 1}</span>
+    </button>
+  )
+}
+
+/**
+ * Tabbed editor view (Adobe-style): thumbnail rail left, scrollable pages in
+ * the middle (continuous / two-up / single page at 100%), tools panel right.
+ * Edits share the same project state as the Overzicht canvas.
+ */
+export default function EditorView({ groupId }: Props): JSX.Element | null {
+  const group = useStudioStore((s) => s.groups.find((g) => g.id === groupId))
+  const sources = useStudioStore((s) => s.sources)
+  const viewMode = useStudioStore((s) => s.editorViewMode)
+  const setViewMode = useStudioStore((s) => s.setEditorViewMode)
+  const setActiveEditorTab = useStudioStore((s) => s.setActiveEditorTab)
+  const signatureAssets = useStudioStore((s) => s.signatureAssets)
+  const activeSignatureId = useStudioStore((s) => s.activeSignatureId)
+  const setActiveSignature = useStudioStore((s) => s.setActiveSignature)
+  const addSignaturePlacement = useStudioStore((s) => s.addSignaturePlacement)
+  const updateAnnotation = useStudioStore((s) => s.updateAnnotation)
+  const removeAnnotation = useStudioStore((s) => s.removeAnnotation)
+  const markHistory = useStudioStore((s) => s.markHistory)
+
+  const [mode, setMode] = useState<EditorMode>('view')
+  const [selection, setSelection] = useState<EditorSelection | null>(null)
+  const [zoom, setZoom] = useState(1)
+  const [currentPage, setCurrentPage] = useState(0)
+  const [centerWidth, setCenterWidth] = useState(800)
+  const [singleBaseWidth, setSingleBaseWidth] = useState(595)
+  const [sigPickerOpen, setSigPickerOpen] = useState(false)
+  const centerRef = useRef<HTMLDivElement>(null)
+
+  const [settings, setSettings] = useState<ToolSettings>({
+    highlightColor: HIGHLIGHT_COLORS[0],
+    highlightOpacity: 0.4,
+    inkColor: HIGHLIGHT_COLORS[1],
+    inkWidth: INK_WIDTHS[1],
+    textFont: 'arial',
+    textSize: 16,
+    textBold: false,
+    textItalic: false,
+    textColor: TEXT_COLORS[0]
+  })
+
+  const selectedAnnotation = useMemo(() => {
+    if (!selection || !group) return null
+    const page = group.pages.find((p) => p.id === selection.pageId)
+    return page?.annotations.find((a) => a.id === selection.annotationId) ?? null
+  }, [selection, group])
+
+  useEffect(() => {
+    const el = centerRef.current
+    if (!el) return
+    const measure = (): void => setCenterWidth(el.clientWidth)
+    measure()
+    const observer = new ResizeObserver(measure)
+    observer.observe(el)
+    return () => observer.disconnect()
+  }, [])
+
+  // "Ware grootte" for the single-page mode: 100% = 1 PDF point per CSS pixel.
+  useEffect(() => {
+    let cancelled = false
+    const page = group?.pages[currentPage]
+    const source = page && sources.get(page.sourceId)
+    if (!page || !source) return
+    getPageVisualSize(source, page.sourcePageIndex, page.rotation)
+      .then((size) => {
+        if (!cancelled) setSingleBaseWidth(size.width)
+      })
+      .catch(() => undefined)
+    return () => {
+      cancelled = true
+    }
+  }, [group, currentPage, sources])
+
+  useEffect(() => {
+    if (group && currentPage >= group.pages.length) setCurrentPage(Math.max(0, group.pages.length - 1))
+  }, [group, currentPage])
+
+  // Delete removes the selected annotation; Escape leaves the active tool.
+  useEffect(() => {
+    function onKey(e: KeyboardEvent): void {
+      const el = e.target as HTMLElement | null
+      if (el && (el.tagName === 'INPUT' || el.tagName === 'TEXTAREA' || el.isContentEditable)) return
+      if ((e.key === 'Delete' || e.key === 'Backspace') && selection) {
+        removeAnnotation(selection.pageId, selection.annotationId)
+        setSelection(null)
+      } else if (e.key === 'Escape') {
+        if (mode !== 'view') setMode('view')
+        else setSelection(null)
+      }
+    }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  }, [selection, mode, removeAnnotation])
+
+  // Ctrl+wheel zooms the pages.
+  useEffect(() => {
+    const el = centerRef.current
+    if (!el) return
+    const onWheel = (e: WheelEvent): void => {
+      if (!e.ctrlKey && !e.metaKey) return
+      e.preventDefault()
+      setZoom((z) => Math.min(4, Math.max(0.3, z * (e.deltaY < 0 ? 1.12 : 1 / 1.12))))
+    }
+    el.addEventListener('wheel', onWheel, { passive: false })
+    return () => el.removeEventListener('wheel', onWheel)
+  }, [])
+
+  // Signature: press-and-drag from the panel onto a page.
+  const [trayGhost, setTrayGhost] = useState<{ x: number; y: number } | null>(null)
+  const trayPosRef = useRef<{ x: number; y: number } | null>(null)
+  const trayDrag = usePressDrag({
+    ignoreSelector: 'button',
+    onStart: (e) => {
+      trayPosRef.current = { x: e.clientX, y: e.clientY }
+      setTrayGhost(trayPosRef.current)
+    },
+    onMove: (x, y) => {
+      trayPosRef.current = { x, y }
+      setTrayGhost({ x, y })
+    },
+    onEnd: () => {
+      const pos = trayPosRef.current
+      setTrayGhost(null)
+      if (pos) void dropSignatureAt(pos.x, pos.y)
+    },
+    onCancel: () => setTrayGhost(null)
+  })
+
+  const activeSignature = signatureAssets.find((a) => a.id === activeSignatureId) ?? signatureAssets[0] ?? null
+
+  async function dropSignatureAt(clientX: number, clientY: number): Promise<void> {
+    if (!activeSignature || !group) return
+    const el = document.elementFromPoint(clientX, clientY)?.closest<HTMLElement>('.editor-page[data-page-id]')
+    const img = el?.querySelector('img')
+    if (!el || !img) return
+    const pageId = el.dataset.pageId!
+    const page = group.pages.find((p) => p.id === pageId)
+    const source = page && sources.get(page.sourceId)
+    if (!page || !source) return
+    const rect = img.getBoundingClientRect()
+    const size = await getPageVisualSize(source, page.sourcePageIndex, page.rotation)
+    const scale = rect.width / size.width
+    const dropVisualX = (clientX - rect.left) / scale
+    const dropVisualY = (clientY - rect.top) / scale
+    const wPct = DEFAULT_SIGNATURE_WIDTH_PCT
+    const aspect = activeSignature.naturalHeight / activeSignature.naturalWidth
+    const hPct = (wPct * size.width * aspect) / size.height
+    const placement = await visualRectToSignaturePlacement(
+      source,
+      page.sourcePageIndex,
+      page.rotation,
+      {
+        xPct: dropVisualX / size.width - wPct / 2,
+        yPct: dropVisualY / size.height - hPct / 2,
+        wPct,
+        hPct
+      },
+      activeSignature.dataUrl
+    )
+    addSignaturePlacement(page.id, placement)
+  }
+
+  if (!group) return null
+
+  function patchSelected(patch: Record<string, unknown>): void {
+    if (selection && selectedAnnotation) {
+      markHistory()
+      updateAnnotation(selection.pageId, selection.annotationId, patch)
+    }
+  }
+
+  const shownHighlightColor =
+    selectedAnnotation?.type === 'highlight' ? selectedAnnotation.color : settings.highlightColor
+  const shownHighlightOpacity =
+    selectedAnnotation?.type === 'highlight' ? selectedAnnotation.opacity : settings.highlightOpacity
+  const shownInkColor = selectedAnnotation?.type === 'ink' ? selectedAnnotation.color : settings.inkColor
+  const shownInkWidth = selectedAnnotation?.type === 'ink' ? selectedAnnotation.strokeWidth : settings.inkWidth
+  const shownText = selectedAnnotation?.type === 'text' ? selectedAnnotation : null
+
+  const showHighlight = mode === 'highlight' || selectedAnnotation?.type === 'highlight'
+  const showInk = mode === 'draw' || selectedAnnotation?.type === 'ink'
+  const showText = mode === 'text' || mode === 'edittext' || selectedAnnotation?.type === 'text'
+
+  const gap = 28
+  const pageWidth =
+    viewMode === 'single'
+      ? singleBaseWidth * zoom
+      : viewMode === 'spread'
+        ? Math.max(160, ((centerWidth - gap * 3) / 2) * Math.min(zoom, 2))
+        : Math.max(200, (centerWidth - gap * 2) * 0.92 * Math.min(zoom, 2))
+
+  const visiblePages = viewMode === 'single' ? [group.pages[currentPage]].filter(Boolean) : group.pages
+
+  const MODES: { key: EditorMode; label: string; icon: JSX.Element; title: string }[] = [
+    { key: 'view', label: 'Selecteren', icon: <IconCursor size={15} />, title: 'Selecteren en verplaatsen' },
+    { key: 'highlight', label: 'Markeren', icon: <IconHighlighter size={15} />, title: 'Sleep een vak over de tekst' },
+    { key: 'draw', label: 'Tekenen', icon: <IconPen size={15} />, title: 'Vrij tekenen of schrijven' },
+    { key: 'text', label: 'Tekst', icon: <IconType size={15} />, title: 'Klik op de pagina om tekst te plaatsen' },
+    { key: 'edittext', label: 'Tekst bewerken', icon: <IconEditText size={15} />, title: 'Klik op een bestaande tekstregel' },
+    { key: 'redact', label: 'Redigeren', icon: <IconRedact size={15} />, title: 'Zwartlakken — inhoud verdwijnt echt bij export' },
+    { key: 'comment', label: 'Commentaar', icon: <IconComment size={15} />, title: 'Klik op de pagina voor een opmerking' },
+    { key: 'erase', label: 'Gum', icon: <IconEraser size={15} />, title: 'Klik op een getekende lijn om te wissen' }
+  ]
+
+  return (
+    <div className="editor-view">
+      <div className="editor-rail">
+        {group.pages.map((page, i) => (
+          <RailThumb
+            key={page.id}
+            page={page}
+            source={sources.get(page.sourceId)}
+            index={i}
+            active={viewMode === 'single' ? i === currentPage : false}
+            onClick={() => {
+              if (viewMode === 'single') setCurrentPage(i)
+              else
+                document
+                  .querySelector(`.editor-view .editor-page[data-page-id="${page.id}"]`)
+                  ?.scrollIntoView({ behavior: 'smooth', block: 'start' })
+            }}
+          />
+        ))}
+      </div>
+
+      <div className="editor-center" ref={centerRef}>
+        <div className="editor-center__bar">
+          <div className="editor-center__views">
+            <button
+              type="button"
+              className={`editbar__mode${viewMode === 'scroll' ? ' editbar__mode--active' : ''}`}
+              onClick={() => setViewMode('scroll')}
+              title="Doorlopend scrollen"
+            >
+              Doorlopend
+            </button>
+            <button
+              type="button"
+              className={`editbar__mode${viewMode === 'spread' ? ' editbar__mode--active' : ''}`}
+              onClick={() => setViewMode('spread')}
+              title="Twee pagina's naast elkaar"
+            >
+              Naast elkaar
+            </button>
+            <button
+              type="button"
+              className={`editbar__mode${viewMode === 'single' ? ' editbar__mode--active' : ''}`}
+              onClick={() => {
+                setViewMode('single')
+                setZoom(1)
+              }}
+              title="Eén pagina op ware grootte (100%)"
+            >
+              Eén pagina
+            </button>
+          </div>
+          {viewMode === 'single' && (
+            <div className="editor-center__nav">
+              <button
+                type="button"
+                className="pill-btn pill-btn--icon"
+                disabled={currentPage === 0}
+                onClick={() => setCurrentPage((p) => Math.max(0, p - 1))}
+                title="Vorige pagina"
+              >
+                <IconChevronLeft size={14} />
+              </button>
+              <span>
+                {currentPage + 1} / {group.pages.length}
+              </span>
+              <button
+                type="button"
+                className="pill-btn pill-btn--icon"
+                disabled={currentPage >= group.pages.length - 1}
+                onClick={() => setCurrentPage((p) => Math.min(group.pages.length - 1, p + 1))}
+                title="Volgende pagina"
+              >
+                <IconChevronRight size={14} />
+              </button>
+            </div>
+          )}
+          <div className="editor-center__zoom" title="Zoom (of Ctrl+scrollen)">
+            <button type="button" className="pill-btn pill-btn--icon" onClick={() => setZoom((z) => Math.max(0.3, z / 1.2))}>
+              <IconMinus size={13} />
+            </button>
+            <button type="button" className="toolbar__zoom-pct" onClick={() => setZoom(1)} title="Zoom herstellen">
+              {Math.round(zoom * 100)}%
+            </button>
+            <button type="button" className="pill-btn pill-btn--icon" onClick={() => setZoom((z) => Math.min(4, z * 1.2))}>
+              <IconPlus size={13} />
+            </button>
+          </div>
+        </div>
+
+        <div className={`editor-pages editor-pages--${viewMode}`}>
+          {visiblePages.map((page) => (
+            <EditorPage
+              key={page.id}
+              page={page}
+              pageNumber={group.pages.indexOf(page) + 1}
+              source={sources.get(page.sourceId)}
+              cssWidth={pageWidth}
+              mode={mode}
+              settings={settings}
+              selection={selection}
+              onSelect={setSelection}
+            />
+          ))}
+        </div>
+      </div>
+
+      <aside className="editor-tools">
+        <div className="editor-tools__title">Gereedschap</div>
+        {MODES.map((m) => (
+          <button
+            key={m.key}
+            type="button"
+            className={`editor-tools__btn${mode === m.key ? ' editor-tools__btn--active' : ''}`}
+            title={m.title}
+            onClick={() => {
+              setMode((cur) => (cur === m.key && m.key !== 'view' ? 'view' : m.key))
+              setSelection(null)
+            }}
+          >
+            {m.icon}
+            <span>{m.label}</span>
+          </button>
+        ))}
+
+        {(showHighlight || showInk || showText) && <div className="editor-tools__divider" />}
+
+        {showHighlight && (
+          <div className="editor-tools__settings">
+            <div className="editor-tools__swatches">
+              {HIGHLIGHT_COLORS.map((color) => (
+                <button
+                  key={color}
+                  type="button"
+                  className={`editbar__swatch${shownHighlightColor === color ? ' editbar__swatch--active' : ''}`}
+                  style={{ background: color }}
+                  onClick={() => {
+                    setSettings((s) => ({ ...s, highlightColor: color }))
+                    if (selectedAnnotation?.type === 'highlight') patchSelected({ color })
+                  }}
+                />
+              ))}
+            </div>
+            <label className="editor-tools__slider">
+              <input
+                type="range"
+                min={10}
+                max={90}
+                step={5}
+                value={Math.round(shownHighlightOpacity * 100)}
+                onChange={(e) => {
+                  const opacity = Number(e.target.value) / 100
+                  setSettings((s) => ({ ...s, highlightOpacity: opacity }))
+                  if (selectedAnnotation?.type === 'highlight') patchSelected({ opacity })
+                }}
+              />
+              <span>{Math.round(shownHighlightOpacity * 100)}%</span>
+            </label>
+          </div>
+        )}
+
+        {showInk && (
+          <div className="editor-tools__settings">
+            <div className="editor-tools__swatches">
+              {HIGHLIGHT_COLORS.map((color) => (
+                <button
+                  key={color}
+                  type="button"
+                  className={`editbar__swatch${shownInkColor === color ? ' editbar__swatch--active' : ''}`}
+                  style={{ background: color }}
+                  onClick={() => {
+                    setSettings((s) => ({ ...s, inkColor: color }))
+                    if (selectedAnnotation?.type === 'ink') patchSelected({ color })
+                  }}
+                />
+              ))}
+            </div>
+            <div className="editbar__widths">
+              {INK_WIDTHS.map((width) => (
+                <button
+                  key={width}
+                  type="button"
+                  className={`editbar__width${shownInkWidth === width ? ' editbar__width--active' : ''}`}
+                  onClick={() => {
+                    setSettings((s) => ({ ...s, inkWidth: width }))
+                    if (selectedAnnotation?.type === 'ink') patchSelected({ strokeWidth: width })
+                  }}
+                >
+                  <span style={{ width: 4 + width * 2, height: 4 + width * 2 }} />
+                </button>
+              ))}
+            </div>
+          </div>
+        )}
+
+        {showText && (
+          <div className="editor-tools__settings">
+            <select
+              className="editor-tools__select"
+              value={shownText?.font ?? settings.textFont}
+              onChange={(e) => {
+                const font = e.target.value as AnnotationFont
+                setSettings((s) => ({ ...s, textFont: font }))
+                if (shownText) patchSelected({ font })
+              }}
+            >
+              {(Object.keys(ANNOTATION_FONT_LABELS) as AnnotationFont[]).map((font) => (
+                <option key={font} value={font}>
+                  {ANNOTATION_FONT_LABELS[font]}
+                </option>
+              ))}
+            </select>
+            <div className="editor-tools__textrow">
+              <input
+                type="number"
+                className="editbar__size"
+                min={6}
+                max={96}
+                value={shownText?.size ?? settings.textSize}
+                onChange={(e) => {
+                  const size = Math.max(6, Math.min(96, Number(e.target.value) || 16))
+                  setSettings((s) => ({ ...s, textSize: size }))
+                  if (shownText) patchSelected({ size })
+                }}
+              />
+              <button
+                type="button"
+                className={`editbar__toggle editbar__toggle--bold${(shownText?.bold ?? settings.textBold) ? ' editbar__toggle--active' : ''}`}
+                onClick={() => {
+                  const bold = !(shownText?.bold ?? settings.textBold)
+                  setSettings((s) => ({ ...s, textBold: bold }))
+                  if (shownText) patchSelected({ bold })
+                }}
+              >
+                B
+              </button>
+              <button
+                type="button"
+                className={`editbar__toggle editbar__toggle--italic${(shownText?.italic ?? settings.textItalic) ? ' editbar__toggle--active' : ''}`}
+                onClick={() => {
+                  const italic = !(shownText?.italic ?? settings.textItalic)
+                  setSettings((s) => ({ ...s, textItalic: italic }))
+                  if (shownText) patchSelected({ italic })
+                }}
+              >
+                I
+              </button>
+            </div>
+            <div className="editor-tools__swatches">
+              {TEXT_COLORS.map((color) => (
+                <button
+                  key={color}
+                  type="button"
+                  className={`editbar__swatch${(shownText?.color ?? settings.textColor) === color ? ' editbar__swatch--active' : ''}`}
+                  style={{ background: color }}
+                  onClick={() => {
+                    setSettings((s) => ({ ...s, textColor: color }))
+                    if (shownText) patchSelected({ color })
+                  }}
+                />
+              ))}
+            </div>
+          </div>
+        )}
+
+        <div className="editor-tools__divider" />
+
+        {activeSignature ? (
+          <div className="editor-tools__signature">
+            <div className="lightbox__tray editor-tools__tray" title="Houd ingedrukt en sleep naar een pagina" {...trayDrag}>
+              <img src={activeSignature.dataUrl} alt="Handtekening" draggable={false} />
+              <span>Handtekening slepen</span>
+              {signatureAssets.length > 1 && (
+                <button
+                  type="button"
+                  className="icon-btn icon-btn--chrome"
+                  title="Andere handtekening kiezen"
+                  onClick={() => setSigPickerOpen((v) => !v)}
+                >
+                  <IconChevronDown size={13} />
+                </button>
+              )}
+            </div>
+            {sigPickerOpen && (
+              <div className="dropdown-menu signature-menu editor-tools__sigmenu" onClick={(e) => e.stopPropagation()}>
+                {signatureAssets.map((asset) => (
+                  <div
+                    key={asset.id}
+                    className={`signature-menu__item${asset.id === activeSignature.id ? ' signature-menu__item--active' : ''}`}
+                    onClick={() => {
+                      setActiveSignature(asset.id)
+                      setSigPickerOpen(false)
+                    }}
+                  >
+                    <img src={asset.dataUrl} alt={asset.name} draggable={false} />
+                    <span className="signature-menu__name">{asset.name}</span>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        ) : (
+          <div className="editor-tools__hint">Laad een handtekening via het zijmenu om te ondertekenen</div>
+        )}
+
+        <div className="editor-tools__spacer" />
+        <button
+          type="button"
+          className="editor-tools__btn"
+          title="Samenvoegen, splitsen en pagina's verplaatsen doe je in het overzicht"
+          onClick={() => setActiveEditorTab(null)}
+        >
+          <IconGrip size={15} />
+          <span>Ordenen in overzicht</span>
+        </button>
+      </aside>
+
+      {trayGhost && activeSignature && (
+        <img
+          src={activeSignature.dataUrl}
+          alt=""
+          className="signature-drag-ghost"
+          style={{ left: trayGhost.x, top: trayGhost.y }}
+        />
+      )}
+    </div>
+  )
+}

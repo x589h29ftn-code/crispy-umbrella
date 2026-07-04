@@ -95,7 +95,16 @@ interface StudioState {
   dropTarget: DropTarget | null
   groupDropIndex: number | null
   searchOpen: boolean
+  /** Documents opened as editor tabs (group ids). */
+  editorTabs: string[]
+  /** Active tab; null = the Overzicht (canvas) tab. */
+  activeEditorTab: string | null
+  editorViewMode: 'scroll' | 'spread' | 'single'
 
+  openEditorTab: (groupId: string) => void
+  closeEditorTab: (groupId: string) => void
+  setActiveEditorTab: (groupId: string | null) => void
+  setEditorViewMode: (mode: 'scroll' | 'spread' | 'single') => void
   setSearchOpen: (open: boolean) => void
   toggleTheme: () => void
   markHistory: () => void
@@ -236,6 +245,31 @@ export const useStudioStore = create<StudioState>((set, get) => ({
   dropTarget: null,
   groupDropIndex: null,
   searchOpen: false,
+  editorTabs: [],
+  activeEditorTab: null,
+  editorViewMode: 'scroll',
+
+  openEditorTab: (groupId) => {
+    set((state) => ({
+      editorTabs: state.editorTabs.includes(groupId) ? state.editorTabs : [...state.editorTabs, groupId],
+      activeEditorTab: groupId
+    }))
+  },
+
+  closeEditorTab: (groupId) => {
+    set((state) => {
+      const editorTabs = state.editorTabs.filter((id) => id !== groupId)
+      const activeEditorTab =
+        state.activeEditorTab === groupId
+          ? (editorTabs[editorTabs.length - 1] ?? null)
+          : state.activeEditorTab
+      return { editorTabs, activeEditorTab }
+    })
+  },
+
+  setActiveEditorTab: (groupId) => set({ activeEditorTab: groupId }),
+
+  setEditorViewMode: (mode) => set({ editorViewMode: mode }),
 
   setSearchOpen: (open) => set({ searchOpen: open }),
 
