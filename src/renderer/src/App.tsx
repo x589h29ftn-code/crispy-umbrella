@@ -11,7 +11,7 @@ import StatusBar from './components/StatusBar'
 import ShortcutsDialog from './components/ShortcutsDialog'
 import PreferencesDialog from './components/PreferencesDialog'
 import TrashPanel from './components/TrashPanel'
-import { IconChevronRight } from './components/icons'
+import { IconPanelLeft } from './components/icons'
 import { exportAllZip, saveActiveToSource } from './lib/exportActions'
 
 // Zware overlays worden pas geladen wanneer ze echt geopend worden. Zo blijft
@@ -143,7 +143,8 @@ export default function App(): JSX.Element {
           title="Werkbalk tonen"
           aria-label="Werkbalk tonen"
         >
-          <IconChevronRight size={16} />
+          <IconPanelLeft size={16} />
+          <span className="toolbar-restore__label">Werkbalk</span>
         </button>
       )}
       <main className="app-main">

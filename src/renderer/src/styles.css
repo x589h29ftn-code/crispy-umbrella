@@ -80,31 +80,35 @@ body {
   height: 100vh;
 }
 
-/* Zwevende knop om de verborgen werkbalk terug te halen. */
+/* Zwevende knop om de verborgen werkbalk terug te halen — duidelijk zichtbaar
+   linksboven, met accentkleur en label zodat je hem niet mist. */
 .toolbar-restore {
   position: fixed;
-  top: 50%;
-  left: 0;
-  transform: translateY(-50%);
-  z-index: 40;
-  display: flex;
+  top: 10px;
+  left: 10px;
+  z-index: 130;
+  display: inline-flex;
   align-items: center;
-  justify-content: center;
-  width: 22px;
-  height: 54px;
-  padding: 0;
-  border: 1px solid var(--border-soft);
-  border-left: none;
-  border-radius: 0 8px 8px 0;
-  background: var(--panel);
-  color: var(--text-dim);
+  gap: 7px;
+  height: 34px;
+  padding: 0 14px 0 11px;
+  border: none;
+  border-radius: 8px;
+  background: var(--accent);
+  color: #fff;
+  font: inherit;
+  font-size: 13px;
+  font-weight: 600;
   cursor: pointer;
-  box-shadow: 2px 0 8px rgba(0, 0, 0, 0.12);
+  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.22);
 }
 
 .toolbar-restore:hover {
-  color: var(--text);
-  background: var(--panel-hover, var(--panel));
+  filter: brightness(1.08);
+}
+
+.toolbar-restore__label {
+  white-space: nowrap;
 }
 
 .app-main {
