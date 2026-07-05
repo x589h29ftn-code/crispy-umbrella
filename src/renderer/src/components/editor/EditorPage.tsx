@@ -393,6 +393,12 @@ export default function EditorPage({
     const point = pointToVisual(e.clientX, e.clientY)
     if (!point) return
 
+    // Markeren op echte tekst → laat de browser die tekst selecteren (blauw,
+    // net als bij Selecteren); op loslaten kleuren we de selectie. Alleen buiten
+    // tekst valt het terug op een sleep-rechthoek.
+    const overText = (e.target as HTMLElement | null)?.tagName === 'SPAN'
+    if (mode === 'highlight' && overText) return
+
     if (mode === 'highlight' || mode === 'redact' || mode === 'shape') {
       e.preventDefault()
       e.currentTarget.setPointerCapture(e.pointerId)
@@ -683,7 +689,7 @@ export default function EditorPage({
   }
 
   function onSurfaceMouseUp(): void {
-    if (mode !== 'view') return
+    if (mode !== 'view' && mode !== 'highlight') return
     // Wait a tick so the browser finalizes the selection.
     window.setTimeout(() => {
       const img = imgRef.current
@@ -693,32 +699,53 @@ export default function EditorPage({
         setSelPopup(null)
         return
       }
+      // Markeren-modus: meteen kleuren (voelt als tekst selecteren → kleur);
+      // Selecteren-modus: toon het mini-menu.
+      if (mode === 'highlight') {
+        void highlightSelectionRects(found.rects, 'fill')
+        window.getSelection()?.removeAllRanges()
+        setSelPopup(null)
+        return
+      }
       const first = found.rects[0]
       setSelPopup({ x: first.x, y: Math.max(0, first.y - 40), text: found.text, rects: found.rects })
     }, 10)
   }
 
-  async function annotateSelection(style: 'fill' | 'underline' | 'strike'): Promise<void> {
-    const popup = selPopup
-    if (!popup || !source || !pageVisualSize) return
-    setSelPopup(null)
-    window.getSelection()?.removeAllRanges()
-    for (const rect of popup.rects) {
+  /** Kleurt een reeks selectieregels (relatief aan de pagina) als markering. */
+  async function highlightSelectionRects(
+    rects: SelectionLineRect[],
+    style: 'fill' | 'underline' | 'strike'
+  ): Promise<void> {
+    if (!source || !pageVisualSize) return
+    let lastId: string | null = null
+    for (const rect of rects) {
       const contentRect = await visualRectToContentRect(source, page.sourcePageIndex, page.rotation, {
         xPct: rect.x / scale / pageVisualSize.width,
         yPct: rect.y / scale / pageVisualSize.height,
         wPct: rect.width / scale / pageVisualSize.width,
         hPct: rect.height / scale / pageVisualSize.height
       })
-      addAnnotation(page.id, {
+      const annotation: Annotation = {
         id: nanoid(),
         type: 'highlight',
         ...contentRect,
         color: settings.highlightColor,
         opacity: style === 'fill' ? settings.highlightOpacity : 0.9,
         style
-      })
+      }
+      addAnnotation(page.id, annotation)
+      lastId = annotation.id
     }
+    if (lastId) onSelect({ pageId: page.id, annotationId: lastId })
+  }
+
+  async function annotateSelection(style: 'fill' | 'underline' | 'strike'): Promise<void> {
+    const popup = selPopup
+    if (!popup) return
+    setSelPopup(null)
+    window.getSelection()?.removeAllRanges()
+    await highlightSelectionRects(popup.rects, style)
   }
 
   const overlaysPassive = mode !== 'view' && mode !== 'erase'
@@ -1028,7 +1055,7 @@ export default function EditorPage({
         )}
         <div
           ref={textLayerRef}
-          className={`text-select-layer${mode === 'view' ? '' : ' text-select-layer--passive'}`}
+          className={`text-select-layer${mode === 'view' || mode === 'highlight' ? '' : ' text-select-layer--passive'}`}
           onMouseUp={onSurfaceMouseUp}
         />
         {source && (

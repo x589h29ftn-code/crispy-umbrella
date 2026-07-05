@@ -647,6 +647,13 @@ export default function Lightbox(): JSX.Element | null {
     const inside =
       e.clientX >= rect.left && e.clientX <= rect.right && e.clientY >= rect.top && e.clientY <= rect.bottom
 
+    // In markeren-modus: begint de sleep op echte tekst, dan laten we de
+    // browser die tekst selecteren (blauwe selectie, net als bij Selecteren) —
+    // op loslaten kleuren we die selectie. Alleen buiten tekst (scans, marges)
+    // valt het terug op een sleep-rechthoek.
+    const overText = (e.target as HTMLElement | null)?.tagName === 'SPAN'
+    if (mode === 'highlight' && overText) return
+
     if ((mode === 'highlight' || mode === 'redact' || mode === 'shape' || mode === 'field') && inside) {
       e.preventDefault()
       e.currentTarget.setPointerCapture(e.pointerId)
@@ -1016,7 +1023,7 @@ export default function Lightbox(): JSX.Element | null {
 
   // --- Tekstselectie: kopieer of markeer de gesleepte selectie direct ---
   function onSurfaceMouseUp(): void {
-    if (mode !== 'view') return
+    if (mode !== 'view' && mode !== 'highlight') return
     window.setTimeout(() => {
       const img = stageImgRef.current
       if (!img) return
@@ -1025,32 +1032,53 @@ export default function Lightbox(): JSX.Element | null {
         setSelPopup(null)
         return
       }
+      // In markeren-modus meteen kleuren (voelt als "tekst selecteren → kleur");
+      // in Selecteren-modus verschijnt het mini-menu (kopiëren/markeren/…).
+      if (mode === 'highlight') {
+        void highlightSelectionRects(found.rects, 'fill')
+        window.getSelection()?.removeAllRanges()
+        setSelPopup(null)
+        return
+      }
       const first = found.rects[0]
       setSelPopup({ x: first.x, y: Math.max(0, first.y - 40), text: found.text, rects: found.rects })
     }, 10)
   }
 
-  async function annotateSelection(style: 'fill' | 'underline' | 'strike'): Promise<void> {
-    const popup = selPopup
-    if (!popup || !source || !context || !pageVisualSize) return
-    setSelPopup(null)
-    window.getSelection()?.removeAllRanges()
-    for (const rect of popup.rects) {
+  /** Kleurt een reeks (op de pagina getekende) selectieregels als markering. */
+  async function highlightSelectionRects(
+    rects: SelectionLineRect[],
+    style: 'fill' | 'underline' | 'strike'
+  ): Promise<void> {
+    if (!source || !context || !pageVisualSize) return
+    let lastId: string | null = null
+    for (const rect of rects) {
       const contentRect = await visualRectToContentRect(source, context.page.sourcePageIndex, context.page.rotation, {
         xPct: rect.x / layoutScale / pageVisualSize.width,
         yPct: rect.y / layoutScale / pageVisualSize.height,
         wPct: rect.width / layoutScale / pageVisualSize.width,
         hPct: rect.height / layoutScale / pageVisualSize.height
       })
-      addAnnotation(context.page.id, {
+      const annotation: Annotation = {
         id: nanoid(),
         type: 'highlight',
         ...contentRect,
         color: highlightColor,
         opacity: style === 'fill' ? highlightOpacity : 0.9,
         style
-      })
+      }
+      addAnnotation(context.page.id, annotation)
+      lastId = annotation.id
     }
+    if (lastId) setSelectedAnnotationId(lastId)
+  }
+
+  async function annotateSelection(style: 'fill' | 'underline' | 'strike'): Promise<void> {
+    const popup = selPopup
+    if (!popup) return
+    setSelPopup(null)
+    window.getSelection()?.removeAllRanges()
+    await highlightSelectionRects(popup.rects, style)
   }
 
   // --- Toolbar control handlers: edit the selected annotation, or set defaults ---
@@ -1880,7 +1908,7 @@ export default function Lightbox(): JSX.Element | null {
               {snapGuides.h && <div className="align-guide align-guide--h" />}
               <div
                 ref={textLayerRef}
-                className={`text-select-layer${mode === 'view' ? '' : ' text-select-layer--passive'}`}
+                className={`text-select-layer${mode === 'view' || mode === 'highlight' ? '' : ' text-select-layer--passive'}`}
                 onMouseUp={onSurfaceMouseUp}
               />
               {selPopup && mode === 'view' && (
