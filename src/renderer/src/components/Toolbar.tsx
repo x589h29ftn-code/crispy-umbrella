@@ -8,6 +8,7 @@ import { shareActiveToRemarkable } from '../lib/remarkableActions'
 import {
   IconArchive,
   IconCheck,
+  IconCompare,
   IconChevronLeft,
   IconChevronRight,
   IconClose,
@@ -17,12 +18,14 @@ import {
   IconFolderOpen,
   IconLock,
   IconMinus,
+  IconPen,
   IconMoon,
   IconPlus,
   IconPrinter,
   IconRemarkable,
   IconRedo,
   IconSearch,
+  IconShield,
   IconSignature,
   IconSun,
   IconUndo
@@ -80,6 +83,11 @@ export default function Toolbar({ zoomPct, onZoomIn, onZoomOut, onZoomReset, onZ
   )
   const exportPassword = useStudioStore((s) => s.exportPassword)
   const setExportPassword = useStudioStore((s) => s.setExportPassword)
+  const exportPermissions = useStudioStore((s) => s.exportPermissions)
+  const setExportPermissions = useStudioStore((s) => s.setExportPermissions)
+  const setDrawSignatureOpen = useStudioStore((s) => s.setDrawSignatureOpen)
+  const openCompare = useStudioStore((s) => s.openCompare)
+  const setPrivacyScanOpen = useStudioStore((s) => s.setPrivacyScanOpen)
   const [showPasswordField, setShowPasswordField] = useState(false)
   const [sigMenuOpen, setSigMenuOpen] = useState(false)
   const [collapsed, setCollapsed] = useState(() => window.localStorage.getItem(SIDEBAR_STORAGE_KEY) === '1')
@@ -231,6 +239,28 @@ export default function Toolbar({ zoomPct, onZoomIn, onZoomOut, onZoomReset, onZ
       <button
         type="button"
         className="sidebar-btn"
+        disabled={groups.length < 1}
+        onClick={openCompare}
+        title="Twee documenten (of versies) naast elkaar vergelijken"
+      >
+        <IconCompare size={15} />
+        <span className="sidebar-btn__label">Vergelijken</span>
+      </button>
+
+      <button
+        type="button"
+        className="sidebar-btn"
+        disabled={!activeGroup}
+        onClick={() => setPrivacyScanOpen(true)}
+        title="Privacy-scan (AVG): vind BSN, IBAN, e-mail en telefoon om te redigeren"
+      >
+        <IconShield size={15} />
+        <span className="sidebar-btn__label">Privacy-scan</span>
+      </button>
+
+      <button
+        type="button"
+        className="sidebar-btn"
         onClick={toggleTheme}
         title={theme === 'dark' ? 'Licht thema' : 'Donker thema'}
       >
@@ -249,11 +279,8 @@ export default function Toolbar({ zoomPct, onZoomIn, onZoomOut, onZoomReset, onZ
         <button
           type="button"
           className={`sidebar-btn${signatureAssets.length ? ' sidebar-btn--active' : ''}`}
-          onClick={() => {
-            if (signatureAssets.length === 0) signatureInputRef.current?.click()
-            else setSigMenuOpen((v) => !v)
-          }}
-          title="Handtekeningen laden en beheren"
+          onClick={() => setSigMenuOpen((v) => !v)}
+          title="Handtekeningen laden, tekenen en beheren"
         >
           <IconSignature size={15} />
           <span className="sidebar-btn__label">
@@ -293,7 +320,18 @@ export default function Toolbar({ zoomPct, onZoomIn, onZoomOut, onZoomReset, onZ
               onClick={() => signatureInputRef.current?.click()}
             >
               <IconPlus size={14} />
-              Nieuwe handtekening…
+              Afbeelding laden…
+            </button>
+            <button
+              type="button"
+              className="dropdown-menu__item"
+              onClick={() => {
+                setSigMenuOpen(false)
+                setDrawSignatureOpen(true)
+              }}
+            >
+              <IconPen size={14} />
+              Handtekening tekenen…
             </button>
           </div>
         )}
@@ -322,6 +360,26 @@ export default function Toolbar({ zoomPct, onZoomIn, onZoomOut, onZoomReset, onZ
                 if (e.key === 'Enter' || e.key === 'Escape') setShowPasswordField(false)
               }}
             />
+            <div className="sidebar__password-perms">
+              <div className="sidebar__password-perms-title">Rechten voor de ontvanger</div>
+              {([
+                ['printing', 'Afdrukken toestaan'],
+                ['copying', 'Tekst kopiëren toestaan'],
+                ['modifying', 'Bewerken toestaan']
+              ] as const).map(([key, label]) => (
+                <label key={key} className="sidebar__password-perm">
+                  <input
+                    type="checkbox"
+                    checked={exportPermissions[key]}
+                    onChange={(e) => setExportPermissions({ [key]: e.target.checked })}
+                  />
+                  {label}
+                </label>
+              ))}
+              <div className="sidebar__password-hint">
+                Beperkingen worden bij export met encryptie afgedwongen (ook zonder wachtwoord).
+              </div>
+            </div>
           </div>
         )}
       </div>

@@ -30,6 +30,7 @@ import {
   IconGrip,
   IconHighlighter,
   IconMinus,
+  IconMoonStars,
   IconPen,
   IconPlus,
   IconRedact,
@@ -147,6 +148,8 @@ export default function EditorView({ groupId }: Props): JSX.Element | null {
   const deletePages = useStudioStore((s) => s.deletePages)
   const presentationMode = useStudioStore((s) => s.presentationMode)
   const setPresentationMode = useStudioStore((s) => s.setPresentationMode)
+  const nightMode = useStudioStore((s) => s.readerNightMode)
+  const setNightMode = useStudioStore((s) => s.setReaderNightMode)
 
   const [mode, setMode] = useState<EditorMode>('view')
   const [selection, setSelection] = useState<EditorSelection | null>(null)
@@ -543,6 +546,14 @@ export default function EditorView({ groupId }: Props): JSX.Element | null {
               <IconPlus size={13} />
             </button>
           </div>
+          <button
+            type="button"
+            className={`pill-btn pill-btn--icon editor-center__night${nightMode ? ' pill-btn--active' : ''}`}
+            onClick={() => setNightMode(!nightMode)}
+            title="Nachtmodus: kleuren omkeren voor comfortabel lezen (niet in de export)"
+          >
+            <IconMoonStars size={14} />
+          </button>
           <button
             type="button"
             className="pill-btn pill-btn--icon editor-center__present"

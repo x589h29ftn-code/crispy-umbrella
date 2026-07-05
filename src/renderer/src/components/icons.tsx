@@ -450,3 +450,30 @@ export function IconExpand({ size = 16, className }: IconProps): JSX.Element {
     </svg>
   )
 }
+
+export function IconCompare({ size = 16, className }: IconProps): JSX.Element {
+  return (
+    <svg width={size} height={size} viewBox="0 0 24 24" className={className} {...base}>
+      <rect x="3" y="5" width="7.5" height="14" rx="1" />
+      <rect x="13.5" y="5" width="7.5" height="14" rx="1" />
+      <path d="M12 3v18" />
+    </svg>
+  )
+}
+
+export function IconShield({ size = 16, className }: IconProps): JSX.Element {
+  return (
+    <svg width={size} height={size} viewBox="0 0 24 24" className={className} {...base}>
+      <path d="M12 3l7 2.5v5c0 4.5-3 8-7 10-4-2-7-5.5-7-10v-5z" />
+      <path d="M9 12l2 2 4-4" />
+    </svg>
+  )
+}
+
+export function IconMoonStars({ size = 16, className }: IconProps): JSX.Element {
+  return (
+    <svg width={size} height={size} viewBox="0 0 24 24" className={className} {...base}>
+      <path d="M20 14.5A8 8 0 1 1 9.5 4a6.5 6.5 0 0 0 10.5 10.5z" />
+    </svg>
+  )
+}

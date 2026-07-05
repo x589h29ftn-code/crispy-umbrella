@@ -4,6 +4,19 @@
  */
 export const APP_CHANGELOG: { version: string; items: string[] }[] = [
   {
+    version: '1.2.0',
+    items: [
+      'Privacy-scan (AVG): vindt BSN, IBAN, e-mail en telefoon en lakt ze met één klik écht zwart',
+      'Documenten vergelijken: twee versies naast elkaar met gemarkeerde verschillen',
+      'Handtekening tekenen met de muis, naast een afbeelding uploaden',
+      'Beveiligingsrechten: afdrukken, kopiëren of bewerken blokkeren voor de ontvanger',
+      "Pagina's exporteren als losse PDF-bestanden in één zip",
+      'Nachtmodus voor comfortabel lezen in het donker',
+      'Delen met reMarkable-cloud; leesweergave met tabbladen en presentatiemodus',
+      'Vloeiender zoomen, venstervullend lezen en muiswiel-bladeren'
+    ]
+  },
+  {
     version: '1.1.0',
     items: [
       'Vormen: pijlen, lijnen, rechthoeken en ovalen tekenen',

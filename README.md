@@ -30,6 +30,12 @@ Gebouwd met Electron, Vite, TypeScript en React. PDF-weergave via [pdf.js](https
 - **Formulieren invullen**: het gereedschap "Formulier" maakt invulbare PDF-velden (tekst, selectievakjes, keuzelijsten, keuzerondjes) direct op de pagina invulbaar. De waarden reizen mee in de export — na samenvoegen blijft het formulier gewoon werken — en met "Platslaan bij export" worden de velden definitieve, niet meer te wijzigen inhoud. Afdrukken gebruikt altijd de ingevulde (platgeslagen) weergave.
 - **Bladwijzers / inhoudsopgave**: het zijmenu-paneel "Bladwijzers" toont de inhoudsopgave van alle geopende documenten; klikken springt direct naar de juiste pagina. Bij export blijven de originele bladwijzers behouden, en bij het samenvoegen van meerdere bestanden krijgt de export automatisch een bladwijzer per brondocument met de oorspronkelijke inhoudsopgave daaronder.
 - **Afdrukken**: Ctrl+P of de knop "Afdrukken" in het zijmenu — het document wordt eerst exact zoals de export opgebouwd (inclusief alle bewerkingen) en dan via het normale Windows-afdrukvenster geprint.
+- **Privacy-scan (AVG)**: doorzoekt het document automatisch op gevoelige gegevens — BSN's (met 11-proef), IBAN's (met mod-97-controle), e-mailadressen en telefoonnummers — en lakt de aangevinkte treffers met één klik écht zwart (de tekst verdwijnt uit het bestand, geverifieerd op byte-niveau).
+- **Documenten vergelijken**: zet twee documenten of versies naast elkaar; de gewijzigde, toegevoegde en verwijderde tekstregels worden per pagina gemarkeerd (rood/oranje/groen) met een teller "X wijzigingen". Handig bij het nakijken van herziene offertes, contracten of jaarstukken.
+- **Handtekening tekenen**: teken met de muis of trackpad een handtekening (in plaats van een afbeelding te uploaden); hij wordt automatisch bijgesneden en als handtekening opgeslagen.
+- **Beveiligingsrechten**: naast het open-wachtwoord kun je afdrukken, kopiëren en bewerken voor de ontvanger blokkeren; de beperkingen worden bij export via encryptie afgedwongen (ook zonder open-wachtwoord).
+- **Pagina's als losse bestanden**: selecteer pagina's en exporteer ze in één keer elk als apart PDF-bestand (gebundeld in een zip).
+- **Nachtmodus voor het lezen**: keer de paginakleuren om voor comfortabel lezen in het donker — alleen op het scherm, niet in de export.
 - **Delen met reMarkable**: stuur het actieve document rechtstreeks naar je reMarkable-cloud (en dus je tablet). De eerste keer koppel je de app één keer via een code van my.remarkable.com; daarna is het één klik. Uploads komen netjes in een map "PDF Studio". De koppeling gebeurt via de (onofficiële) reMarkable cloud-API — het device-token wordt lokaal bewaard, de upload draait in het main-proces (geen CORS). Ontkoppelen kan altijd.
 - **Splitsen via selectie**: selecteer pagina's en klik "Nieuw document" in de selectiebalk — de pagina's verhuizen naar een nieuw document.
 - **Zoeken in alle documenten**: Ctrl+F opent een zoekpaneel dat door de tekst van álle geladen documenten zoekt. Enter (of een klik op een treffer) markeert alle treffers geel op de pagina's en springt ernaartoe; met ‹ › (of Enter/Shift+Enter) blader je door de treffers. Sluit je het zoeken (kruisje of Escape), dan verdwijnen de markeringen automatisch.
@@ -73,7 +79,7 @@ npm run dev     # start de app met live-reload
 npm run build:win
 ```
 
-Dit levert in `dist/` zowel een NSIS-installer (`PDF Studio-1.1.0-setup.exe`) als een portable `.exe` op. Bouw op Windows zelf, of gebruik macOS/Linux met [`electron-builder`](https://www.electron.build/multi-platform-build) (Wine vereist voor het NSIS-installer target).
+Dit levert in `dist/` zowel een NSIS-installer (`PDF Studio-1.2.0-setup.exe`) als een portable `.exe` op. Bouw op Windows zelf, of gebruik macOS/Linux met [`electron-builder`](https://www.electron.build/multi-platform-build) (Wine vereist voor het NSIS-installer target).
 
 ### Automatische build via GitHub Actions
 

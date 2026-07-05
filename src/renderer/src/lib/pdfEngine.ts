@@ -86,10 +86,46 @@ export function isPasswordError(error: unknown): boolean {
   return (error as { name?: string } | null)?.name === 'PasswordException'
 }
 
-/** Encrypts PDF bytes with a user+owner password (AES), preserving all metadata. */
-export async function encryptPdfBytes(data: Uint8Array, password: string): Promise<Uint8Array> {
+export interface ExportPermissions {
+  /** Afdrukken toestaan. */
+  printing: boolean
+  /** Tekst/afbeeldingen kopiëren toestaan. */
+  copying: boolean
+  /** Inhoud wijzigen toestaan. */
+  modifying: boolean
+}
+
+/**
+ * Encrypts PDF bytes (AES), preserving all metadata. With a user password the
+ * document asks for it on open; permission restrictions are enforced via an
+ * owner password (so the reader can open freely but e.g. not print/copy).
+ */
+export async function encryptPdfBytes(
+  data: Uint8Array,
+  password: string,
+  permissions?: ExportPermissions
+): Promise<Uint8Array> {
   const doc = await PDFDocument.load(cloneBytes(data), { updateMetadata: false })
-  doc.encrypt({ userPassword: password, ownerPassword: password })
+  const restricted = permissions && (!permissions.printing || !permissions.copying || !permissions.modifying)
+  if (restricted) {
+    doc.encrypt({
+      userPassword: password || undefined,
+      // Zonder open-wachtwoord toch een eigenaarswachtwoord, anders zijn de
+      // permissies niet afdwingbaar; willekeurig want we hoeven het niet te onthouden.
+      ownerPassword: password || `pdfstudio-${crypto.randomUUID()}`,
+      permissions: {
+        printing: permissions!.printing ? 'highResolution' : undefined,
+        copying: permissions!.copying,
+        modifying: permissions!.modifying,
+        annotating: permissions!.modifying,
+        fillingForms: true,
+        contentAccessibility: true,
+        documentAssembly: permissions!.modifying
+      }
+    })
+  } else {
+    doc.encrypt({ userPassword: password, ownerPassword: password })
+  }
   return doc.save()
 }
 

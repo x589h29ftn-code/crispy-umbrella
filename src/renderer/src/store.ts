@@ -1,6 +1,7 @@
 import { create } from 'zustand'
 import { nanoid } from 'nanoid'
 import { createBlankPageSource, decryptPdfBytes, forgetSource, isPasswordError, loadSourceFile } from './lib/pdfEngine'
+import type { ExportPermissions } from './lib/pdfEngine'
 import { extractComments } from './lib/commentImport'
 import type { Annotation, DocGroup, PageComment, PageRef, SignatureAsset, SignaturePlacement, SourceFile, Watermark } from './types'
 
@@ -179,6 +180,23 @@ interface StudioState {
   /** Presentatiemodus: alles verbergen behalve de pagina's. */
   presentationMode: boolean
   setPresentationMode: (on: boolean) => void
+  /** Nachtmodus: pagina-kleuren omkeren tijdens het lezen (niet in de export). */
+  readerNightMode: boolean
+  setReaderNightMode: (on: boolean) => void
+  /** Rechten die bij een beveiligde export worden afgedwongen. */
+  exportPermissions: ExportPermissions
+  setExportPermissions: (patch: Partial<ExportPermissions>) => void
+  /** Vergelijk-weergave: twee documenten naast elkaar met verschillen. */
+  compare: { open: boolean; leftGroupId: string | null; rightGroupId: string | null }
+  openCompare: () => void
+  closeCompare: () => void
+  setCompareGroups: (side: 'left' | 'right', groupId: string) => void
+  /** Handtekening-tekenen-dialoog. */
+  drawSignatureOpen: boolean
+  setDrawSignatureOpen: (open: boolean) => void
+  /** Privacy-scan (AVG): gevonden gevoelige gegevens die te redigeren zijn. */
+  privacyScanOpen: boolean
+  setPrivacyScanOpen: (open: boolean) => void
   focusCommentId: string | null
   setCommentsPanelOpen: (open: boolean) => void
   openCommentThread: (pageId: string, commentId: string) => void
@@ -792,6 +810,26 @@ export const useStudioStore = create<StudioState>((set, get) => ({
   setRemarkableDialogOpen: (open) => set({ remarkableDialogOpen: open }),
   presentationMode: false,
   setPresentationMode: (on) => set({ presentationMode: on }),
+  readerNightMode: false,
+  setReaderNightMode: (on) => set({ readerNightMode: on }),
+  exportPermissions: { printing: true, copying: true, modifying: true },
+  setExportPermissions: (patch) => set((s) => ({ exportPermissions: { ...s.exportPermissions, ...patch } })),
+  compare: { open: false, leftGroupId: null, rightGroupId: null },
+  openCompare: () =>
+    set((s) => ({
+      compare: {
+        open: true,
+        leftGroupId: s.compare.leftGroupId ?? s.groups[0]?.id ?? null,
+        rightGroupId: s.compare.rightGroupId ?? s.groups[1]?.id ?? s.groups[0]?.id ?? null
+      }
+    })),
+  closeCompare: () => set((s) => ({ compare: { ...s.compare, open: false } })),
+  setCompareGroups: (side, groupId) =>
+    set((s) => ({ compare: { ...s.compare, [side === 'left' ? 'leftGroupId' : 'rightGroupId']: groupId } })),
+  drawSignatureOpen: false,
+  setDrawSignatureOpen: (open) => set({ drawSignatureOpen: open }),
+  privacyScanOpen: false,
+  setPrivacyScanOpen: (open) => set({ privacyScanOpen: open }),
   focusCommentId: null,
 
   setCommentsPanelOpen: (open) => set({ commentsPanelOpen: open }),

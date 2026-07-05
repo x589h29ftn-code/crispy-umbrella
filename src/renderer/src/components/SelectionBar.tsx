@@ -1,5 +1,6 @@
 import { useStudioStore } from '../store'
-import { IconClose, IconDuplicate, IconFilePlus, IconRotateLeft, IconRotateRight, IconTrash } from './icons'
+import { exportPagesAsSeparateFiles } from '../lib/exportActions'
+import { IconClose, IconDownload, IconDuplicate, IconFilePlus, IconRotateLeft, IconRotateRight, IconTrash } from './icons'
 
 export default function SelectionBar(): JSX.Element | null {
   const selectionCount = useStudioStore((s) => s.selectedPageIds.size)
@@ -51,6 +52,14 @@ export default function SelectionBar(): JSX.Element | null {
         onClick={() => createGroupWithPages(selectedIds())}
       >
         <IconFilePlus size={15} /> Nieuw document
+      </button>
+      <button
+        type="button"
+        className="pill-btn"
+        title="Exporteer elke geselecteerde pagina als apart PDF-bestand (in één zip)"
+        onClick={() => void exportPagesAsSeparateFiles(selectedIds())}
+      >
+        <IconDownload size={15} /> Losse bestanden
       </button>
       <button
         type="button"

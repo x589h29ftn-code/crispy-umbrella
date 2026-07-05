@@ -11,6 +11,9 @@ import BookmarksPanel from './components/BookmarksPanel'
 import WhatsNewDialog from './components/WhatsNewDialog'
 import UpdateBanner from './components/UpdateBanner'
 import RemarkableDialog from './components/RemarkableDialog'
+import DrawSignatureDialog from './components/DrawSignatureDialog'
+import PrivacyScanDialog from './components/PrivacyScanDialog'
+import CompareView from './components/CompareView'
 import TabStrip from './components/TabStrip'
 import EditorView from './components/editor/EditorView'
 import { exportAllZip } from './lib/exportActions'
@@ -29,6 +32,7 @@ export default function App(): JSX.Element {
   const theme = useStudioStore((s) => s.theme)
   const activeEditorTab = useStudioStore((s) => s.activeEditorTab)
   const presentationMode = useStudioStore((s) => s.presentationMode)
+  const readerNightMode = useStudioStore((s) => s.readerNightMode)
 
   useEffect(() => window.api.onFilesOpened((files) => void useStudioStore.getState().importFiles(files)), [])
 
@@ -93,7 +97,7 @@ export default function App(): JSX.Element {
   )
 
   return (
-    <div className={`app${presentationMode ? ' app--presentation' : ''}`}>
+    <div className={`app${presentationMode ? ' app--presentation' : ''}${readerNightMode ? ' app--night' : ''}`}>
       <Toolbar
         zoomPct={zoomPct}
         onZoomIn={() => controlsRef.current?.zoomBy(1.2)}
@@ -118,6 +122,9 @@ export default function App(): JSX.Element {
       <WhatsNewDialog />
       <UpdateBanner />
       <RemarkableDialog />
+      <DrawSignatureDialog />
+      <PrivacyScanDialog />
+      <CompareView />
       <Toasts />
     </div>
   )
