@@ -153,6 +153,12 @@ interface StudioState {
   insertBlankPage: (groupId: string) => Promise<void>
   movePages: (pageIds: string[], toGroupId: string, toIndex: number) => void
   createGroupWithPages: (pageIds: string[]) => void
+  /** Splitst een document in meerdere nieuwe documenten volgens segmenten. */
+  splitGroupIntoSegments: (groupId: string, segments: { name: string; pageIds: string[] }[]) => void
+  /** Herordent de pagina's van een document naar de opgegeven volgorde. */
+  reorderGroupPages: (groupId: string, orderedPageIds: string[]) => void
+  /** Voegt meerdere annotaties in één keer toe (één undo-stap). */
+  addAnnotationsBulk: (entries: { pageId: string; annotation: Annotation }[]) => void
   deletePages: (pageIds: string[]) => void
   rotatePages: (pageIds: string[], delta?: 90 | -90) => void
   duplicatePages: (pageIds: string[]) => void
@@ -646,6 +652,68 @@ export const useStudioStore = create<StudioState>((set, get) => ({
       const idSet = new Set(pageIds)
       const groups = state.groups.map((g) => ({ ...g, pages: g.pages.filter((p) => !idSet.has(p.id)) }))
       return { ...finalizeGroups(state, groups), ...pruneSelection(state, groups) }
+    })
+  },
+
+  splitGroupIntoSegments: (groupId, segments) => {
+    if (segments.length < 2) return
+    get().markHistory()
+    set((state) => {
+      const idx = state.groups.findIndex((g) => g.id === groupId)
+      const source = state.groups[idx]
+      if (!source) return state
+      const byId = new Map(source.pages.map((p) => [p.id, p]))
+      const newGroups: DocGroup[] = segments
+        .map((seg) => {
+          const pages = seg.pageIds.map((id) => byId.get(id)).filter((p): p is PageRef => Boolean(p))
+          return { name: seg.name, pages }
+        })
+        .filter((s) => s.pages.length)
+        .map((s) => ({
+          id: nanoid(),
+          name: nextGroupName(state.groups, s.name),
+          pages: s.pages,
+          watermark: source.watermark,
+          pageNumbers: source.pageNumbers,
+          documentDate: source.documentDate
+        }))
+      if (!newGroups.length) return state
+      const groups = [...state.groups.slice(0, idx), ...newGroups, ...state.groups.slice(idx + 1)]
+      return { ...finalizeGroups(state, groups), ...pruneSelection(state, groups), activeGroupId: newGroups[0].id }
+    })
+  },
+
+  reorderGroupPages: (groupId, orderedPageIds) => {
+    get().markHistory()
+    set((state) => ({
+      groups: state.groups.map((g) => {
+        if (g.id !== groupId) return g
+        const byId = new Map(g.pages.map((p) => [p.id, p]))
+        const ordered = orderedPageIds.map((id) => byId.get(id)).filter((p): p is PageRef => Boolean(p))
+        // Behoud pagina's die (onverwacht) niet in de nieuwe volgorde staan.
+        const seen = new Set(orderedPageIds)
+        const rest = g.pages.filter((p) => !seen.has(p.id))
+        return { ...g, pages: [...ordered, ...rest] }
+      })
+    }))
+  },
+
+  addAnnotationsBulk: (entries) => {
+    if (!entries.length) return
+    get().markHistory()
+    set((state) => {
+      const byPage = new Map<string, Annotation[]>()
+      for (const e of entries) {
+        const list = byPage.get(e.pageId) ?? []
+        list.push(e.annotation)
+        byPage.set(e.pageId, list)
+      }
+      return {
+        groups: state.groups.map((g) => ({
+          ...g,
+          pages: g.pages.map((p) => (byPage.has(p.id) ? { ...p, annotations: [...p.annotations, ...byPage.get(p.id)!] } : p))
+        }))
+      }
     })
   },
 

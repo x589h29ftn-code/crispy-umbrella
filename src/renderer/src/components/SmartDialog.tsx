@@ -4,10 +4,13 @@ import { useStudioStore } from '../store'
 import { extractFields, getGroupText, suggestName, DOC_TYPE_LABELS } from '../lib/docAnalysis'
 import { cleanupScannedPage, isBlankPage } from '../lib/scanTools'
 import { exportDataToCsv } from '../lib/dataExport'
+import { exportGroupText } from '../lib/textExport'
+import { getGroupBookmarks } from '../lib/bookmarks'
+import { getTextLineBoxes } from '../lib/textLines'
 import { IconClose, IconFile, IconTrash } from './icons'
 import type { DocGroup } from '../types'
 
-type Tab = 'rename' | 'blank' | 'cleanup' | 'data'
+type Tab = 'rename' | 'blank' | 'cleanup' | 'data' | 'split' | 'sort' | 'text'
 
 /**
  * "Slimme documenten": automatisch hernoemen op inhoud, lege pagina's vinden en
@@ -22,12 +25,15 @@ export default function SmartDialog(): JSX.Element | null {
   const renameGroup = useStudioStore((s) => s.renameGroup)
   const deletePages = useStudioStore((s) => s.deletePages)
   const applyCleanedPages = useStudioStore((s) => s.applyCleanedPages)
+  const splitGroupIntoSegments = useStudioStore((s) => s.splitGroupIntoSegments)
+  const reorderGroupPages = useStudioStore((s) => s.reorderGroupPages)
   const addToast = useStudioStore((s) => s.addToast)
 
   const [tab, setTab] = useState<Tab>('rename')
   const [busy, setBusy] = useState(false)
   const [suggestions, setSuggestions] = useState<{ groupId: string; current: string; type: string; suggested: string }[]>([])
   const [blanks, setBlanks] = useState<{ pageId: string; groupName: string; pageNumber: number }[]>([])
+  const [segments, setSegments] = useState<{ name: string; pageIds: string[]; firstPage: number }[]>([])
 
   const activeGroup = groups.find((g) => g.id === activeGroupId) ?? groups[0]
 
@@ -35,10 +41,45 @@ export default function SmartDialog(): JSX.Element | null {
     if (!open) {
       setSuggestions([])
       setBlanks([])
+      setSegments([])
       setBusy(false)
       setTab('rename')
     }
   }, [open])
+
+  // Splitsen: top-niveau bladwijzers van het actieve document → segmenten.
+  useEffect(() => {
+    if (!open || tab !== 'split' || !activeGroup) return
+    let cancelled = false
+    setBusy(true)
+    ;(async () => {
+      const bms = await getGroupBookmarks(activeGroup, sources).catch(() => [])
+      const idxOf = new Map(activeGroup.pages.map((p, i) => [p.id, i]))
+      const cuts = bms
+        .filter((b) => b.depth === 0 && idxOf.has(b.pageId))
+        .map((b) => ({ title: b.title, index: idxOf.get(b.pageId)! }))
+        .sort((a, b) => a.index - b.index)
+      const segs: typeof segments = []
+      if (cuts.length >= 2) {
+        for (let i = 0; i < cuts.length; i += 1) {
+          const start = cuts[i].index
+          const end = i + 1 < cuts.length ? cuts[i + 1].index : activeGroup.pages.length
+          segs.push({
+            name: cuts[i].title,
+            firstPage: start + 1,
+            pageIds: activeGroup.pages.slice(start, end).map((p) => p.id)
+          })
+        }
+      }
+      if (!cancelled) {
+        setSegments(segs)
+        setBusy(false)
+      }
+    })()
+    return () => {
+      cancelled = true
+    }
+  }, [open, tab, activeGroup, sources])
 
   useEffect(() => {
     if (!open || tab !== 'rename') return
@@ -132,11 +173,47 @@ export default function SmartDialog(): JSX.Element | null {
     }
   }
 
+  function applySplit(): void {
+    if (!activeGroup || segments.length < 2) return
+    splitGroupIntoSegments(activeGroup.id, segments.map((s) => ({ name: s.name, pageIds: s.pageIds })))
+    addToast('success', `Gesplitst in ${segments.length} documenten`)
+    setOpen(false)
+  }
+
+  async function sortByDate(group: DocGroup): Promise<void> {
+    setBusy(true)
+    try {
+      const dated: { pageId: string; date: string | null; index: number }[] = []
+      for (let i = 0; i < group.pages.length; i += 1) {
+        const page = group.pages[i]
+        const source = sources.get(page.sourceId)
+        let date: string | null = null
+        if (source) {
+          const lines = await getTextLineBoxes(source, page.sourcePageIndex, page.rotation).catch(() => [])
+          date = extractFields(lines.map((l) => l.str).join('\n')).date
+        }
+        dated.push({ pageId: page.id, date, index: i })
+      }
+      // Pagina's met datum vooraan op datum gesorteerd; zonder datum in oorspronkelijke volgorde erna.
+      const withDate = dated.filter((d) => d.date).sort((a, b) => (a.date! < b.date! ? -1 : a.date! > b.date! ? 1 : a.index - b.index))
+      const withoutDate = dated.filter((d) => !d.date)
+      const order = [...withDate, ...withoutDate].map((d) => d.pageId)
+      reorderGroupPages(group.id, order)
+      addToast('success', withDate.length ? `Gesorteerd op datum (${withDate.length} met datum)` : 'Geen datums gevonden om op te sorteren')
+      setOpen(false)
+    } finally {
+      setBusy(false)
+    }
+  }
+
   const TABS: [Tab, string][] = [
     ['rename', 'Hernoemen'],
+    ['split', 'Splitsen'],
+    ['sort', 'Sorteren'],
     ['blank', "Lege pagina's"],
     ['cleanup', 'Opschonen'],
-    ['data', 'Gegevens → CSV']
+    ['data', 'Gegevens → CSV'],
+    ['text', 'Tekst / Word']
   ]
 
   return (
@@ -262,6 +339,85 @@ export default function SmartDialog(): JSX.Element | null {
                 }}
               >
                 Exporteren naar CSV
+              </button>
+            </div>
+          </div>
+        )}
+
+        {tab === 'split' && (
+          <div className="smart-card__body">
+            {busy ? (
+              <p>Bladwijzers zoeken…</p>
+            ) : segments.length < 2 ? (
+              <p>
+                Dit document heeft geen bruikbare inhoudsopgave om op te splitsen. Bij het samenvoegen van meerdere
+                bestanden krijgt een document automatisch bladwijzers per bron.
+              </p>
+            ) : (
+              <>
+                <p className="smart-card__intro">Splitst "{activeGroup?.name}" op de bladwijzers in {segments.length} documenten:</p>
+                <div className="smart-card__list">
+                  {segments.map((s, i) => (
+                    <div key={i} className="smart-blank">
+                      <IconFile size={13} /> {s.name} · {s.pageIds.length} pagina('s) (vanaf p. {s.firstPage})
+                    </div>
+                  ))}
+                </div>
+                <div className="modal-card__actions">
+                  <button type="button" className="pill-btn pill-btn--primary" onClick={applySplit}>
+                    Splitsen in {segments.length} documenten
+                  </button>
+                </div>
+              </>
+            )}
+          </div>
+        )}
+
+        {tab === 'sort' && (
+          <div className="smart-card__body">
+            <p className="smart-card__intro">
+              Zet de pagina's van "{activeGroup?.name ?? '—'}" op volgorde van de datum die op elke pagina wordt
+              herkend. Pagina's zonder datum blijven achteraan in de huidige volgorde.
+            </p>
+            <div className="modal-card__actions">
+              <button
+                type="button"
+                className="pill-btn pill-btn--primary"
+                disabled={busy || !activeGroup}
+                onClick={() => activeGroup && void sortByDate(activeGroup)}
+              >
+                {busy ? 'Bezig…' : 'Sorteren op datum'}
+              </button>
+            </div>
+          </div>
+        )}
+
+        {tab === 'text' && (
+          <div className="smart-card__body">
+            <p className="smart-card__intro">
+              Haalt alle tekst uit "{activeGroup?.name ?? '—'}" en slaat die op als tekstbestand of als
+              Word-compatibel bestand (.rtf).
+            </p>
+            <div className="modal-card__actions">
+              <button
+                type="button"
+                className="pill-btn"
+                onClick={() => {
+                  setOpen(false)
+                  void exportGroupText('txt')
+                }}
+              >
+                Als tekst (.txt)
+              </button>
+              <button
+                type="button"
+                className="pill-btn pill-btn--primary"
+                onClick={() => {
+                  setOpen(false)
+                  void exportGroupText('rtf')
+                }}
+              >
+                Voor Word (.rtf)
               </button>
             </div>
           </div>

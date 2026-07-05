@@ -25,7 +25,35 @@ export default function SearchPanel(): JSX.Element | null {
   const [searching, setSearching] = useState(false)
   const [ocrProgress, setOcrProgress] = useState<OcrProgress | null>(null)
   const [hitIndex, setHitIndex] = useState(-1)
+  const [replaceOpen, setReplaceOpen] = useState(false)
+  const [replaceText, setReplaceText] = useState('')
+  const [replacing, setReplacing] = useState(false)
+  const activeGroupId = useStudioStore((s) => s.activeGroupId)
   const runIdRef = useRef(0)
+
+  async function doReplaceAll(): Promise<void> {
+    const needle = query.trim()
+    if (!needle || replacing) return
+    const state = useStudioStore.getState()
+    const group = state.groups.find((g) => g.id === activeGroupId) ?? state.groups[0]
+    if (!group) return
+    setReplacing(true)
+    try {
+      const { planFindReplace } = await import('../lib/findReplace')
+      const plan = await planFindReplace(group, state.sources, needle, replaceText)
+      const total = plan.bodyMatches + plan.annotationMatches
+      if (!total) {
+        addToast('info', `Geen treffers voor "${needle}" in dit document`)
+        return
+      }
+      plan.apply()
+      addToast('success', `${total} keer vervangen in "${group.name}"`)
+    } catch {
+      addToast('error', 'Vervangen is mislukt')
+    } finally {
+      setReplacing(false)
+    }
+  }
 
   function close(): void {
     setOpen(false)
@@ -158,10 +186,36 @@ export default function SearchPanel(): JSX.Element | null {
             </button>
           </div>
         )}
+        <button
+          type="button"
+          className={`icon-btn icon-btn--chrome${replaceOpen ? ' icon-btn--active' : ''}`}
+          title="Zoeken & vervangen"
+          onClick={() => setReplaceOpen((v) => !v)}
+        >
+          ⇄
+        </button>
         <button type="button" className="icon-btn icon-btn--chrome" title="Sluiten (Esc)" onClick={close}>
           <IconClose size={13} />
         </button>
       </div>
+
+      {replaceOpen && (
+        <div className="search-panel__replace">
+          <input
+            type="text"
+            placeholder="Vervangen door… (leeg = verwijderen)"
+            value={replaceText}
+            onChange={(e) => setReplaceText(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter') void doReplaceAll()
+              if (e.key === 'Escape') close()
+            }}
+          />
+          <button type="button" className="pill-btn pill-btn--primary" disabled={!query.trim() || replacing} onClick={() => void doReplaceAll()}>
+            {replacing ? 'Bezig…' : 'Alles vervangen'}
+          </button>
+        </div>
+      )}
 
       {query.trim() && (
         <div className="search-panel__results">

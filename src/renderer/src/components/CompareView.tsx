@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from 'react'
 import { useStudioStore } from '../store'
 import { getPageVisualSize, renderThumbnail } from '../lib/pdfEngine'
-import { diffPages, type PageDiff } from '../lib/pdfDiff'
+import { diffPages, exportDiffReport, type PageDiff } from '../lib/pdfDiff'
 import { IconChevronLeft, IconChevronRight, IconClose } from './icons'
 import type { DocGroup, PageRef, SourceFile } from '../types'
 
@@ -160,6 +160,15 @@ export default function CompareView(): JSX.Element | null {
           <span className="compare-legend compare-legend--changed">gewijzigd</span>
           <span className="compare-legend compare-legend--added">toegevoegd</span>
         </div>
+        <button
+          type="button"
+          className="pill-btn"
+          disabled={!left || !right}
+          title="Alle verschillen als PDF-rapport opslaan"
+          onClick={() => left && right && void exportDiffReport(left, right, sources)}
+        >
+          Verschilrapport
+        </button>
         <button type="button" className="icon-btn" title="Vergelijken sluiten (Esc)" onClick={close}>
           <IconClose size={15} />
         </button>

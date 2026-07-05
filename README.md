@@ -32,6 +32,11 @@ Gebouwd met Electron, Vite, TypeScript en React. PDF-weergave via [pdf.js](https
 - **Afdrukken**: Ctrl+P of de knop "Afdrukken" in het zijmenu — het document wordt eerst exact zoals de export opgebouwd (inclusief alle bewerkingen) en dan via het normale Windows-afdrukvenster geprint.
 - **Slimme documenten** (knop "Slim"): automatisch hernoemen op basis van de inhoud (type, datum, afzender/factuurnummer); lege pagina's in een scan automatisch vinden en verwijderen; gescande pagina's opschonen (rechtzetten/deskew + achtergrond witter en tekst zwarter); en de kerngegevens van facturen (type, datum, bedrag, IBAN, afzender) exporteren naar een CSV die direct in Excel opent.
 - **Markeringen exporteren**: naast het opmerkingen-overzicht kun je ook alle gemarkeerde tekst als overzichts-PDF exporteren (de tekst onder je markeringen wordt automatisch uitgelezen).
+- **Splitsen op bladwijzer**: knip een document op langs zijn eigen inhoudsopgave — elk hoofdstuk wordt een eigen document (in het "Slim"-paneel).
+- **Tekst zoeken & vervangen**: Ctrl+F → het ⇄-knopje; vervangt een term in de paginatekst (met een net witvlak + de nieuwe tekst) en in eerder geplaatste tekstvakken.
+- **Sorteren op datum**: zet de pagina's van een document automatisch op volgorde van de datum die op elke pagina wordt herkend (in het "Slim"-paneel).
+- **Exporteren naar tekst / Word**: haal alle tekst uit een document als .txt of als Word-compatibel .rtf-bestand.
+- **Verschilrapport**: bij "Vergelijken" exporteer je alle wijzigingen tussen twee documenten als een net PDF-rapport (verwijderd/gewijzigd/toegevoegd per pagina).
 - **Privacy-scan (AVG)**: doorzoekt het document automatisch op gevoelige gegevens — BSN's (met 11-proef), IBAN's (met mod-97-controle), e-mailadressen en telefoonnummers — en lakt de aangevinkte treffers met één klik écht zwart (de tekst verdwijnt uit het bestand, geverifieerd op byte-niveau).
 - **Documenten vergelijken**: zet twee documenten of versies naast elkaar; de gewijzigde, toegevoegde en verwijderde tekstregels worden per pagina gemarkeerd (rood/oranje/groen) met een teller "X wijzigingen". Handig bij het nakijken van herziene offertes, contracten of jaarstukken.
 - **Handtekening tekenen**: teken met de muis of trackpad een handtekening (in plaats van een afbeelding te uploaden); hij wordt automatisch bijgesneden en als handtekening opgeslagen.
@@ -81,7 +86,7 @@ npm run dev     # start de app met live-reload
 npm run build:win
 ```
 
-Dit levert in `dist/` zowel een NSIS-installer (`PDF Studio-1.3.0-setup.exe`) als een portable `.exe` op. Bouw op Windows zelf, of gebruik macOS/Linux met [`electron-builder`](https://www.electron.build/multi-platform-build) (Wine vereist voor het NSIS-installer target).
+Dit levert in `dist/` zowel een NSIS-installer (`PDF Studio-1.4.0-setup.exe`) als een portable `.exe` op. Bouw op Windows zelf, of gebruik macOS/Linux met [`electron-builder`](https://www.electron.build/multi-platform-build) (Wine vereist voor het NSIS-installer target).
 
 ### Automatische build via GitHub Actions
 

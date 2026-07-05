@@ -4,6 +4,16 @@
  */
 export const APP_CHANGELOG: { version: string; items: string[] }[] = [
   {
+    version: '1.4.0',
+    items: [
+      'Splitsen op bladwijzer: een document opknippen langs zijn inhoudsopgave',
+      'Tekst zoeken & vervangen (Ctrl+F → ⇄) in de paginatekst en tekstvakken',
+      "Automatisch sorteren van pagina's op de herkende datum",
+      'Tekst exporteren als .txt of Word-compatibel .rtf',
+      'Verschilrapport als PDF bij "Vergelijken"'
+    ]
+  },
+  {
     version: '1.3.0',
     items: [
       'Slimme documenten: automatisch hernoemen op inhoud (type, datum, afzender)',

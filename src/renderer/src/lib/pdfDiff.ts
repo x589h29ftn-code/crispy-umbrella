@@ -1,5 +1,10 @@
+import { PDFDocument, rgb } from '@cantoo/pdf-lib'
+import fontkit from '@pdf-lib/fontkit'
+import fontRegularUrl from '../assets/fonts/LiberationSans-Regular.ttf?url'
+import fontBoldUrl from '../assets/fonts/LiberationSans-Bold.ttf?url'
 import { getTextLineBoxes, type TextLineBox } from './textLines'
-import type { PageRef, SourceFile } from '../types'
+import { useStudioStore } from '../store'
+import type { DocGroup, PageRef, SourceFile } from '../types'
 
 export type DiffKind = 'added' | 'removed' | 'changed'
 
@@ -95,4 +100,74 @@ export async function diffPages(
   if (!leftPage) return { left: [], right: rightLines.map((l) => ({ kind: 'added' as const, box: l.visual, text: l.str })), changeCount: rightLines.length }
   if (!rightPage) return { left: leftLines.map((l) => ({ kind: 'removed' as const, box: l.visual, text: l.str })), right: [], changeCount: leftLines.length }
   return diffLines(leftLines, rightLines)
+}
+
+/** Genereert een verschilrapport-PDF tussen twee documenten en biedt het aan om op te slaan. */
+export async function exportDiffReport(left: DocGroup, right: DocGroup, sources: Map<string, SourceFile>): Promise<void> {
+  const state = useStudioStore.getState()
+  try {
+    const doc = await PDFDocument.create()
+    doc.registerFontkit(fontkit)
+    const [rb, bb] = await Promise.all([fontRegularUrl, fontBoldUrl].map((u) => fetch(u).then((r) => r.arrayBuffer())))
+    const regular = await doc.embedFont(rb, { subset: true })
+    const bold = await doc.embedFont(bb, { subset: true })
+    const W = 595.28
+    const H = 841.89
+    const M = 56
+    let page = doc.addPage([W, H])
+    let y = H - M
+    const write = (text: string, font = regular, size = 10.5, color = rgb(0.13, 0.15, 0.19), indent = 0): void => {
+      const maxW = W - M * 2 - indent
+      const words = text.split(/\s+/)
+      let cur = ''
+      const flush = (): void => {
+        if (y - size < M) {
+          page = doc.addPage([W, H])
+          y = H - M
+        }
+        page.drawText(cur, { x: M + indent, y: y - size, size, font, color })
+        y -= size + 4
+      }
+      for (const w of words) {
+        const cand = cur ? `${cur} ${w}` : w
+        if (font.widthOfTextAtSize(cand, size) > maxW && cur) {
+          flush()
+          cur = w
+        } else cur = cand
+      }
+      if (cur) flush()
+      else {
+        y -= size + 4
+      }
+    }
+    write('Verschilrapport', bold, 20)
+    write(`${left.name}  ↔  ${right.name}`, regular, 11, rgb(0.45, 0.48, 0.54))
+    y -= 8
+    const maxPages = Math.max(left.pages.length, right.pages.length)
+    let total = 0
+    for (let i = 0; i < maxPages; i += 1) {
+      const lp = left.pages[i]
+      const rp = right.pages[i]
+      const diff = await diffPages(lp ? sources.get(lp.sourceId) : undefined, lp, rp ? sources.get(rp.sourceId) : undefined, rp)
+      if (!diff.left.length && !diff.right.length) continue
+      total += diff.changeCount
+      write(`Pagina ${i + 1} — ${diff.changeCount} wijziging${diff.changeCount === 1 ? '' : 'en'}`, bold, 13, rgb(0.1, 0.12, 0.16))
+      for (const d of diff.left) {
+        if (d.kind === 'removed') write(`− ${d.text}`, regular, 10, rgb(0.7, 0.15, 0.15), 6)
+      }
+      for (const d of diff.right) {
+        if (d.kind === 'added') write(`+ ${d.text}`, regular, 10, rgb(0.13, 0.5, 0.2), 6)
+      }
+      for (const d of diff.left) {
+        if (d.kind === 'changed') write(`~ ${d.text}`, regular, 10, rgb(0.72, 0.45, 0.05), 6)
+      }
+      y -= 6
+    }
+    if (total === 0) write('Geen tekstverschillen gevonden.', regular, 11)
+    const bytes = await doc.save()
+    const result = await window.api.savePdf('Verschilrapport.pdf', bytes)
+    if (result.saved) state.addToast('success', 'Verschilrapport opgeslagen')
+  } catch {
+    state.addToast('error', 'Verschilrapport maken is mislukt')
+  }
 }

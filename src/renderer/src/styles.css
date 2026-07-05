@@ -3565,3 +3565,22 @@ button.group-row__date:hover {
   padding: 4px 0;
   color: var(--text);
 }
+
+/* ---- Zoeken & vervangen (taak 41) ---- */
+.search-panel__replace {
+  display: flex;
+  gap: 8px;
+  padding: 8px 10px;
+  border-top: 1px solid var(--border);
+}
+.search-panel__replace input {
+  flex: 1;
+  background: var(--panel-2);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  color: var(--text);
+  font: inherit;
+  font-size: 12.5px;
+  padding: 5px 8px;
+}
+.icon-btn--active { color: var(--accent); }
