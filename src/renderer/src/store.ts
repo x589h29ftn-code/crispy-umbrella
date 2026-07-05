@@ -157,6 +157,8 @@ interface StudioState {
   rotatePages: (pageIds: string[], delta?: 90 | -90) => void
   duplicatePages: (pageIds: string[]) => void
   renameGroup: (groupId: string, name: string) => void
+  /** Vervangt pagina's door hun opgeschoonde (afbeelding-)versie. */
+  applyCleanedPages: (entries: { pageId: string; source: SourceFile }[]) => void
   setGroupWatermark: (groupId: string, watermark: Watermark | null) => void
   toggleGroupPageNumbers: (groupId: string) => void
   setGroupDocumentDate: (groupId: string, documentDate: string | null) => void
@@ -197,6 +199,9 @@ interface StudioState {
   /** Privacy-scan (AVG): gevonden gevoelige gegevens die te redigeren zijn. */
   privacyScanOpen: boolean
   setPrivacyScanOpen: (open: boolean) => void
+  /** "Slimme documenten"-dialoog (hernoemen, lege pagina's, opschonen, CSV). */
+  smartDialogOpen: boolean
+  setSmartDialogOpen: (open: boolean) => void
   focusCommentId: string | null
   setCommentsPanelOpen: (open: boolean) => void
   openCommentThread: (pageId: string, commentId: string) => void
@@ -701,6 +706,23 @@ export const useStudioStore = create<StudioState>((set, get) => ({
     }))
   },
 
+  applyCleanedPages: (entries) => {
+    if (!entries.length) return
+    get().markHistory()
+    set((state) => {
+      const sources = new Map(state.sources)
+      for (const e of entries) sources.set(e.source.id, e.source)
+      const byPage = new Map(entries.map((e) => [e.pageId, e.source.id]))
+      const groups = state.groups.map((g) => ({
+        ...g,
+        pages: g.pages.map((p) =>
+          byPage.has(p.id) ? { ...p, sourceId: byPage.get(p.id)!, sourcePageIndex: 0, rotation: 0 as const } : p
+        )
+      }))
+      return { sources, groups }
+    })
+  },
+
   setGroupWatermark: (groupId, watermark) => {
     get().markHistory()
     set((state) => ({
@@ -830,6 +852,8 @@ export const useStudioStore = create<StudioState>((set, get) => ({
   setDrawSignatureOpen: (open) => set({ drawSignatureOpen: open }),
   privacyScanOpen: false,
   setPrivacyScanOpen: (open) => set({ privacyScanOpen: open }),
+  smartDialogOpen: false,
+  setSmartDialogOpen: (open) => set({ smartDialogOpen: open }),
   focusCommentId: null,
 
   setCommentsPanelOpen: (open) => set({ commentsPanelOpen: open }),

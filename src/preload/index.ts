@@ -41,6 +41,8 @@ const api = {
     ipcRenderer.invoke('dialog:savePdf', defaultName, data),
   saveZip: (defaultName: string, data: Uint8Array): Promise<SaveResult> =>
     ipcRenderer.invoke('dialog:saveZip', defaultName, data),
+  saveFile: (defaultName: string, data: Uint8Array, extension: string): Promise<SaveResult> =>
+    ipcRenderer.invoke('dialog:saveFile', defaultName, data, extension),
   onFilesOpened: (callback: (files: LoadedFile[]) => void): (() => void) => {
     const listener = (_evt: unknown, files: LoadedFile[]): void => callback(files)
     ipcRenderer.on('files:opened', listener)

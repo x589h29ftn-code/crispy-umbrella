@@ -2,6 +2,7 @@ import { useMemo } from 'react'
 import { useStudioStore } from '../store'
 import { formatCommentTime } from './Lightbox'
 import { exportCommentSummary } from '../lib/commentSummary'
+import { exportHighlightSummary } from '../lib/highlightExport'
 import { IconCheck, IconClose, IconComment } from './icons'
 
 /**
@@ -54,6 +55,14 @@ export function CommentsTimeline(): JSX.Element {
           onClick={() => void exportCommentSummary()}
         >
           Overzicht exporteren
+        </button>
+        <button
+          type="button"
+          className="pill-btn"
+          title="Exporteer alle gemarkeerde tekst als overzichts-PDF"
+          onClick={() => void exportHighlightSummary()}
+        >
+          Markeringen exporteren
         </button>
       </div>
       {items.length === 0 ? (

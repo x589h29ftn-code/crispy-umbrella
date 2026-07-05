@@ -27,6 +27,7 @@ import {
   IconSearch,
   IconShield,
   IconSignature,
+  IconSparkles,
   IconSun,
   IconUndo
 } from './icons'
@@ -88,6 +89,7 @@ export default function Toolbar({ zoomPct, onZoomIn, onZoomOut, onZoomReset, onZ
   const setDrawSignatureOpen = useStudioStore((s) => s.setDrawSignatureOpen)
   const openCompare = useStudioStore((s) => s.openCompare)
   const setPrivacyScanOpen = useStudioStore((s) => s.setPrivacyScanOpen)
+  const setSmartDialogOpen = useStudioStore((s) => s.setSmartDialogOpen)
   const [showPasswordField, setShowPasswordField] = useState(false)
   const [sigMenuOpen, setSigMenuOpen] = useState(false)
   const [collapsed, setCollapsed] = useState(() => window.localStorage.getItem(SIDEBAR_STORAGE_KEY) === '1')
@@ -256,6 +258,17 @@ export default function Toolbar({ zoomPct, onZoomIn, onZoomOut, onZoomReset, onZ
       >
         <IconShield size={15} />
         <span className="sidebar-btn__label">Privacy-scan</span>
+      </button>
+
+      <button
+        type="button"
+        className="sidebar-btn"
+        disabled={!activeGroup}
+        onClick={() => setSmartDialogOpen(true)}
+        title="Slimme documenten: hernoemen, lege pagina's, scans opschonen, gegevens naar CSV"
+      >
+        <IconSparkles size={15} />
+        <span className="sidebar-btn__label">Slim</span>
       </button>
 
       <button

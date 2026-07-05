@@ -14,6 +14,7 @@ import RemarkableDialog from './components/RemarkableDialog'
 import DrawSignatureDialog from './components/DrawSignatureDialog'
 import PrivacyScanDialog from './components/PrivacyScanDialog'
 import CompareView from './components/CompareView'
+import SmartDialog from './components/SmartDialog'
 import TabStrip from './components/TabStrip'
 import EditorView from './components/editor/EditorView'
 import { exportAllZip } from './lib/exportActions'
@@ -125,6 +126,7 @@ export default function App(): JSX.Element {
       <DrawSignatureDialog />
       <PrivacyScanDialog />
       <CompareView />
+      <SmartDialog />
       <Toasts />
     </div>
   )

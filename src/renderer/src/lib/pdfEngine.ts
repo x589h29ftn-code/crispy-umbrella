@@ -383,6 +383,68 @@ async function renderThumbnailOnce(
   return dataUrl
 }
 
+/**
+ * Renders a page to an offscreen canvas at the given width and returns it, for
+ * pixel-level work (lege-pagina-detectie en scans opschonen). The caller owns
+ * the canvas and should drop the reference when done.
+ */
+export async function renderPageToCanvas(
+  source: SourceFile,
+  pageIndex: number,
+  deltaRotation: number,
+  targetWidth: number
+): Promise<HTMLCanvasElement> {
+  await acquireRenderSlot()
+  try {
+    const { page, totalRotation } = await getPageWithTotalRotation(source, pageIndex, deltaRotation)
+    const baseViewport = page.getViewport({ scale: 1, rotation: totalRotation })
+    const scale = targetWidth / baseViewport.width
+    const viewport = page.getViewport({ scale, rotation: totalRotation })
+    const canvas = document.createElement('canvas')
+    canvas.width = Math.max(1, Math.round(viewport.width))
+    canvas.height = Math.max(1, Math.round(viewport.height))
+    const ctx = canvas.getContext('2d', { willReadFrequently: true })
+    if (!ctx) throw new Error('Canvas 2D context unavailable')
+    ctx.fillStyle = '#ffffff'
+    ctx.fillRect(0, 0, canvas.width, canvas.height)
+    await page.render({ canvasContext: ctx, viewport }).promise
+    return canvas
+  } finally {
+    releaseRenderSlot()
+  }
+}
+
+/** Media-box grootte (punten) van een bronpagina, inclusief de extra rotatie. */
+export async function getPagePointSize(
+  source: SourceFile,
+  pageIndex: number,
+  deltaRotation: number
+): Promise<{ width: number; height: number }> {
+  const { page, totalRotation } = await getPageWithTotalRotation(source, pageIndex, deltaRotation)
+  const vp = page.getViewport({ scale: 1, rotation: totalRotation })
+  return { width: vp.width, height: vp.height }
+}
+
+/**
+ * Bouwt een PDF van één pagina uit een (opgeschoonde) afbeelding, op de
+ * opgegeven puntgrootte, en laadt hem als nieuwe bron. Wordt gebruikt om een
+ * gescande pagina te vervangen door de opgeschoonde versie.
+ */
+export async function createImagePageSource(
+  jpegDataUrl: string,
+  pointSize: { width: number; height: number },
+  name: string,
+  id: string
+): Promise<SourceFile> {
+  const { bytes } = dataUrlToBytes(jpegDataUrl)
+  const doc = await PDFDocument.create()
+  const img = await doc.embedJpg(bytes)
+  const page = doc.addPage([pointSize.width, pointSize.height])
+  page.drawImage(img, { x: 0, y: 0, width: pointSize.width, height: pointSize.height })
+  const out = await doc.save()
+  return loadSourceFile(name, out, id)
+}
+
 /** Shared text-annotation metrics so the on-screen overlay and the exported PDF line up. */
 export const TEXT_LINE_HEIGHT = 1.2
 /** Baseline offset above the bottom of each line box, as a fraction of the font size. */

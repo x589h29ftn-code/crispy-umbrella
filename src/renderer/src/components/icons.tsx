@@ -477,3 +477,12 @@ export function IconMoonStars({ size = 16, className }: IconProps): JSX.Element 
     </svg>
   )
 }
+
+export function IconSparkles({ size = 16, className }: IconProps): JSX.Element {
+  return (
+    <svg width={size} height={size} viewBox="0 0 24 24" className={className} {...base}>
+      <path d="M12 3l1.8 4.6L18.5 9.5l-4.7 1.9L12 16l-1.8-4.6L5.5 9.5l4.7-1.9z" />
+      <path d="M18 15l.8 2 2 .8-2 .8-.8 2-.8-2-2-.8 2-.8z" />
+    </svg>
+  )
+}

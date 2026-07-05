@@ -326,6 +326,16 @@ app.whenReady().then(() => {
     return { saved: true, path: result.filePath }
   })
 
+  ipcMain.handle('dialog:saveFile', async (_evt, defaultName: string, data: Uint8Array, extension: string) => {
+    const result = await dialog.showSaveDialog({
+      defaultPath: defaultName,
+      filters: [{ name: extension.toUpperCase(), extensions: [extension] }]
+    })
+    if (result.canceled || !result.filePath) return { saved: false }
+    await writeFile(result.filePath, Buffer.from(data))
+    return { saved: true, path: result.filePath }
+  })
+
   createWindow()
 
   app.on('activate', function () {

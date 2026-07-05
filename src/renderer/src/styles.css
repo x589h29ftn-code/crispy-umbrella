@@ -3509,3 +3509,59 @@ button.group-row__date:hover {
 .compare-mark--removed { background: rgba(220, 38, 38, 0.32); outline: 1px solid rgba(220, 38, 38, 0.6); }
 .compare-mark--changed { background: rgba(217, 119, 6, 0.32); outline: 1px solid rgba(217, 119, 6, 0.6); }
 .compare-mark--added { background: rgba(22, 163, 74, 0.32); outline: 1px solid rgba(22, 163, 74, 0.6); }
+
+/* ---- Slimme documenten (taak 40) ---- */
+.smart-card { max-width: 560px; position: relative; }
+.smart-card__close { position: absolute; top: 12px; right: 12px; }
+.smart-card__tabs {
+  display: flex;
+  gap: 4px;
+  border-bottom: 1px solid var(--border);
+  margin: 8px 0 12px;
+}
+.smart-card__tab {
+  background: transparent;
+  border: none;
+  border-bottom: 2px solid transparent;
+  color: var(--text-dim);
+  font: inherit;
+  font-size: 12.5px;
+  font-weight: 600;
+  padding: 6px 10px;
+  cursor: pointer;
+}
+.smart-card__tab--active { color: var(--text); border-bottom-color: var(--accent); }
+.smart-card__intro { font-size: 12.5px; color: var(--text-dim); }
+.smart-card__list { max-height: 320px; overflow-y: auto; margin: 8px 0; }
+.smart-rename {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 4px 0;
+}
+.smart-rename__type {
+  font-size: 10px;
+  font-weight: 700;
+  text-transform: uppercase;
+  color: var(--text-dim);
+  min-width: 72px;
+}
+.smart-rename__input {
+  flex: 1;
+  background: var(--panel-2);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  color: var(--text);
+  font: inherit;
+  font-size: 12.5px;
+  padding: 5px 8px;
+}
+.pill-btn--sm { padding: 4px 10px; font-size: 12px; }
+.smart-blank {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 12.5px;
+  padding: 4px 0;
+  color: var(--text);
+}

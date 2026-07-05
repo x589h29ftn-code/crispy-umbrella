@@ -79,7 +79,7 @@ npm run dev     # start de app met live-reload
 npm run build:win
 ```
 
-Dit levert in `dist/` zowel een NSIS-installer (`PDF Studio-1.2.0-setup.exe`) als een portable `.exe` op. Bouw op Windows zelf, of gebruik macOS/Linux met [`electron-builder`](https://www.electron.build/multi-platform-build) (Wine vereist voor het NSIS-installer target).
+Dit levert in `dist/` zowel een NSIS-installer (`PDF Studio-1.3.0-setup.exe`) als een portable `.exe` op. Bouw op Windows zelf, of gebruik macOS/Linux met [`electron-builder`](https://www.electron.build/multi-platform-build) (Wine vereist voor het NSIS-installer target).
 
 ### Automatische build via GitHub Actions
 

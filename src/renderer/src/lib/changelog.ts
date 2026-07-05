@@ -4,6 +4,16 @@
  */
 export const APP_CHANGELOG: { version: string; items: string[] }[] = [
   {
+    version: '1.3.0',
+    items: [
+      'Slimme documenten: automatisch hernoemen op inhoud (type, datum, afzender)',
+      "Lege pagina's automatisch vinden en verwijderen",
+      'Scans opschonen: rechtzetten (deskew) en achtergrond witter / tekst zwarter',
+      'Gegevens uit facturen naar CSV (type, datum, bedrag, IBAN, afzender)',
+      'Gemarkeerde tekst exporteren als overzichts-PDF'
+    ]
+  },
+  {
     version: '1.2.0',
     items: [
       'Privacy-scan (AVG): vindt BSN, IBAN, e-mail en telefoon en lakt ze met één klik écht zwart',
