@@ -24,6 +24,16 @@ jobs:
         # --publish never: electron-builder auto-publishes when it detects CI,
         # which fails without a GH_TOKEN; the upload-artifact step below is our
         # distribution channel instead.
+        #
+        # Code signing: electron-builder ondertekent automatisch zodra de secrets
+        # WINDOWS_CSC_LINK (base64 van het .pfx-certificaat) en
+        # WINDOWS_CSC_KEY_PASSWORD in de repo staan. Zonder die secrets zijn deze
+        # variabelen leeg en wordt de build gewoon ongetekend gemaakt (zoals nu).
+        # Zie CODE-SIGNING.md voor het toevoegen van een certificaat of Azure
+        # Trusted Signing. Dit haalt de Windows SmartScreen-waarschuwing weg.
+        env:
+          CSC_LINK: ${{ secrets.WINDOWS_CSC_LINK }}
+          CSC_KEY_PASSWORD: ${{ secrets.WINDOWS_CSC_KEY_PASSWORD }}
         run: npm run build:win -- --publish never
 
       - name: Upload installer artifact

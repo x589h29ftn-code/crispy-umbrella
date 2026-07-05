@@ -113,6 +113,10 @@ npm run build:mac
 npm run build:linux
 ```
 
+### Windows-waarschuwing (SmartScreen) wegnemen
+
+Een gedownloade, niet-ondertekende app geeft de melding _"Windows heeft uw pc beschermd"_. Dat is geen bug maar het ontbreken van een **code-signing certificaat**. De build ondertekent automatisch zodra je de secrets `WINDOWS_CSC_LINK` (base64 van een `.pfx`) en `WINDOWS_CSC_KEY_PASSWORD` toevoegt. Zie **[CODE-SIGNING.md](CODE-SIGNING.md)** voor de opties (Azure Trusted Signing, EV- of OV-certificaat) en een tussenoplossing zonder certificaat.
+
 > **Let op:** dit is gebouwd en getypecheckt in een sandbox zonder toegang tot GitHub-releases, waardoor het Electron-binary hier niet gedownload kon worden om de app zelf te draaien. De volledige broncode is wél getypecheckt (`npm run typecheck`) en de renderer-bundel is succesvol gebouwd en in een browser functioneel getest: drag & drop, samenvoegen/splitsen/roteren/verwijderen/dupliceren van pagina's (ook multi-select), undo/redo, zoomen, volledig-scherm navigatie, lege pagina invoegen, watermerk/paginanummers, documentdatum, handtekening plaatsen (ook op gedraaide pagina's, end-to-end via export en heropenen geverifieerd), beveiligde PDF's importeren, en PDF/zip-export met en zonder wachtwoord (onafhankelijk geverifieerd met pypdf). Alle dependencies zijn puur JavaScript — geen native modules — dus `npm install` en `npm run dev`/`build:win` werken zonder gedoe op een gewone ontwikkelmachine of in CI.
 
 ## Projectstructuur
