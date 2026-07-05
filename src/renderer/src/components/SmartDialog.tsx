@@ -4,13 +4,14 @@ import { useStudioStore } from '../store'
 import { extractFields, getGroupText, suggestName, DOC_TYPE_LABELS } from '../lib/docAnalysis'
 import { cleanupScannedPage, isBlankPage } from '../lib/scanTools'
 import { exportDataToCsv } from '../lib/dataExport'
+import { exportTablesToXlsx } from '../lib/tableExport'
 import { exportGroupText } from '../lib/textExport'
 import { getGroupBookmarks } from '../lib/bookmarks'
 import { getTextLineBoxes } from '../lib/textLines'
 import { IconClose, IconFile, IconTrash } from './icons'
 import type { DocGroup } from '../types'
 
-type Tab = 'rename' | 'blank' | 'cleanup' | 'data' | 'split' | 'sort' | 'text'
+type Tab = 'rename' | 'blank' | 'cleanup' | 'data' | 'split' | 'sort' | 'text' | 'table'
 
 /**
  * "Slimme documenten": automatisch hernoemen op inhoud, lege pagina's vinden en
@@ -225,6 +226,7 @@ export default function SmartDialog(): JSX.Element | null {
     ['blank', "Lege pagina's"],
     ['cleanup', 'Opschonen'],
     ['data', 'Gegevens → CSV'],
+    ['table', 'Tabel → Excel'],
     ['text', 'Tekst / Word']
   ]
 
@@ -418,6 +420,38 @@ export default function SmartDialog(): JSX.Element | null {
                 onClick={() => activeGroup && void sortByDate(activeGroup)}
               >
                 {busy ? 'Bezig…' : 'Sorteren op datum'}
+              </button>
+            </div>
+          </div>
+        )}
+
+        {tab === 'table' && (
+          <div className="smart-card__body">
+            <p className="smart-card__intro">
+              Herkent de tabellen in "{activeGroup?.name ?? '—'}" (rijen en kolommen op basis van de tekstposities)
+              en zet ze in een Excel-bestand — één werkblad per pagina. Ideaal voor cijferoverzichten en
+              jaarrekeningen. Werkt op de tekstlaag; voor scans eerst OCR draaien.
+            </p>
+            <div className="modal-card__actions">
+              <button
+                type="button"
+                className="pill-btn pill-btn--primary"
+                disabled={busy || !activeGroup}
+                onClick={() => {
+                  setBusy(true)
+                  void exportTablesToXlsx()
+                    .then((r) => {
+                      if (r.ok) {
+                        addToast('success', `Tabel geëxporteerd naar Excel (${r.sheets} werkblad${r.sheets === 1 ? '' : 'en'})`)
+                        setOpen(false)
+                      } else {
+                        addToast('error', r.reason ?? 'Exporteren naar Excel is mislukt')
+                      }
+                    })
+                    .finally(() => setBusy(false))
+                }}
+              >
+                {busy ? 'Bezig…' : 'Exporteren naar Excel (.xlsx)'}
               </button>
             </div>
           </div>

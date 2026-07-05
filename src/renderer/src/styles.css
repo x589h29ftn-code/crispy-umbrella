@@ -3855,6 +3855,28 @@ button.group-row__date:hover {
 .compare-mark--removed { background: rgba(220, 38, 38, 0.32); outline: 1px solid rgba(220, 38, 38, 0.6); }
 .compare-mark--changed { background: rgba(217, 119, 6, 0.32); outline: 1px solid rgba(217, 119, 6, 0.6); }
 .compare-mark--added { background: rgba(22, 163, 74, 0.32); outline: 1px solid rgba(22, 163, 74, 0.6); }
+.compare-mark--number { background: rgba(37, 99, 235, 0.28); outline: 1px solid rgba(37, 99, 235, 0.7); }
+.compare-legend--number::before { background: rgba(37, 99, 235, 0.55); }
+
+.compare-report__numbers {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  margin: 2px 0 8px;
+}
+.compare-report__number {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 12px;
+  padding: 2px 6px;
+  border-radius: var(--radius-sm);
+  background: rgba(37, 99, 235, 0.08);
+}
+.compare-report__number-label { flex: 1 1 auto; color: var(--text); }
+.compare-report__number-from { color: var(--text-dim); text-decoration: line-through; }
+.compare-report__number-to { color: #2563eb; font-weight: 700; }
+.compare-report__number-arrow { color: var(--text-dim); }
 
 /* ---- Slimme documenten (taak 40) ---- */
 .smart-card {

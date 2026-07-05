@@ -16,6 +16,8 @@ export default function PreferencesDialog(): JSX.Element | null {
   const setReaderNightMode = useStudioStore((s) => s.setReaderNightMode)
   const flattenForms = useStudioStore((s) => s.flattenForms)
   const setFlattenForms = useStudioStore((s) => s.setFlattenForms)
+  const cleanMetadata = useStudioStore((s) => s.cleanMetadata)
+  const setCleanMetadata = useStudioStore((s) => s.setCleanMetadata)
 
   useEffect(() => {
     if (!open) return
@@ -100,6 +102,14 @@ export default function PreferencesDialog(): JSX.Element | null {
           <span>
             <span className="prefs-row__title">Formulieren platslaan bij export</span>
             <span className="prefs-row__hint">Ingevulde velden worden vaste inhoud.</span>
+          </span>
+        </label>
+
+        <label className="prefs-check">
+          <input type="checkbox" checked={cleanMetadata} onChange={(e) => setCleanMetadata(e.target.checked)} />
+          <span>
+            <span className="prefs-row__title">Metadata opschonen bij export</span>
+            <span className="prefs-row__hint">Verwijdert auteur, maker, producer en verborgen XMP-data (AVG).</span>
           </span>
         </label>
       </div>

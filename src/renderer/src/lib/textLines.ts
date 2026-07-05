@@ -87,6 +87,40 @@ export async function getTextLineBoxes(
   })
 }
 
+export interface TextItem {
+  str: string
+  /** Content-space (PDF-punten): x = links, y = baseline, breedte in punten. */
+  x: number
+  y: number
+  width: number
+  height: number
+}
+
+/**
+ * Losse tekstfragmenten met hun positie (content-space), voor tabelherkenning
+ * en het vergelijken van getallen op dezelfde plek. Ongegroepeerd, zodat
+ * kolommen en losse cijfers herkenbaar blijven.
+ */
+export async function getTextItems(source: SourceFile, pageIndex: number): Promise<TextItem[]> {
+  const doc = await getPdfJsDocument(source)
+  const page = await doc.getPage(pageIndex + 1)
+  const content = await page.getTextContent()
+  const items: TextItem[] = []
+  for (const item of content.items) {
+    if (!('str' in item) || !item.str.trim()) continue
+    const [a, b, , , e, f] = item.transform
+    const fontSize = Math.hypot(a, b) || item.height || 10
+    items.push({
+      str: item.str,
+      x: e,
+      y: f,
+      width: item.width || fontSize * item.str.length * 0.5,
+      height: fontSize
+    })
+  }
+  return items
+}
+
 /**
  * Intersections of a dragged band with the page's text lines, one rect per
  * line (visual units). Lets markeren/redigeren volg de tekst in plaats van

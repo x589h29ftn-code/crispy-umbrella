@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from 'react'
 import { useStudioStore } from '../store'
 import { getPageVisualSize, getPdfMetadata, renderThumbnail, type PdfMetadata } from '../lib/pdfRender'
-import { diffPages, exportDiffReport, type PageDiff } from '../lib/pdfDiff'
+import { diffPages, exportDiffReport, type PageDiff, type NumberChange } from '../lib/pdfDiff'
 import { IconChevronLeft, IconChevronRight, IconClose, IconFolderOpen } from './icons'
 import type { DocGroup, PageRef, SourceFile } from '../types'
 
@@ -10,11 +10,13 @@ const COL_WIDTH = 460
 function ComparePane({
   group,
   page,
-  diffLines
+  diffLines,
+  numberMarks = []
 }: {
   group: DocGroup | undefined
   page: PageRef | undefined
   diffLines: PageDiff['left']
+  numberMarks?: NumberChange[]
 }): JSX.Element {
   const sources = useStudioStore((s) => s.sources)
   const [thumb, setThumb] = useState<string | null>(null)
@@ -80,6 +82,19 @@ function ComparePane({
             title={d.text}
           />
         ))}
+        {numberMarks.map((n, i) => (
+          <div
+            key={`n${i}`}
+            className="compare-mark compare-mark--number"
+            style={{
+              left: n.box.x * scale,
+              top: n.box.y * scale,
+              width: n.box.width * scale,
+              height: n.box.height * scale
+            }}
+            title={`${n.label}: ${n.from} → ${n.to}`}
+          />
+        ))}
       </div>
     </div>
   )
@@ -94,8 +109,10 @@ export default function CompareView(): JSX.Element | null {
   const sources = useStudioStore((s) => s.sources)
 
   const [pageIndex, setPageIndex] = useState(0)
-  const [diff, setDiff] = useState<PageDiff>({ left: [], right: [], changeCount: 0 })
-  const [report, setReport] = useState<{ page: number; left: string[]; right: string[]; changed: number }[] | null>(null)
+  const [diff, setDiff] = useState<PageDiff>({ left: [], right: [], changeCount: 0, numbers: [] })
+  const [report, setReport] = useState<
+    { page: number; left: string[]; right: string[]; changed: number; numbers: NumberChange[] }[] | null
+  >(null)
   const [reportBusy, setReportBusy] = useState(false)
 
   const left = groups.find((g) => g.id === compare.leftGroupId)
@@ -113,7 +130,7 @@ export default function CompareView(): JSX.Element | null {
     if (!left || !right || reportBusy) return
     setReportBusy(true)
     try {
-      const rows: { page: number; left: string[]; right: string[]; changed: number }[] = []
+      const rows: { page: number; left: string[]; right: string[]; changed: number; numbers: NumberChange[] }[] = []
       for (let i = 0; i < maxPages; i += 1) {
         const lp = left.pages[i]
         const rp = right.pages[i]
@@ -122,13 +139,14 @@ export default function CompareView(): JSX.Element | null {
           lp,
           rp ? sources.get(rp.sourceId) : undefined,
           rp
-        ).catch(() => ({ left: [], right: [], changeCount: 0 }) as PageDiff)
-        if (d.changeCount > 0) {
+        ).catch(() => ({ left: [], right: [], changeCount: 0, numbers: [] }) as PageDiff)
+        if (d.changeCount > 0 || d.numbers.length > 0) {
           rows.push({
             page: i + 1,
             left: d.left.filter((x) => x.kind !== 'added').map((x) => x.text),
             right: d.right.filter((x) => x.kind !== 'removed').map((x) => x.text),
-            changed: d.changeCount
+            changed: d.changeCount,
+            numbers: d.numbers
           })
         }
       }
@@ -219,6 +237,7 @@ export default function CompareView(): JSX.Element | null {
           <span className="compare-legend compare-legend--removed">verwijderd</span>
           <span className="compare-legend compare-legend--changed">gewijzigd</span>
           <span className="compare-legend compare-legend--added">toegevoegd</span>
+          <span className="compare-legend compare-legend--number">cijfer gewijzigd</span>
         </div>
         <button
           type="button"
@@ -252,7 +271,7 @@ export default function CompareView(): JSX.Element | null {
       </div>
       <div className="compare-view__panes">
         <ComparePane group={left} page={leftPage} diffLines={diff.left} />
-        <ComparePane group={right} page={rightPage} diffLines={diff.right} />
+        <ComparePane group={right} page={rightPage} diffLines={diff.right} numberMarks={diff.numbers} />
       </div>
 
       {report && (
@@ -270,7 +289,22 @@ export default function CompareView(): JSX.Element | null {
               <div className="compare-report__list">
                 {report.map((r) => (
                   <div key={r.page} className="compare-report__page">
-                    <div className="compare-report__page-title">Pagina {r.page} — {r.changed} wijziging(en)</div>
+                    <div className="compare-report__page-title">
+                      Pagina {r.page} — {r.changed} wijziging(en)
+                      {r.numbers.length > 0 ? ` · ${r.numbers.length} cijferwijziging(en)` : ''}
+                    </div>
+                    {r.numbers.length > 0 && (
+                      <div className="compare-report__numbers">
+                        {r.numbers.map((n, k) => (
+                          <div key={k} className="compare-report__number">
+                            <span className="compare-report__number-label">{n.label || 'Getal'}</span>
+                            <span className="compare-report__number-from">{n.from}</span>
+                            <span className="compare-report__number-arrow">→</span>
+                            <span className="compare-report__number-to">{n.to}</span>
+                          </div>
+                        ))}
+                      </div>
+                    )}
                     <div className="compare-report__cols">
                       <div className="compare-report__col compare-report__col--left">
                         <div className="compare-report__col-head">{left?.name}</div>

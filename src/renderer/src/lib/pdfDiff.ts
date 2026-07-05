@@ -15,16 +15,76 @@ export interface DiffLine {
   text: string
 }
 
+/** Een regel waarvan het label gelijk bleef maar een getal veranderde (jaarrekeningen). */
+export interface NumberChange {
+  /** Regelvak op de rechterpagina (visuele eenheden). */
+  box: { x: number; y: number; width: number; height: number }
+  /** De tekst vóór/rond het getal (bv. "Eigen vermogen"). */
+  label: string
+  from: string
+  to: string
+}
+
 export interface PageDiff {
   /** Gewijzigde/verwijderde regels op de linkerpagina. */
   left: DiffLine[]
   /** Gewijzigde/toegevoegde regels op de rechterpagina. */
   right: DiffLine[]
   changeCount: number
+  /** Regels met hetzelfde label maar een gewijzigd bedrag/getal. */
+  numbers: NumberChange[]
 }
 
 function normalize(s: string): string {
   return s.replace(/\s+/g, ' ').trim().toLowerCase()
+}
+
+const NUMBER_RE = /-?\d[\d.  ]*(?:,\d+)?/g
+
+/** Getallen uit een regel als genormaliseerde waarde-strings (punt = decimaal). */
+function extractNumbers(str: string): string[] {
+  const out: string[] = []
+  const matches = str.match(NUMBER_RE)
+  if (!matches) return out
+  for (const raw of matches) {
+    const cleaned = raw.replace(/[.  ]/g, '').replace(',', '.')
+    if (/^-?\d+(?:\.\d+)?$/.test(cleaned) && cleaned.replace(/[-.]/g, '').length >= 1) out.push(cleaned)
+  }
+  return out
+}
+
+/** Het label van een regel: de tekst zonder de getallen, genormaliseerd. */
+function labelOf(str: string): string {
+  return normalize(str.replace(NUMBER_RE, ' ').replace(/[€%.,;:]/g, ' '))
+}
+
+/**
+ * Regels met hetzelfde label waarvan een getal wijzigde. Matcht op labeltekst
+ * (bv. "omzet") zodat verschoven regels toch worden herkend — ideaal voor het
+ * vergelijken van cijfers in jaarrekeningen.
+ */
+function numberChanges(left: TextLineBox[], right: TextLineBox[]): NumberChange[] {
+  const leftByLabel = new Map<string, TextLineBox>()
+  for (const l of left) {
+    const label = labelOf(l.str)
+    if (label.length >= 3 && extractNumbers(l.str).length && !leftByLabel.has(label)) leftByLabel.set(label, l)
+  }
+  const changes: NumberChange[] = []
+  const usedLabels = new Set<string>()
+  for (const r of right) {
+    const label = labelOf(r.str)
+    if (label.length < 3 || usedLabels.has(label)) continue
+    const l = leftByLabel.get(label)
+    if (!l) continue
+    const from = extractNumbers(l.str)
+    const to = extractNumbers(r.str)
+    if (!to.length) continue
+    if (from.join('|') !== to.join('|')) {
+      usedLabels.add(label)
+      changes.push({ box: r.visual, label: r.str.replace(NUMBER_RE, '').replace(/\s+/g, ' ').trim() || label, from: from.join(' '), to: to.join(' ') })
+    }
+  }
+  return changes
 }
 
 /**
@@ -79,7 +139,7 @@ function diffLines(left: TextLineBox[], right: TextLineBox[]): PageDiff {
     }
   }
   const changeCount = new Set([...leftOut, ...rightOut].map((d) => Math.round(d.box.y))).size
-  return { left: leftOut, right: rightOut, changeCount }
+  return { left: leftOut, right: rightOut, changeCount, numbers: numberChanges(left, right) }
 }
 
 /** Berekent de tekstverschillen tussen twee pagina's (of alleen één kant als de ander ontbreekt). */
@@ -97,8 +157,8 @@ export async function diffPages(
     rightSource && rightPage
       ? await getTextLineBoxes(rightSource, rightPage.sourcePageIndex, rightPage.rotation).catch(() => [])
       : []
-  if (!leftPage) return { left: [], right: rightLines.map((l) => ({ kind: 'added' as const, box: l.visual, text: l.str })), changeCount: rightLines.length }
-  if (!rightPage) return { left: leftLines.map((l) => ({ kind: 'removed' as const, box: l.visual, text: l.str })), right: [], changeCount: leftLines.length }
+  if (!leftPage) return { left: [], right: rightLines.map((l) => ({ kind: 'added' as const, box: l.visual, text: l.str })), changeCount: rightLines.length, numbers: [] }
+  if (!rightPage) return { left: leftLines.map((l) => ({ kind: 'removed' as const, box: l.visual, text: l.str })), right: [], changeCount: leftLines.length, numbers: [] }
   return diffLines(leftLines, rightLines)
 }
 
@@ -160,6 +220,9 @@ export async function exportDiffReport(left: DocGroup, right: DocGroup, sources:
       }
       for (const d of diff.left) {
         if (d.kind === 'changed') write(`~ ${d.text}`, regular, 10, rgb(0.72, 0.45, 0.05), 6)
+      }
+      for (const nc of diff.numbers) {
+        write(`€ ${nc.label}: ${nc.from} → ${nc.to}`, bold, 10, rgb(0.13, 0.3, 0.6), 6)
       }
       y -= 6
     }

@@ -77,6 +77,7 @@ const AUTHOR_STORAGE_KEY = 'pdf-studio-author'
 const READER_VIEW_STORAGE_KEY = 'pdf-studio-reader-view'
 const NIGHT_MODE_STORAGE_KEY = 'pdf-studio-night-mode'
 const FLATTEN_STORAGE_KEY = 'pdf-studio-flatten-forms'
+const CLEAN_META_STORAGE_KEY = 'pdf-studio-clean-metadata'
 
 function getInitialReaderView(): 'scroll' | 'spread' | 'single' {
   const v = window.localStorage.getItem(READER_VIEW_STORAGE_KEY)
@@ -126,9 +127,12 @@ interface StudioState {
   formValues: Record<string, Record<string, string | boolean>>
   /** Formulieren platslaan bij export (velden worden vaste inhoud). */
   flattenForms: boolean
+  /** Metadata opschonen bij export (auteur/maker/producer/XMP weg). */
+  cleanMetadata: boolean
 
   setFormValue: (sourceId: string, fieldName: string, value: string | boolean) => void
   setFlattenForms: (flatten: boolean) => void
+  setCleanMetadata: (clean: boolean) => void
   setAuthorName: (name: string) => void
   /** Herstelt een vorige sessie (alleen wanneer er nog niets geopend is). */
   restoreSession: (payload: {
@@ -339,6 +343,7 @@ export const useStudioStore = create<StudioState>((set, get) => ({
   authorName: window.localStorage.getItem(AUTHOR_STORAGE_KEY) ?? '',
   formValues: {},
   flattenForms: window.localStorage.getItem(FLATTEN_STORAGE_KEY) === '1',
+  cleanMetadata: window.localStorage.getItem(CLEAN_META_STORAGE_KEY) === '1',
 
   setFormValue: (sourceId, fieldName, value) => {
     set((state) => ({
@@ -352,6 +357,10 @@ export const useStudioStore = create<StudioState>((set, get) => ({
   setFlattenForms: (flatten) => {
     window.localStorage.setItem(FLATTEN_STORAGE_KEY, flatten ? '1' : '0')
     set({ flattenForms: flatten })
+  },
+  setCleanMetadata: (clean) => {
+    window.localStorage.setItem(CLEAN_META_STORAGE_KEY, clean ? '1' : '0')
+    set({ cleanMetadata: clean })
   },
 
   restoreSession: (payload) => {

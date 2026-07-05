@@ -403,6 +403,8 @@ export interface ExportOptions {
   formValues?: Record<string, Record<string, string | boolean>>
   /** Velden platslaan: waarden worden vaste pagina-inhoud. */
   flattenForms?: boolean
+  /** Metadata opschonen: auteur/maker/producer/trefwoorden/XMP weglaten (AVG). */
+  cleanMetadata?: boolean
 }
 
 async function buildPdf(group: DocGroup, sources: Map<string, SourceFile>, options: ExportOptions = {}): Promise<Uint8Array> {
@@ -714,6 +716,20 @@ async function buildPdf(group: DocGroup, sources: Map<string, SourceFile>, optio
   await writeExportOutline(out, sources, order, placedAt)
 
   out.setTitle(group.name)
+  if (options.cleanMetadata) {
+    // Persoonsgegevens/software-sporen weghalen voor een schone, AVG-vriendelijke export.
+    out.setAuthor('')
+    out.setSubject('')
+    out.setKeywords([])
+    out.setProducer('')
+    out.setCreator('')
+    try {
+      // Verwijder ook de XMP-metadatastroom als die er is.
+      out.catalog.delete(PDFName.of('Metadata'))
+    } catch {
+      // Geen XMP aanwezig — niets te doen.
+    }
+  }
   if (group.documentDate) {
     // Parse the ISO date at local noon so timezone offsets can't shift it a day.
     const [year, month, day] = group.documentDate.split('-').map(Number)

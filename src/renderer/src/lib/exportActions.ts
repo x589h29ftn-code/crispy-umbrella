@@ -33,9 +33,13 @@ async function maybeEncrypt(bytes: Uint8Array): Promise<Uint8Array> {
   return encryptPdfBytes(bytes, password, restricted ? perms : undefined)
 }
 
-function exportOptions(): { formValues: Record<string, Record<string, string | boolean>>; flattenForms: boolean } {
+function exportOptions(): {
+  formValues: Record<string, Record<string, string | boolean>>
+  flattenForms: boolean
+  cleanMetadata: boolean
+} {
   const state = useStudioStore.getState()
-  return { formValues: state.formValues, flattenForms: state.flattenForms }
+  return { formValues: state.formValues, flattenForms: state.flattenForms, cleanMetadata: state.cleanMetadata }
 }
 
 /** Exports the active document as a single PDF via a save dialog. */
