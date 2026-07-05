@@ -91,10 +91,23 @@ interface Detector {
 const STREET_SUFFIX = 'straat|laan|weg|plein|kade|dijk|gracht|hof|pad|dreef|singel|steeg|baan|ring|park|hout|molen'
 const MONTHS = 'januari|februari|maart|april|mei|juni|juli|augustus|september|oktober|november|december'
 
+// Rechtsvormen, ook met losse punten/spaties (B.V., B. V., N.V., V.O.F., C.V.).
+const LEGAL_FORM = '(?:B\\.?\\s?V\\.?|N\\.?\\s?V\\.?|V\\.?\\s?O\\.?\\s?F\\.?|C\\.?\\s?V\\.?)'
+
 // Woordgrenzen voorkomen dat we midden in langere getallen/tekst matchen.
 const DETECTORS: Detector[] = [
-  // BSN: 9 cijfers, ook geschreven met spaties/punten (123 456 789 / 123.456.789).
-  { kind: 'bsn', regex: /\b\d{3}[ .]?\d{3}[ .]?\d{3}\b/g, valid: (m) => isValidBsn(m.replace(/\D/g, '')) },
+  // BSN: standaard 9 aaneengesloten cijfers (zo staat een BSN meestal) die aan
+  // de 11-proef voldoen. Zo kan een bedrag in een jaarrekening (met duizendtal-
+  // scheiding zoals 2.974.751 of "2 974 751") nooit per ongeluk als BSN gelden.
+  { kind: 'bsn', regex: /\b\d{9}\b/g, valid: (m) => isValidBsn(m) },
+  // Gegroepeerd (123 456 789 / 123.456.789) alleen wanneer het woord BSN of
+  // sofinummer op dezelfde regel staat — dat voorkomt vals-positieven op cijfers.
+  {
+    kind: 'bsn',
+    regex: /\b\d{3}[ .]\d{3}[ .]\d{3}\b/g,
+    valid: (m) => isValidBsn(m.replace(/\D/g, '')),
+    context: (line) => /\b(?:bsn|burgerservice(?:nummer)?|sofi(?:[- ]?nummer)?)\b/i.test(line)
+  },
   // Landcode + 2 controlecijfers + 10–30 alfanumerieke tekens (spaties toegestaan).
   { kind: 'iban', regex: /\b[A-Z]{2}\d{2}(?:[ ]?[A-Z0-9]){10,30}\b/g, valid: isValidIban },
   { kind: 'email', regex: /\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}\b/g },
@@ -108,10 +121,15 @@ const DETECTORS: Detector[] = [
   { kind: 'date', regex: new RegExp(`\\b\\d{1,2}\\s+(?:${MONTHS})\\s+\\d{4}\\b`, 'gi') },
   // Adres: straatnaam met bekend achtervoegsel + huisnummer.
   { kind: 'address', regex: new RegExp(`\\b[A-ZÀ-Ü][a-zà-ÿ]+(?:${STREET_SUFFIX})\\s+\\d+[a-zA-Z]?\\b`, 'g') },
-  // Bedrijfsnaam: eindigt op een rechtsvorm (B.V., N.V., V.O.F., C.V.).
+  // Bedrijfsnaam: eindigt op een rechtsvorm. Tussenwoorden mogen ook kleine
+  // verbindingswoorden zijn (van/de/der/den/het/'t/en/&), zodat namen als
+  // "Van der Meer Bouw B.V." of "Timmerfabriek De Houtmolen Makkum B.V." meetellen.
   {
     kind: 'company',
-    regex: /\b[A-Z][\wÀ-ÿ&.-]*(?:\s+[A-Z0-9][\wÀ-ÿ&.-]*){0,4}\s+(?:B\.?V\.?|N\.?V\.?|V\.?O\.?F\.?|C\.?V\.?)(?=\b|\s|$)/g
+    regex: new RegExp(
+      `\\b[A-Z][\\wÀ-ÿ&.-]*(?:\\s+(?:van|de[nr]?|het|'t|en|&|[A-Z0-9][\\wÀ-ÿ&.-]*)){0,6}\\s+${LEGAL_FORM}(?=\\b|\\s|$)`,
+      'g'
+    )
   },
   // Naam met aanhef: dhr./mevr./de heer/mevrouw + één tot drie hoofdletterwoorden.
   {
