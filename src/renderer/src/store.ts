@@ -1,8 +1,7 @@
 import { create } from 'zustand'
 import { nanoid } from 'nanoid'
-import { createBlankPageSource, decryptPdfBytes, forgetSource, isPasswordError, loadSourceFile } from './lib/pdfEngine'
+import { forgetSource, isPasswordError, loadSourceFile } from './lib/pdfRender'
 import type { ExportPermissions } from './lib/pdfEngine'
-import { extractComments } from './lib/commentImport'
 import type { Annotation, DocGroup, PageComment, PageRef, SignatureAsset, SignaturePlacement, SourceFile, Watermark } from './types'
 
 export interface LightboxState {
@@ -271,6 +270,7 @@ async function loadFileInteractive(
         return null
       }
       try {
+        const { decryptPdfBytes } = await import('./lib/pdfEngine')
         data = await decryptPdfBytes(file.data, password)
       } catch {
         // Wrong password — loop; the next dialog shows the retry state via `attempt`.
@@ -500,6 +500,7 @@ export const useStudioStore = create<StudioState>((set, get) => ({
         const source = await loadFileInteractive(file, get().addToast)
         if (!source) continue
         sources.set(source.id, source)
+        const { extractComments } = await import('./lib/commentImport')
         const importedComments = await extractComments(source)
         const baseName = file.name.replace(/\.pdf$/i, '')
         newGroups.push({
@@ -551,6 +552,7 @@ export const useStudioStore = create<StudioState>((set, get) => ({
         const source = await loadFileInteractive(file, get().addToast)
         if (!source) continue
         sources.set(source.id, source)
+        const { extractComments } = await import('./lib/commentImport')
         const importedComments = await extractComments(source)
         for (let i = 0; i < source.pageCount; i += 1) {
           newPages.push({
@@ -579,7 +581,10 @@ export const useStudioStore = create<StudioState>((set, get) => ({
     // Every blank page is byte-identical, so all of them share one lazily-created
     // SourceFile instead of re-parsing a fresh throwaway PDF through pdf.js each time.
     let source = get().sources.get(BLANK_SOURCE_ID)
-    if (!source) source = await createBlankPageSource(BLANK_SOURCE_ID)
+    if (!source) {
+      const { createBlankPageSource } = await import('./lib/pdfEngine')
+      source = await createBlankPageSource(BLANK_SOURCE_ID)
+    }
     const page: PageRef = {
       id: nanoid(),
       sourceId: BLANK_SOURCE_ID,

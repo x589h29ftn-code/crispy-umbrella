@@ -7,7 +7,7 @@ import {
   textAnnotationBlockHeight,
   TEXT_LINE_HEIGHT,
   type SignatureVisualBox
-} from '../lib/pdfEngine'
+} from '../lib/pdfRender'
 import { ANNOTATION_FONT_CSS } from '../lib/annotationStyle'
 import { ShapeGeometry } from '../lib/shapes'
 import { beginPagesDrag, cancelDrag, consumeDragClick, finishDrag, updateDrag } from '../lib/dragController'

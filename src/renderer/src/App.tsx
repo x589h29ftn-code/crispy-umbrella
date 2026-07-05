@@ -1,23 +1,26 @@
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { Suspense, lazy, useCallback, useEffect, useRef, useState } from 'react'
 import Toolbar from './components/Toolbar'
 import Canvas from './components/Canvas'
-import Lightbox from './components/Lightbox'
 import Toasts from './components/Toasts'
 import PasswordDialog from './components/PasswordDialog'
 import SelectionBar from './components/SelectionBar'
-import SearchPanel from './components/SearchPanel'
-import CommentsPanel from './components/CommentsPanel'
-import BookmarksPanel from './components/BookmarksPanel'
 import WhatsNewDialog from './components/WhatsNewDialog'
 import UpdateBanner from './components/UpdateBanner'
-import RemarkableDialog from './components/RemarkableDialog'
-import DrawSignatureDialog from './components/DrawSignatureDialog'
-import PrivacyScanDialog from './components/PrivacyScanDialog'
-import CompareView from './components/CompareView'
-import SmartDialog from './components/SmartDialog'
 import TabStrip from './components/TabStrip'
-import EditorView from './components/editor/EditorView'
 import { exportAllZip } from './lib/exportActions'
+
+// Zware overlays worden pas geladen wanneer ze echt geopend worden. Zo blijft
+// het opstartscript klein en verschijnt de app sneller in beeld.
+const EditorView = lazy(() => import('./components/editor/EditorView'))
+const Lightbox = lazy(() => import('./components/Lightbox'))
+const SearchPanel = lazy(() => import('./components/SearchPanel'))
+const CommentsPanel = lazy(() => import('./components/CommentsPanel'))
+const BookmarksPanel = lazy(() => import('./components/BookmarksPanel'))
+const RemarkableDialog = lazy(() => import('./components/RemarkableDialog'))
+const DrawSignatureDialog = lazy(() => import('./components/DrawSignatureDialog'))
+const PrivacyScanDialog = lazy(() => import('./components/PrivacyScanDialog'))
+const CompareView = lazy(() => import('./components/CompareView'))
+const SmartDialog = lazy(() => import('./components/SmartDialog'))
 import { printActiveGroup } from './lib/printActions'
 import { cancelDrag, isDragActive } from './lib/dragController'
 import { useStudioStore } from './store'
@@ -34,6 +37,17 @@ export default function App(): JSX.Element {
   const activeEditorTab = useStudioStore((s) => s.activeEditorTab)
   const presentationMode = useStudioStore((s) => s.presentationMode)
   const readerNightMode = useStudioStore((s) => s.readerNightMode)
+
+  // Open-vlaggen bepalen welke zware overlay-brokken geladen worden.
+  const lightboxOpen = useStudioStore((s) => s.lightbox.open)
+  const searchOpen = useStudioStore((s) => s.searchOpen)
+  const commentsPanelOpen = useStudioStore((s) => s.commentsPanelOpen)
+  const bookmarksPanelOpen = useStudioStore((s) => s.bookmarksPanelOpen)
+  const remarkableDialogOpen = useStudioStore((s) => s.remarkableDialogOpen)
+  const drawSignatureOpen = useStudioStore((s) => s.drawSignatureOpen)
+  const privacyScanOpen = useStudioStore((s) => s.privacyScanOpen)
+  const compareOpen = useStudioStore((s) => s.compare.open)
+  const smartDialogOpen = useStudioStore((s) => s.smartDialogOpen)
 
   useEffect(() => window.api.onFilesOpened((files) => void useStudioStore.getState().importFiles(files)), [])
 
@@ -109,24 +123,30 @@ export default function App(): JSX.Element {
       <main className="app-main">
         <TabStrip />
         {activeEditorTab ? (
-          <EditorView groupId={activeEditorTab} />
+          <Suspense fallback={null}>
+            <EditorView groupId={activeEditorTab} />
+          </Suspense>
         ) : (
           <Canvas onScaleChange={onScaleChange} registerZoomControls={registerZoomControls} />
         )}
-        <SearchPanel />
-        <CommentsPanel />
-        <BookmarksPanel />
+        <Suspense fallback={null}>
+          {searchOpen && <SearchPanel />}
+          {commentsPanelOpen && <CommentsPanel />}
+          {bookmarksPanelOpen && <BookmarksPanel />}
+        </Suspense>
       </main>
-      <Lightbox />
+      <Suspense fallback={null}>
+        {lightboxOpen && <Lightbox />}
+        {remarkableDialogOpen && <RemarkableDialog />}
+        {drawSignatureOpen && <DrawSignatureDialog />}
+        {privacyScanOpen && <PrivacyScanDialog />}
+        {compareOpen && <CompareView />}
+        {smartDialogOpen && <SmartDialog />}
+      </Suspense>
       <SelectionBar />
       <PasswordDialog />
       <WhatsNewDialog />
       <UpdateBanner />
-      <RemarkableDialog />
-      <DrawSignatureDialog />
-      <PrivacyScanDialog />
-      <CompareView />
-      <SmartDialog />
       <Toasts />
     </div>
   )

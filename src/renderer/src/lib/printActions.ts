@@ -1,5 +1,4 @@
 import * as pdfjsLib from 'pdfjs-dist'
-import { exportGroupToPdf } from './pdfEngine'
 import { useStudioStore } from '../store'
 
 const PRINT_DPI = 150
@@ -21,6 +20,7 @@ export async function printActiveGroup(): Promise<void> {
   state.addToast('info', `"${group.name}" wordt voorbereid om af te drukken…`)
   try {
     // Print with flattened form values so the filled fields are visible in the raster.
+    const { exportGroupToPdf } = await import('./pdfEngine')
     const bytes = await exportGroupToPdf(group, state.sources, {
       formValues: state.formValues,
       flattenForms: true

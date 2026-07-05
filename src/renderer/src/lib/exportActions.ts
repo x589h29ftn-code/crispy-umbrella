@@ -1,11 +1,26 @@
 import { zipSync } from 'fflate'
 import { nanoid } from 'nanoid'
 import { useStudioStore } from '../store'
-import { encryptPdfBytes, exportGroupToPdf } from './pdfEngine'
-import type { DocGroup } from '../types'
+import type { DocGroup, SourceFile } from '../types'
+
+// pdfEngine trekt de zware @cantoo/pdf-lib-bundel mee; we laden hem pas bij het
+// eerste exporteren zodat het opstarten er niet op hoeft te wachten.
+let enginePromise: Promise<typeof import('./pdfEngine')> | null = null
+function engine(): Promise<typeof import('./pdfEngine')> {
+  return (enginePromise ??= import('./pdfEngine'))
+}
 
 function sanitizeFileName(name: string): string {
   return name.replace(/[\\/:*?"<>|]/g, '_').trim() || 'document'
+}
+
+async function exportGroup(
+  group: DocGroup,
+  sources: Map<string, SourceFile>,
+  opts: { formValues: Record<string, Record<string, string | boolean>>; flattenForms: boolean }
+): Promise<Uint8Array> {
+  const { exportGroupToPdf } = await engine()
+  return exportGroupToPdf(group, sources, opts)
 }
 
 async function maybeEncrypt(bytes: Uint8Array): Promise<Uint8Array> {
@@ -14,6 +29,7 @@ async function maybeEncrypt(bytes: Uint8Array): Promise<Uint8Array> {
   const perms = state.exportPermissions
   const restricted = !perms.printing || !perms.copying || !perms.modifying
   if (!password && !restricted) return bytes
+  const { encryptPdfBytes } = await engine()
   return encryptPdfBytes(bytes, password, restricted ? perms : undefined)
 }
 
@@ -29,7 +45,7 @@ export async function exportActivePdf(): Promise<void> {
   if (!group || state.busyExport) return
   state.setBusyExport('pdf')
   try {
-    const bytes = await maybeEncrypt(await exportGroupToPdf(group, state.sources, exportOptions()))
+    const bytes = await maybeEncrypt(await exportGroup(group, state.sources, exportOptions()))
     const result = await window.api.savePdf(`${sanitizeFileName(group.name)}.pdf`, bytes)
     if (result.saved) state.addToast('success', `"${group.name}" opgeslagen`)
   } catch {
@@ -49,7 +65,7 @@ export async function exportAllZip(): Promise<void> {
     const usedNames = new Set<string>()
     for (const group of state.groups) {
       if (!group.pages.length) continue
-      const bytes = await maybeEncrypt(await exportGroupToPdf(group, state.sources, exportOptions()))
+      const bytes = await maybeEncrypt(await exportGroup(group, state.sources, exportOptions()))
       let fileName = `${sanitizeFileName(group.name)}.pdf`
       let n = 2
       while (usedNames.has(fileName)) {
@@ -93,7 +109,7 @@ export async function exportPagesAsSeparateFiles(pageIds: string[]): Promise<voi
         pageNumbers: false,
         documentDate: null
       }
-      const bytes = await maybeEncrypt(await exportGroupToPdf(single, state.sources, exportOptions()))
+      const bytes = await maybeEncrypt(await exportGroup(single, state.sources, exportOptions()))
       let fileName = `${sanitizeFileName(groupName)} - pagina ${index}.pdf`
       let n = 2
       while (usedNames.has(fileName)) {

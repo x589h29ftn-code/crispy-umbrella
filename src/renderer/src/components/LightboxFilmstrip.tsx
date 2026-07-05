@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { renderThumbnail } from '../lib/pdfEngine'
+import { renderThumbnail } from '../lib/pdfRender'
 import { useStudioStore } from '../store'
 import type { DocGroup, SourceFile } from '../types'
 
