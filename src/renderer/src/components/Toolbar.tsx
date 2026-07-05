@@ -2,11 +2,12 @@ import { useRef, useState } from 'react'
 import { nanoid } from 'nanoid'
 import { useStudioStore } from '../store'
 import { useClickOutside } from '../hooks/useClickOutside'
-import { exportActivePdf, exportAllZip } from '../lib/exportActions'
+import { exportActivePdf, exportAllZip, mailActivePdf, saveActiveToOneDrive } from '../lib/exportActions'
 import { printActiveGroup } from '../lib/printActions'
 import {
   IconArchive,
   IconCheck,
+  IconCloud,
   IconCompare,
   IconChevronLeft,
   IconChevronRight,
@@ -17,6 +18,7 @@ import {
   IconExpand,
   IconFolderOpen,
   IconLock,
+  IconMail,
   IconMinus,
   IconPen,
   IconMoon,
@@ -442,6 +444,26 @@ export default function Toolbar({ zoomPct, onZoomIn, onZoomOut, onZoomReset, onZ
       >
         <IconExpand size={15} />
         <span className="sidebar-btn__label">Los venster</span>
+      </button>
+      <button
+        type="button"
+        className="sidebar-btn"
+        disabled={!activeGroup || busyExport !== null}
+        onClick={() => void saveActiveToOneDrive()}
+        title="Sla het actieve document op in je OneDrive-map (synct automatisch)"
+      >
+        <IconCloud size={15} />
+        <span className="sidebar-btn__label">Opslaan in OneDrive</span>
+      </button>
+      <button
+        type="button"
+        className="sidebar-btn"
+        disabled={!activeGroup || busyExport !== null}
+        onClick={() => void mailActivePdf()}
+        title="Open een nieuw Outlook-bericht met het actieve document als bijlage"
+      >
+        <IconMail size={15} />
+        <span className="sidebar-btn__label">Mail als bijlage</span>
       </button>
       <button
         type="button"

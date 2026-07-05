@@ -11,7 +11,7 @@ import { getTextLineBoxes } from '../lib/textLines'
 import { IconClose, IconFile, IconTrash } from './icons'
 import type { DocGroup } from '../types'
 
-type Tab = 'rename' | 'blank' | 'cleanup' | 'data' | 'split' | 'sort' | 'text' | 'table'
+type Tab = 'rename' | 'blank' | 'cleanup' | 'data' | 'split' | 'sort' | 'text' | 'table' | 'compress' | 'portfolio'
 
 /**
  * "Slimme documenten": automatisch hernoemen op inhoud, lege pagina's vinden en
@@ -227,7 +227,9 @@ export default function SmartDialog(): JSX.Element | null {
     ['cleanup', 'Opschonen'],
     ['data', 'Gegevens → CSV'],
     ['table', 'Tabel → Excel'],
-    ['text', 'Tekst / Word']
+    ['text', 'Tekst / Word'],
+    ['compress', 'Comprimeren'],
+    ['portfolio', 'Dossier']
   ]
 
   return (
@@ -420,6 +422,77 @@ export default function SmartDialog(): JSX.Element | null {
                 onClick={() => activeGroup && void sortByDate(activeGroup)}
               >
                 {busy ? 'Bezig…' : 'Sorteren op datum'}
+              </button>
+            </div>
+          </div>
+        )}
+
+        {tab === 'compress' && (
+          <div className="smart-card__body">
+            <p className="smart-card__intro">
+              Maakt "{activeGroup?.name ?? '—'}" kleiner om te mailen: elke pagina wordt als compacte afbeelding
+              opgeslagen. Vooral effectief bij scans; de tekstlaag vervalt (draai daarna zo nodig OCR). Is het
+              resultaat niet kleiner, dan wordt de gewone export bewaard.
+            </p>
+            <div className="modal-card__actions">
+              <button
+                type="button"
+                className="pill-btn"
+                disabled={busy || !activeGroup}
+                onClick={() => {
+                  setBusy(true)
+                  void import('../lib/compress')
+                    .then((m) => m.compressActiveGroup('normal'))
+                    .finally(() => {
+                      setBusy(false)
+                      setOpen(false)
+                    })
+                }}
+              >
+                Normaal (150 dpi)
+              </button>
+              <button
+                type="button"
+                className="pill-btn pill-btn--primary"
+                disabled={busy || !activeGroup}
+                onClick={() => {
+                  setBusy(true)
+                  void import('../lib/compress')
+                    .then((m) => m.compressActiveGroup('strong'))
+                    .finally(() => {
+                      setBusy(false)
+                      setOpen(false)
+                    })
+                }}
+              >
+                {busy ? 'Bezig…' : 'Sterk (100 dpi)'}
+              </button>
+            </div>
+          </div>
+        )}
+
+        {tab === 'portfolio' && (
+          <div className="smart-card__body">
+            <p className="smart-card__intro">
+              Bundelt alle geopende documenten ({groups.length}) tot één dossier-PDF met een voorblad, een
+              inhoudsopgave met paginanummers en een scheidingsblad per document.
+            </p>
+            <div className="modal-card__actions">
+              <button
+                type="button"
+                className="pill-btn pill-btn--primary"
+                disabled={busy || groups.length < 2}
+                onClick={() => {
+                  setBusy(true)
+                  void import('../lib/portfolio')
+                    .then((m) => m.exportPortfolio())
+                    .finally(() => {
+                      setBusy(false)
+                      setOpen(false)
+                    })
+                }}
+              >
+                {busy ? 'Bezig…' : `Dossier bundelen (${groups.length} documenten)`}
               </button>
             </div>
           </div>

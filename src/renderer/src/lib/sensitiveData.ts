@@ -93,7 +93,8 @@ const MONTHS = 'januari|februari|maart|april|mei|juni|juli|augustus|september|ok
 
 // Woordgrenzen voorkomen dat we midden in langere getallen/tekst matchen.
 const DETECTORS: Detector[] = [
-  { kind: 'bsn', regex: /\b\d{9}\b/g, valid: isValidBsn },
+  // BSN: 9 cijfers, ook geschreven met spaties/punten (123 456 789 / 123.456.789).
+  { kind: 'bsn', regex: /\b\d{3}[ .]?\d{3}[ .]?\d{3}\b/g, valid: (m) => isValidBsn(m.replace(/\D/g, '')) },
   // Landcode + 2 controlecijfers + 10–30 alfanumerieke tekens (spaties toegestaan).
   { kind: 'iban', regex: /\b[A-Z]{2}\d{2}(?:[ ]?[A-Z0-9]){10,30}\b/g, valid: isValidIban },
   { kind: 'email', regex: /\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}\b/g },
@@ -147,12 +148,14 @@ export async function scanPageForSensitiveData(
         if (detector.valid && !detector.valid(text)) continue
         const startFrac = m.index / Math.max(1, hay.length)
         const widthFrac = text.length / Math.max(1, hay.length)
-        // Iets marge zodat het hele nummer/adres bedekt wordt.
-        const pad = line.visual.height * 0.15
+        // Ruime marge zodat het hele nummer/adres écht bedekt is (AVG): de
+        // proportionele schatting kan iets afwijken, dus we lakken wat breder.
+        const pad = line.visual.height * 0.22
+        const extra = line.visual.width * 0.02
         const rectVisual = {
-          x: Math.max(0, line.visual.x + line.visual.width * startFrac - pad),
+          x: Math.max(0, line.visual.x + line.visual.width * startFrac - pad - extra),
           y: Math.max(0, line.visual.y - pad),
-          width: line.visual.width * widthFrac + pad * 2,
+          width: line.visual.width * widthFrac + pad * 2 + extra * 2,
           height: line.visual.height + pad * 2
         }
         const rect = await visualRectToContentRect(source, page.sourcePageIndex, page.rotation, {

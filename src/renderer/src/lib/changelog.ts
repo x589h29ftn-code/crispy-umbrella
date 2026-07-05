@@ -4,6 +4,18 @@
  */
 export const APP_CHANGELOG: { version: string; items: string[] }[] = [
   {
+    version: '1.8.0',
+    items: [
+      'PDF kleiner maken (comprimeren) om makkelijk te mailen',
+      'Opslaan in OneDrive en direct mailen als Outlook-bijlage',
+      'Dossier bundelen: alle documenten in één PDF met voorblad en inhoudsopgave',
+      'Vergelijken: doorlopend scrollen, vrij in-/uitzoomen en alle verschillen geel gemarkeerd in beide documenten',
+      'Verschilrapport per hoofdstuk met inhoudsopgave, paginanummers en oude/nieuwe tekst',
+      'Jaar-op-jaar: gewijzigde bedragen naar Excel met verschil en % mutatie',
+      'AVG-redactie verbeterd: geredigeerde tekst is nu écht weg (ook onzichtbaar), BSN met spaties wordt herkend, en de categorieën staan overzichtelijk onder elkaar'
+    ]
+  },
+  {
     version: '1.7.0',
     items: [
       'Tabellen uit een PDF naar Excel (.xlsx) — één werkblad per pagina, ideaal voor cijferoverzichten',

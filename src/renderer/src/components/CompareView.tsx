@@ -1,27 +1,26 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { useStudioStore } from '../store'
 import { getPageVisualSize, getPdfMetadata, renderThumbnail, type PdfMetadata } from '../lib/pdfRender'
 import { diffPages, exportDiffReport, type PageDiff, type NumberChange } from '../lib/pdfDiff'
-import { IconChevronLeft, IconChevronRight, IconClose, IconFolderOpen } from './icons'
+import { IconClose, IconFolderOpen, IconMinus, IconPlus } from './icons'
 import type { DocGroup, PageRef, SourceFile } from '../types'
 
-const COL_WIDTH = 460
+const BASE_WIDTH = 460
 
 function ComparePane({
-  group,
   page,
   diffLines,
-  numberMarks = []
+  numberMarks = [],
+  width
 }: {
-  group: DocGroup | undefined
   page: PageRef | undefined
   diffLines: PageDiff['left']
   numberMarks?: NumberChange[]
+  width: number
 }): JSX.Element {
   const sources = useStudioStore((s) => s.sources)
   const [thumb, setThumb] = useState<string | null>(null)
   const [size, setSize] = useState({ width: 595, height: 842 })
-  const [meta, setMeta] = useState<PdfMetadata | null>(null)
   const source: SourceFile | undefined = page ? sources.get(page.sourceId) : undefined
 
   useEffect(() => {
@@ -30,7 +29,7 @@ function ComparePane({
       setThumb(null)
       return
     }
-    renderThumbnail(source, page.sourcePageIndex, page.rotation, Math.round(COL_WIDTH * 2))
+    renderThumbnail(source, page.sourcePageIndex, page.rotation, Math.round(BASE_WIDTH * 2))
       .then((url) => !cancelled && setThumb(url))
       .catch(() => undefined)
     getPageVisualSize(source, page.sourcePageIndex, page.rotation)
@@ -41,38 +40,16 @@ function ComparePane({
     }
   }, [source, page])
 
-  useEffect(() => {
-    let cancelled = false
-    if (!source) {
-      setMeta(null)
-      return
-    }
-    getPdfMetadata(source)
-      .then((m) => !cancelled && setMeta(m))
-      .catch(() => undefined)
-    return () => {
-      cancelled = true
-    }
-  }, [source])
-
-  const scale = COL_WIDTH / size.width
+  const scale = width / size.width
 
   return (
     <div className="compare-pane">
-      <div className="compare-pane__title">{group?.name ?? '—'}</div>
-      {meta && (meta.title || meta.created || meta.modified) && (
-        <div className="compare-pane__meta">
-          {meta.title && <span title="Titel in PDF">📄 {meta.title}</span>}
-          {meta.created && <span title="Aangemaakt">🗓 gemaakt {meta.created}</span>}
-          {meta.modified && <span title="Laatst gewijzigd">✏️ gewijzigd {meta.modified}</span>}
-        </div>
-      )}
-      <div className="compare-pane__page" style={{ width: COL_WIDTH, height: size.height * scale }}>
-        {thumb ? <img src={thumb} alt="" draggable={false} style={{ width: COL_WIDTH }} /> : <div className="compare-pane__ph" />}
+      <div className="compare-pane__page" style={{ width, height: size.height * scale }}>
+        {thumb ? <img src={thumb} alt="" draggable={false} style={{ width }} /> : <div className="compare-pane__ph" />}
         {diffLines.map((d, i) => (
           <div
             key={i}
-            className={`compare-mark compare-mark--${d.kind}`}
+            className="compare-mark compare-mark--diff"
             style={{
               left: d.box.x * scale,
               top: d.box.y * scale,
@@ -100,7 +77,117 @@ function ComparePane({
   )
 }
 
-/** Volledig-scherm vergelijking van twee documenten met tekstverschillen per pagina. */
+/** Eén paginapaar in de doorlopende vergelijking; de diff wordt pas berekend zodra de rij in beeld komt. */
+function CompareRow({
+  index,
+  left,
+  right,
+  width
+}: {
+  index: number
+  left: DocGroup | undefined
+  right: DocGroup | undefined
+  width: number
+}): JSX.Element {
+  const sources = useStudioStore((s) => s.sources)
+  const [diff, setDiff] = useState<PageDiff | null>(null)
+  const [visible, setVisible] = useState(false)
+  const rootRef = useRef<HTMLDivElement>(null)
+
+  const leftPage = left?.pages[index]
+  const rightPage = right?.pages[index]
+
+  useEffect(() => {
+    const el = rootRef.current
+    if (!el || typeof IntersectionObserver === 'undefined') {
+      setVisible(true)
+      return
+    }
+    const observer = new IntersectionObserver(
+      (entries) => {
+        if (entries.some((e) => e.isIntersecting)) {
+          setVisible(true)
+          observer.disconnect()
+        }
+      },
+      { rootMargin: '900px 0px' }
+    )
+    observer.observe(el)
+    return () => observer.disconnect()
+  }, [])
+
+  useEffect(() => {
+    if (!visible) return
+    let cancelled = false
+    diffPages(
+      leftPage ? sources.get(leftPage.sourceId) : undefined,
+      leftPage,
+      rightPage ? sources.get(rightPage.sourceId) : undefined,
+      rightPage
+    )
+      .then((d) => !cancelled && setDiff(d))
+      .catch(() => undefined)
+    return () => {
+      cancelled = true
+    }
+  }, [visible, leftPage, rightPage, sources])
+
+  return (
+    <div className="compare-row" ref={rootRef} data-page={index + 1}>
+      <div className="compare-row__head">
+        Pagina {index + 1}
+        {diff
+          ? diff.changeCount > 0 || diff.numbers.length > 0
+            ? ` — ${diff.changeCount} wijziging${diff.changeCount === 1 ? '' : 'en'}${diff.numbers.length ? ` · ${diff.numbers.length} cijfer(s)` : ''}`
+            : ' — gelijk'
+          : ' — vergelijken…'}
+      </div>
+      <div className="compare-row__panes">
+        {visible ? (
+          <>
+            <ComparePane page={leftPage} diffLines={diff?.left ?? []} width={width} />
+            <ComparePane page={rightPage} diffLines={diff?.right ?? []} numberMarks={diff?.numbers ?? []} width={width} />
+          </>
+        ) : (
+          <div className="compare-pane__ph" style={{ width: width * 2 + 24, height: width * 1.41 }} />
+        )}
+      </div>
+    </div>
+  )
+}
+
+function MetaLine({ group }: { group: DocGroup | undefined }): JSX.Element | null {
+  const sources = useStudioStore((s) => s.sources)
+  const [meta, setMeta] = useState<PdfMetadata | null>(null)
+  const source = group?.pages[0] ? sources.get(group.pages[0].sourceId) : undefined
+  useEffect(() => {
+    let cancelled = false
+    if (!source) {
+      setMeta(null)
+      return
+    }
+    getPdfMetadata(source)
+      .then((m) => !cancelled && setMeta(m))
+      .catch(() => undefined)
+    return () => {
+      cancelled = true
+    }
+  }, [source])
+  return (
+    <div className="compare-pane__metaCol">
+      <div className="compare-pane__title">{group?.name ?? '—'}</div>
+      {meta && (meta.title || meta.created || meta.modified) && (
+        <div className="compare-pane__meta">
+          {meta.title && <span title="Titel in PDF">📄 {meta.title}</span>}
+          {meta.created && <span title="Aangemaakt">🗓 gemaakt {meta.created}</span>}
+          {meta.modified && <span title="Laatst gewijzigd">✏️ gewijzigd {meta.modified}</span>}
+        </div>
+      )}
+    </div>
+  )
+}
+
+/** Volledig-scherm vergelijking: doorlopend scrollen langs alle pagina's, met zoom. */
 export default function CompareView(): JSX.Element | null {
   const compare = useStudioStore((s) => s.compare)
   const close = useStudioStore((s) => s.closeCompare)
@@ -108,16 +195,17 @@ export default function CompareView(): JSX.Element | null {
   const groups = useStudioStore((s) => s.groups)
   const sources = useStudioStore((s) => s.sources)
 
-  const [pageIndex, setPageIndex] = useState(0)
-  const [diff, setDiff] = useState<PageDiff>({ left: [], right: [], changeCount: 0, numbers: [] })
+  const [zoom, setZoom] = useState(1)
   const [report, setReport] = useState<
     { page: number; left: string[]; right: string[]; changed: number; numbers: NumberChange[] }[] | null
   >(null)
   const [reportBusy, setReportBusy] = useState(false)
+  const scrollRef = useRef<HTMLDivElement>(null)
 
   const left = groups.find((g) => g.id === compare.leftGroupId)
   const right = groups.find((g) => g.id === compare.rightGroupId)
   const maxPages = Math.max(left?.pages.length ?? 0, right?.pages.length ?? 0)
+  const paneWidth = Math.round(BASE_WIDTH * zoom)
 
   async function addDocument(): Promise<void> {
     if (typeof window.api.openPdfs !== 'function') return
@@ -156,39 +244,28 @@ export default function CompareView(): JSX.Element | null {
     }
   }
 
-  const leftPage = left?.pages[pageIndex]
-  const rightPage = right?.pages[pageIndex]
-
-  useEffect(() => {
-    setPageIndex(0)
-  }, [compare.leftGroupId, compare.rightGroupId])
-
+  // Ctrl+wheel zoomt binnen de vergelijking (zoals in de leesweergave).
   useEffect(() => {
     if (!compare.open) return
-    let cancelled = false
-    diffPages(
-      leftPage ? sources.get(leftPage.sourceId) : undefined,
-      leftPage,
-      rightPage ? sources.get(rightPage.sourceId) : undefined,
-      rightPage
-    )
-      .then((d) => !cancelled && setDiff(d))
-      .catch(() => undefined)
-    return () => {
-      cancelled = true
+    const el = scrollRef.current
+    if (!el) return
+    const onWheel = (e: WheelEvent): void => {
+      if (!e.ctrlKey && !e.metaKey) return
+      e.preventDefault()
+      setZoom((z) => Math.min(3, Math.max(0.4, z * Math.exp(-e.deltaY * 0.0022))))
     }
-  }, [compare.open, leftPage, rightPage, sources])
+    el.addEventListener('wheel', onWheel, { passive: false })
+    return () => el.removeEventListener('wheel', onWheel)
+  }, [compare.open])
 
   useEffect(() => {
     if (!compare.open) return
     const onKey = (e: KeyboardEvent): void => {
       if (e.key === 'Escape') close()
-      if (e.key === 'ArrowRight') setPageIndex((p) => Math.min(maxPages - 1, p + 1))
-      if (e.key === 'ArrowLeft') setPageIndex((p) => Math.max(0, p - 1))
     }
     window.addEventListener('keydown', onKey)
     return () => window.removeEventListener('keydown', onKey)
-  }, [compare.open, close, maxPages])
+  }, [compare.open, close])
 
   const options = useMemo(() => groups.map((g) => ({ id: g.id, name: g.name })), [groups])
 
@@ -204,28 +281,6 @@ export default function CompareView(): JSX.Element | null {
             </option>
           ))}
         </select>
-        <div className="compare-view__nav">
-          <button
-            type="button"
-            className="pill-btn pill-btn--icon"
-            disabled={pageIndex === 0}
-            onClick={() => setPageIndex((p) => Math.max(0, p - 1))}
-          >
-            <IconChevronLeft size={14} />
-          </button>
-          <span>
-            pagina {pageIndex + 1} / {maxPages}
-            {diff.changeCount > 0 ? ` · ${diff.changeCount} wijziging${diff.changeCount === 1 ? '' : 'en'}` : ' · gelijk'}
-          </span>
-          <button
-            type="button"
-            className="pill-btn pill-btn--icon"
-            disabled={pageIndex >= maxPages - 1}
-            onClick={() => setPageIndex((p) => Math.min(maxPages - 1, p + 1))}
-          >
-            <IconChevronRight size={14} />
-          </button>
-        </div>
         <select value={compare.rightGroupId ?? ''} onChange={(e) => setCompareGroups('right', e.target.value)}>
           {options.map((o) => (
             <option key={o.id} value={o.id}>
@@ -233,18 +288,20 @@ export default function CompareView(): JSX.Element | null {
             </option>
           ))}
         </select>
+        <div className="compare-view__nav" title="Zoom (ook Ctrl + muiswiel)">
+          <button type="button" className="pill-btn pill-btn--icon" onClick={() => setZoom((z) => Math.max(0.4, z / 1.2))}>
+            <IconMinus size={13} />
+          </button>
+          <span>{Math.round(zoom * 100)}%</span>
+          <button type="button" className="pill-btn pill-btn--icon" onClick={() => setZoom((z) => Math.min(3, z * 1.2))}>
+            <IconPlus size={13} />
+          </button>
+        </div>
         <div className="compare-view__legend">
-          <span className="compare-legend compare-legend--removed">verwijderd</span>
-          <span className="compare-legend compare-legend--changed">gewijzigd</span>
-          <span className="compare-legend compare-legend--added">toegevoegd</span>
+          <span className="compare-legend compare-legend--diff">verschil</span>
           <span className="compare-legend compare-legend--number">cijfer gewijzigd</span>
         </div>
-        <button
-          type="button"
-          className="pill-btn"
-          title="Nog een document openen om te vergelijken"
-          onClick={() => void addDocument()}
-        >
+        <button type="button" className="pill-btn" title="Nog een document openen om te vergelijken" onClick={() => void addDocument()}>
           <IconFolderOpen size={14} /> Document toevoegen
         </button>
         <button
@@ -260,7 +317,18 @@ export default function CompareView(): JSX.Element | null {
           type="button"
           className="pill-btn"
           disabled={!left || !right}
-          title="Alle verschillen als PDF-rapport opslaan"
+          title="Cijferwijzigingen (was/is/verschil/% mutatie) naar Excel — voor jaarrekeningen"
+          onClick={() =>
+            left && right && void import('../lib/yearCompare').then((m) => m.exportYearComparisonXlsx(left, right, sources))
+          }
+        >
+          Jaar-op-jaar (Excel)
+        </button>
+        <button
+          type="button"
+          className="pill-btn"
+          disabled={!left || !right}
+          title="Alle verschillen als PDF-rapport opslaan (per hoofdstuk, met inhoudsopgave)"
           onClick={() => left && right && void exportDiffReport(left, right, sources)}
         >
           Verschilrapport (PDF)
@@ -269,9 +337,15 @@ export default function CompareView(): JSX.Element | null {
           <IconClose size={15} />
         </button>
       </div>
-      <div className="compare-view__panes">
-        <ComparePane group={left} page={leftPage} diffLines={diff.left} />
-        <ComparePane group={right} page={rightPage} diffLines={diff.right} numberMarks={diff.numbers} />
+      <div className="compare-view__metabar">
+        <MetaLine group={left} />
+        <MetaLine group={right} />
+      </div>
+      <div className="compare-view__scroll" ref={scrollRef}>
+        {Array.from({ length: maxPages }, (_, i) => (
+          <CompareRow key={`${compare.leftGroupId}-${compare.rightGroupId}-${i}`} index={i} left={left} right={right} width={paneWidth} />
+        ))}
+        {maxPages === 0 && <p className="compare-view__empty">Kies links en rechts een document om te vergelijken.</p>}
       </div>
 
       {report && (

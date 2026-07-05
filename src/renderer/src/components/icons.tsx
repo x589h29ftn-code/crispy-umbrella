@@ -84,6 +84,23 @@ export function IconSettings({ size = 16, className }: IconProps): JSX.Element {
   )
 }
 
+export function IconMail({ size = 16, className }: IconProps): JSX.Element {
+  return (
+    <svg width={size} height={size} viewBox="0 0 24 24" className={className} {...base}>
+      <rect x="3" y="5.5" width="18" height="13" rx="2" />
+      <path d="M3.5 7l8.5 6 8.5-6" />
+    </svg>
+  )
+}
+
+export function IconCloud({ size = 16, className }: IconProps): JSX.Element {
+  return (
+    <svg width={size} height={size} viewBox="0 0 24 24" className={className} {...base}>
+      <path d="M7 18.5h10a4 4 0 0 0 .9-7.9 5.5 5.5 0 0 0-10.7-1.2A4.5 4.5 0 0 0 7 18.5z" />
+    </svg>
+  )
+}
+
 export function IconKeyboard({ size = 16, className }: IconProps): JSX.Element {
   return (
     <svg width={size} height={size} viewBox="0 0 24 24" className={className} {...base}>

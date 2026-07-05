@@ -92,6 +92,51 @@ export async function saveActiveToSource(): Promise<void> {
   }
 }
 
+/** Slaat het actieve document op in de lokale OneDrive-map (synct automatisch). */
+export async function saveActiveToOneDrive(): Promise<void> {
+  const state = useStudioStore.getState()
+  const group = state.groups.find((g) => g.id === state.activeGroupId) ?? state.groups[0]
+  if (!group || !group.pages.length || state.busyExport) return
+  if (typeof window.api.saveToOneDrive !== 'function') {
+    state.addToast('info', 'Opslaan in OneDrive werkt alleen in de desktop-app')
+    return
+  }
+  state.setBusyExport('pdf')
+  try {
+    const bytes = await maybeEncrypt(await exportGroup(group, state.sources, exportOptions()))
+    const result = await window.api.saveToOneDrive(`${sanitizeFileName(group.name)}.pdf`, bytes)
+    if (result.saved) state.addToast('success', `"${group.name}" opgeslagen in OneDrive`)
+    else if (result.reason) state.addToast('error', result.reason)
+  } catch {
+    state.addToast('error', 'Opslaan in OneDrive is mislukt')
+  } finally {
+    useStudioStore.getState().setBusyExport(null)
+  }
+}
+
+/** Opent een nieuw Outlook-bericht met het actieve document als bijlage. */
+export async function mailActivePdf(): Promise<void> {
+  const state = useStudioStore.getState()
+  const group = state.groups.find((g) => g.id === state.activeGroupId) ?? state.groups[0]
+  if (!group || !group.pages.length || state.busyExport) return
+  if (typeof window.api.mailPdf !== 'function') {
+    state.addToast('info', 'Mailen als bijlage werkt alleen in de desktop-app')
+    return
+  }
+  state.setBusyExport('pdf')
+  try {
+    const bytes = await maybeEncrypt(await exportGroup(group, state.sources, exportOptions()))
+    const result = await window.api.mailPdf(`${sanitizeFileName(group.name)}.pdf`, bytes)
+    if (result.ok && result.fallback)
+      state.addToast('info', 'Outlook niet gevonden — het bestand staat klaar in de Verkenner om te mailen')
+    else if (result.ok) state.addToast('success', 'Nieuw Outlook-bericht geopend met de PDF als bijlage')
+  } catch {
+    state.addToast('error', 'Mailen is mislukt')
+  } finally {
+    useStudioStore.getState().setBusyExport(null)
+  }
+}
+
 /** Exports every document as its own PDF, bundled in one zip, via a save dialog. */
 export async function exportAllZip(): Promise<void> {
   const state = useStudioStore.getState()

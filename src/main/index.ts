@@ -1,6 +1,7 @@
 import { app, shell, BrowserWindow, ipcMain, dialog } from 'electron'
 import { join, basename } from 'path'
 import { mkdir, mkdtemp, readdir, readFile, rm, stat, unlink, writeFile } from 'fs/promises'
+import { execFile } from 'child_process'
 import { tmpdir } from 'os'
 import { randomUUID } from 'node:crypto'
 import { electronApp, optimizer, is } from '@electron-toolkit/utils'
@@ -347,6 +348,47 @@ app.whenReady().then(() => {
     if (result.canceled || !result.filePath) return { saved: false }
     await writeFile(result.filePath, Buffer.from(data))
     return { saved: true, path: result.filePath }
+  })
+
+  // Opslaan in de lokale OneDrive-map (gesynchroniseerd door de OneDrive-app).
+  ipcMain.handle('onedrive:savePdf', async (_evt, defaultName: string, data: Uint8Array) => {
+    const base = process.env.OneDriveCommercial || process.env.OneDrive || process.env.OneDriveConsumer
+    if (!base) return { saved: false, reason: 'Geen OneDrive-map gevonden — is de OneDrive-app ingesteld op deze pc?' }
+    const result = await dialog.showSaveDialog({
+      defaultPath: join(base, defaultName),
+      filters: [{ name: 'PDF-bestand', extensions: ['pdf'] }]
+    })
+    if (result.canceled || !result.filePath) return { saved: false }
+    await writeFile(result.filePath, Buffer.from(data))
+    return { saved: true, path: result.filePath }
+  })
+
+  // Mail als bijlage: opent een nieuw Outlook-bericht met de PDF eraan (COM).
+  // Zonder Outlook valt het terug op de Verkenner met het bestand geselecteerd.
+  ipcMain.handle('mail:pdf', async (_evt, name: string, data: Uint8Array) => {
+    const dir = await mkdtemp(join(tmpdir(), 'pdfstudio-mail-'))
+    const file = join(dir, name.replace(/[\\/:*?"<>|]/g, '_'))
+    await writeFile(file, Buffer.from(data))
+    if (process.platform === 'win32') {
+      try {
+        await new Promise<void>((resolve, reject) => {
+          execFile(
+            'powershell.exe',
+            [
+              '-NoProfile',
+              '-Command',
+              `$ol = New-Object -ComObject Outlook.Application; $m = $ol.CreateItem(0); $m.Attachments.Add('${file.replace(/'/g, "''")}') | Out-Null; $m.Display()`
+            ],
+            (err) => (err ? reject(err) : resolve())
+          )
+        })
+        return { ok: true }
+      } catch {
+        // Outlook niet beschikbaar — val terug op de Verkenner.
+      }
+    }
+    shell.showItemInFolder(file)
+    return { ok: true, fallback: true }
   })
 
   // Overschrijft een bestaand bestand rechtstreeks (Ctrl+S → opslaan naar bron).

@@ -3692,25 +3692,27 @@ button.group-row__date:hover {
 
 .privacy-card__kinds {
   display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: 6px;
-  margin: 4px 0 10px;
+  flex-direction: column;
+  gap: 4px;
+  margin: 4px 0 12px;
+  max-height: 40vh;
+  overflow-y: auto;
 }
 
 .privacy-card__kinds-label {
   font-size: 12px;
   color: var(--text-dim);
-  margin-right: 2px;
+  margin-bottom: 2px;
 }
 
+/* Categorie-selectie: onder elkaar, als volwaardige aanvinkregels. */
 .privacy-chip {
-  display: inline-flex;
+  display: flex;
   align-items: center;
-  gap: 5px;
-  font-size: 12px;
-  padding: 3px 9px;
-  border-radius: 999px;
+  gap: 8px;
+  font-size: 12.5px;
+  padding: 5px 9px;
+  border-radius: var(--radius-sm);
   border: 1px solid var(--border);
   background: var(--panel-2);
   color: var(--text-dim);
@@ -3832,38 +3834,70 @@ button.group-row__date:hover {
   height: 11px;
   border-radius: 2px;
 }
-.compare-legend--removed::before { background: rgba(220, 38, 38, 0.4); }
-.compare-legend--changed::before { background: rgba(217, 119, 6, 0.4); }
-.compare-legend--added::before { background: rgba(22, 163, 74, 0.4); }
-.compare-view__panes {
-  flex: 1;
+.compare-legend--diff::before { background: rgba(250, 204, 21, 0.75); }
+.compare-legend--number::before { background: rgba(37, 99, 235, 0.55); }
+
+/* Doorlopende vergelijking: metabalk + scrollende rijen met paginaparen */
+.compare-view__metabar {
   display: flex;
-  gap: 28px;
+  gap: 24px;
   justify-content: center;
-  align-items: flex-start;
+  padding: 6px 24px;
+  border-bottom: 1px solid var(--border-soft);
+}
+.compare-pane__metaCol {
+  flex: 0 1 480px;
+  min-width: 0;
+  text-align: center;
+}
+.compare-view__scroll {
+  flex: 1;
   overflow: auto;
-  padding: 24px;
+  padding: 20px 24px 60px;
+  overscroll-behavior: contain;
+}
+.compare-view__empty {
+  text-align: center;
+  color: var(--text-dim);
+  margin-top: 40px;
+}
+.compare-row {
+  margin: 0 auto 26px;
+  width: fit-content;
+}
+.compare-row__head {
+  font-size: 11.5px;
+  color: var(--text-dim);
+  margin-bottom: 6px;
+  text-align: center;
+}
+.compare-row__panes {
+  display: flex;
+  gap: 24px;
+  align-items: flex-start;
 }
 .compare-pane {
   display: flex;
   flex-direction: column;
   align-items: center;
-  gap: 8px;
 }
 .compare-pane__title {
   font-size: 12px;
   font-weight: 600;
   color: var(--text-dim);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 .compare-pane__page {
   position: relative;
   background: #fff;
   box-shadow: 0 6px 24px rgba(0, 0, 0, 0.28);
+  content-visibility: auto;
 }
 .compare-pane__ph {
-  width: 100%;
-  height: 100%;
   background: var(--panel-2);
+  border-radius: 4px;
 }
 .compare-mark {
   position: absolute;
@@ -3871,11 +3905,9 @@ button.group-row__date:hover {
   border-radius: 2px;
   mix-blend-mode: multiply;
 }
-.compare-mark--removed { background: rgba(220, 38, 38, 0.32); outline: 1px solid rgba(220, 38, 38, 0.6); }
-.compare-mark--changed { background: rgba(217, 119, 6, 0.32); outline: 1px solid rgba(217, 119, 6, 0.6); }
-.compare-mark--added { background: rgba(22, 163, 74, 0.32); outline: 1px solid rgba(22, 163, 74, 0.6); }
+/* Alle tekstverschillen geel gemarkeerd in beide documenten. */
+.compare-mark--diff { background: rgba(250, 204, 21, 0.55); outline: 1px solid rgba(202, 138, 4, 0.7); }
 .compare-mark--number { background: rgba(37, 99, 235, 0.28); outline: 1px solid rgba(37, 99, 235, 0.7); }
-.compare-legend--number::before { background: rgba(37, 99, 235, 0.55); }
 
 .compare-report__numbers {
   display: flex;

@@ -290,12 +290,22 @@ async function rasterizeRedactedPage(
     const [a, b, , , e, f] = item.transform
     const size = Math.hypot(a, b) || 10
     const itemWidth = item.width || size * item.str.length * 0.5
-    const samples: [number, number][] = [
-      [e, f],
-      [e + itemWidth / 2, f + size * 0.4],
-      [e + itemWidth, f]
-    ]
-    const redacted = samples.some(([px, py]) => redactions.some((r) => insideRedaction(px, py, r, rotateDeg)))
+    // AVG: het geredigeerde beeld is definitief zwart, maar we mogen de tekst
+    // eronder NIET onzichtbaar terugplaatsen. Test daarom het hele tekstvak
+    // dicht af (over de breedte én hoogte, met marge) i.p.v. drie punten —
+    // zo lekt ook een woord dat maar deels onder het vlak valt niet.
+    const steps = Math.max(3, Math.ceil(itemWidth / (size * 0.4)))
+    const margin = size * 0.35
+    let redacted = false
+    for (let sx = 0; sx <= steps && !redacted; sx += 1) {
+      const px = e + (itemWidth * sx) / steps
+      for (const py of [f - margin, f + size * 0.35, f + size * 0.8]) {
+        if (redactions.some((r) => insideRedaction(px, py, r, rotateDeg))) {
+          redacted = true
+          break
+        }
+      }
+    }
     if (redacted) continue
     try {
       newPage.drawText(item.str, {
