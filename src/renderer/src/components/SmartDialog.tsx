@@ -33,6 +33,7 @@ export default function SmartDialog(): JSX.Element | null {
   const [busy, setBusy] = useState(false)
   const [suggestions, setSuggestions] = useState<{ groupId: string; current: string; type: string; suggested: string }[]>([])
   const [blanks, setBlanks] = useState<{ pageId: string; groupName: string; pageNumber: number }[]>([])
+  const [blankSelected, setBlankSelected] = useState<Set<string>>(new Set())
   const [segments, setSegments] = useState<{ name: string; pageIds: string[]; firstPage: number }[]>([])
 
   const activeGroup = groups.find((g) => g.id === activeGroupId) ?? groups[0]
@@ -120,6 +121,7 @@ export default function SmartDialog(): JSX.Element | null {
       }
       if (!cancelled) {
         setBlanks(found)
+        setBlankSelected(new Set(found.map((b) => b.pageId))) // standaard alles aangevinkt
         setBusy(false)
       }
     })()
@@ -144,11 +146,21 @@ export default function SmartDialog(): JSX.Element | null {
   }
 
   function removeBlanks(): void {
-    if (!blanks.length) return
-    deletePages(blanks.map((b) => b.pageId))
-    addToast('success', `${blanks.length} lege pagina('s) verwijderd`)
+    const ids = blanks.map((b) => b.pageId).filter((id) => blankSelected.has(id))
+    if (!ids.length) return
+    deletePages(ids)
+    addToast('success', `${ids.length} lege pagina('s) verwijderd`)
     setBlanks([])
     setOpen(false)
+  }
+
+  function toggleBlank(pageId: string): void {
+    setBlankSelected((prev) => {
+      const next = new Set(prev)
+      if (next.has(pageId)) next.delete(pageId)
+      else next.add(pageId)
+      return next
+    })
   }
 
   async function cleanup(group: DocGroup, options: { deskew: boolean; contrast: boolean }): Promise<void> {
@@ -278,17 +290,36 @@ export default function SmartDialog(): JSX.Element | null {
               <p>Geen lege pagina's gevonden.</p>
             ) : (
               <>
-                <p className="smart-card__intro">{blanks.length} lege pagina('s) gevonden:</p>
+                <p className="smart-card__intro">
+                  {blanks.length} lege pagina('s) gevonden. Vink aan welke je wilt verwijderen:
+                </p>
                 <div className="smart-card__list">
                   {blanks.map((b) => (
-                    <div key={b.pageId} className="smart-blank">
+                    <label key={b.pageId} className="smart-blank smart-blank--check">
+                      <input type="checkbox" checked={blankSelected.has(b.pageId)} onChange={() => toggleBlank(b.pageId)} />
                       <IconFile size={13} /> {b.groupName} · pagina {b.pageNumber}
-                    </div>
+                    </label>
                   ))}
                 </div>
                 <div className="modal-card__actions">
-                  <button type="button" className="pill-btn pill-btn--primary" onClick={removeBlanks}>
-                    <IconTrash size={14} /> Verwijderen
+                  <button
+                    type="button"
+                    className="pill-btn"
+                    onClick={() =>
+                      setBlankSelected((prev) =>
+                        prev.size === blanks.length ? new Set() : new Set(blanks.map((b) => b.pageId))
+                      )
+                    }
+                  >
+                    {blankSelected.size === blanks.length ? 'Niets selecteren' : 'Alles selecteren'}
+                  </button>
+                  <button
+                    type="button"
+                    className="pill-btn pill-btn--primary"
+                    disabled={blankSelected.size === 0}
+                    onClick={removeBlanks}
+                  >
+                    <IconTrash size={14} /> {blankSelected.size} verwijderen
                   </button>
                 </div>
               </>

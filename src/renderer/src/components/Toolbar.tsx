@@ -204,9 +204,9 @@ export default function Toolbar({ zoomPct, onZoomIn, onZoomOut, onZoomReset, onZ
           type="range"
           className="sidebar__zoom-slider"
           min={25}
-          max={300}
+          max={500}
           step={5}
-          value={Math.min(300, Math.max(25, zoomPct))}
+          value={Math.min(500, Math.max(25, zoomPct))}
           title="Zoom"
           onChange={(e) => onZoomTo(Number(e.target.value) / 100)}
         />

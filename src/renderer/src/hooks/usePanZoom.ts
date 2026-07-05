@@ -29,7 +29,7 @@ export function usePanZoom(onTransformChange: (transform: PanZoomTransform) => v
     if (!viewport || !content) return
 
     const behavior = zoom<HTMLDivElement, unknown>()
-      .scaleExtent([0.15, 3])
+      .scaleExtent([0.15, 5])
       .filter((event: Event) => {
         if (event.type === 'wheel') return (event as WheelEvent).ctrlKey || (event as WheelEvent).metaKey
         if (event.type === 'dblclick') return false

@@ -4,6 +4,18 @@
  */
 export const APP_CHANGELOG: { version: string; items: string[] }[] = [
   {
+    version: '1.6.0',
+    items: [
+      'Soepeler scrollen door lange documenten (pagina\'s buiten beeld worden niet meer getekend)',
+      'Miniaturen tot 500% vergroten met de zoomschuiver',
+      'Groter en overzichtelijker "Slimme documenten"-venster',
+      'Vergelijken: documenten toevoegen met een knop, PDF-metadata (titel, gemaakt/gewijzigd) per kant en een verschiloverzicht in een venster',
+      'Privacy-scan met kiesbare categorieën: BSN, IBAN, e-mail, telefoon, postcode, KVK, datum, adres, bedrijfsnaam en naam',
+      "Lege pagina's: zelf aanvinken welke je verwijdert",
+      'Markeringen krijgen zachte, afgeronde hoeken zoals een markeerstift'
+    ]
+  },
+  {
     version: '1.5.0',
     items: [
       'Sneller opstarten: het programma laadt de zware onderdelen pas wanneer je ze gebruikt',

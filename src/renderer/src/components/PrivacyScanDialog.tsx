@@ -1,7 +1,14 @@
 import { useEffect, useState } from 'react'
 import { nanoid } from 'nanoid'
 import { useStudioStore } from '../store'
-import { scanPageForSensitiveData, SENSITIVE_LABELS, type SensitiveKind, type SensitiveMatch } from '../lib/sensitiveData'
+import {
+  scanPageForSensitiveData,
+  SENSITIVE_LABELS,
+  SENSITIVE_KINDS,
+  DEFAULT_SENSITIVE_KINDS,
+  type SensitiveKind,
+  type SensitiveMatch
+} from '../lib/sensitiveData'
 import { IconClose, IconShield } from './icons'
 
 /**
@@ -21,11 +28,13 @@ export default function PrivacyScanDialog(): JSX.Element | null {
   const [scanning, setScanning] = useState(false)
   const [matches, setMatches] = useState<SensitiveMatch[]>([])
   const [selected, setSelected] = useState<Set<string>>(new Set())
+  const [enabledKinds, setEnabledKinds] = useState<Set<SensitiveKind>>(new Set(DEFAULT_SENSITIVE_KINDS))
 
   useEffect(() => {
     if (!open) {
       setMatches([])
       setSelected(new Set())
+      setEnabledKinds(new Set(DEFAULT_SENSITIVE_KINDS))
       return
     }
     const group = groups.find((g) => g.id === activeGroupId) ?? groups[0]
@@ -38,7 +47,7 @@ export default function PrivacyScanDialog(): JSX.Element | null {
         const page = group.pages[i]
         const source = sources.get(page.sourceId)
         if (!source) continue
-        const pageMatches = await scanPageForSensitiveData(source, page).catch(() => [])
+        const pageMatches = await scanPageForSensitiveData(source, page, enabledKinds).catch(() => [])
         for (const m of pageMatches) found.push({ ...m, pageNumber: i + 1 })
       }
       if (cancelled) return
@@ -53,9 +62,18 @@ export default function PrivacyScanDialog(): JSX.Element | null {
     return () => {
       cancelled = true
     }
-  }, [open, groups, activeGroupId, sources])
+  }, [open, groups, activeGroupId, sources, enabledKinds])
 
   if (!open) return null
+
+  function toggleKind(kind: SensitiveKind): void {
+    setEnabledKinds((prev) => {
+      const next = new Set(prev)
+      if (next.has(kind)) next.delete(kind)
+      else next.add(kind)
+      return next
+    })
+  }
 
   function toggle(id: string): void {
     setSelected((prev) => {
@@ -93,10 +111,19 @@ export default function PrivacyScanDialog(): JSX.Element | null {
         <h3>
           <IconShield size={16} /> Privacy-scan (AVG)
         </h3>
+        <div className="privacy-card__kinds">
+          <span className="privacy-card__kinds-label">Scannen op:</span>
+          {SENSITIVE_KINDS.map((kind) => (
+            <label key={kind} className={`privacy-chip${enabledKinds.has(kind) ? ' privacy-chip--on' : ''}`}>
+              <input type="checkbox" checked={enabledKinds.has(kind)} onChange={() => toggleKind(kind)} />
+              {SENSITIVE_LABELS[kind]}
+            </label>
+          ))}
+        </div>
         {scanning ? (
           <p>Document wordt doorzocht op gevoelige gegevens…</p>
         ) : matches.length === 0 ? (
-          <p>Geen BSN's, IBAN's, e-mailadressen of telefoonnummers gevonden in dit document.</p>
+          <p>Geen gegevens gevonden voor de gekozen categorieën in dit document.</p>
         ) : (
           <>
             <p className="privacy-card__intro">

@@ -1252,6 +1252,73 @@ body {
   transform: translateY(-0.5px);
 }
 
+/* Vergelijken: metadata onder de documentnaam + verschiloverzicht-venster */
+.compare-pane__meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 12px;
+  font-size: 11.5px;
+  color: var(--text-dim);
+  margin-bottom: 6px;
+}
+
+.compare-report {
+  width: 760px;
+  max-width: 94vw;
+}
+
+.compare-report__list {
+  max-height: 60vh;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.compare-report__page-title {
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--text);
+  margin-bottom: 4px;
+}
+
+.compare-report__cols {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
+}
+
+.compare-report__col {
+  border: 1px solid var(--border-soft);
+  border-radius: var(--radius-sm);
+  padding: 6px 8px;
+  overflow-x: auto;
+}
+
+.compare-report__col-head {
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--text-dim);
+  margin-bottom: 4px;
+}
+
+.compare-report__line {
+  font-size: 12px;
+  padding: 1px 0;
+  white-space: pre-wrap;
+  color: var(--text);
+}
+
+.compare-report__col--left .compare-report__line {
+  border-left: 2px solid var(--danger, #e5484d);
+  padding-left: 6px;
+}
+
+.compare-report__col--right .compare-report__line {
+  border-left: 2px solid #30a46c;
+  padding-left: 6px;
+}
+
 /* Selection action bar */
 .selection-bar {
   position: fixed;
@@ -1941,6 +2008,8 @@ button.group-row__date:hover {
   height: 100%;
   mix-blend-mode: multiply;
   pointer-events: none;
+  /* Zachte, licht afgeronde hoeken zoals een markeerstift. */
+  border-radius: 3px;
 }
 
 .annotation-overlay__text {
@@ -2723,6 +2792,16 @@ button.group-row__date:hover {
 .editor-pages--single .editor-page {
   margin-left: auto;
   margin-right: auto;
+}
+
+/* Soepel scrollen door lange documenten: de browser slaat het tekenen van
+   pagina's buiten beeld over en onthoudt hun grootte (geen sprongen). */
+.editor-pages--scroll .editor-page {
+  content-visibility: auto;
+  contain-intrinsic-size: auto 1100px;
+}
+.editor-pages {
+  overscroll-behavior: contain;
 }
 
 .editor-pages--spread {
@@ -3587,8 +3666,47 @@ button.group-row__date:hover {
 
 /* Privacy-scan */
 .privacy-card {
-  max-width: 520px;
+  width: 560px;
+  max-width: 92vw;
   position: relative;
+}
+
+.privacy-card__kinds {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+  margin: 4px 0 10px;
+}
+
+.privacy-card__kinds-label {
+  font-size: 12px;
+  color: var(--text-dim);
+  margin-right: 2px;
+}
+
+.privacy-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 12px;
+  padding: 3px 9px;
+  border-radius: 999px;
+  border: 1px solid var(--border);
+  background: var(--panel-2);
+  color: var(--text-dim);
+  cursor: pointer;
+  user-select: none;
+}
+
+.privacy-chip--on {
+  border-color: var(--accent);
+  background: var(--accent-tint);
+  color: var(--text);
+}
+
+.privacy-chip input {
+  margin: 0;
 }
 .privacy-card__close {
   position: absolute;
@@ -3739,10 +3857,24 @@ button.group-row__date:hover {
 .compare-mark--added { background: rgba(22, 163, 74, 0.32); outline: 1px solid rgba(22, 163, 74, 0.6); }
 
 /* ---- Slimme documenten (taak 40) ---- */
-.smart-card { max-width: 560px; position: relative; }
+.smart-card {
+  width: 680px;
+  max-width: 94vw;
+  position: relative;
+}
 .smart-card__close { position: absolute; top: 12px; right: 12px; }
+.smart-card__body {
+  min-height: 300px;
+  display: flex;
+  flex-direction: column;
+}
+.smart-card__intro {
+  font-size: 13px;
+  color: var(--text-dim);
+}
 .smart-card__tabs {
   display: flex;
+  flex-wrap: wrap;
   gap: 4px;
   border-bottom: 1px solid var(--border);
   margin: 8px 0 12px;
@@ -3760,7 +3892,9 @@ button.group-row__date:hover {
 }
 .smart-card__tab--active { color: var(--text); border-bottom-color: var(--accent); }
 .smart-card__intro { font-size: 12.5px; color: var(--text-dim); }
-.smart-card__list { max-height: 320px; overflow-y: auto; margin: 8px 0; }
+.smart-card__list { max-height: 46vh; overflow-y: auto; margin: 8px 0; flex: 1 1 auto; }
+.smart-blank--check { cursor: pointer; }
+.smart-blank--check input { margin-right: 2px; }
 .smart-rename {
   display: flex;
   align-items: center;

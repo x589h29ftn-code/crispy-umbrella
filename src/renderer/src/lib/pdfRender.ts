@@ -37,6 +37,38 @@ export function getPdfJsDocument(source: SourceFile): Promise<PdfJsDoc> {
   return cached
 }
 
+export interface PdfMetadata {
+  title: string | null
+  author: string | null
+  created: string | null
+  modified: string | null
+}
+
+/** Leest de belangrijkste PDF-metadata (titel, auteur, aanmaak-/wijzigingsdatum). */
+export async function getPdfMetadata(source: SourceFile): Promise<PdfMetadata> {
+  const doc = await getPdfJsDocument(source)
+  try {
+    const { info } = (await doc.getMetadata()) as unknown as { info?: Record<string, unknown> }
+    const parseDate = (raw: unknown): string | null => {
+      if (typeof raw !== 'string') return null
+      // PDF-datum: D:YYYYMMDDHHmmSS…  → nl-NL notatie.
+      const m = raw.match(/D:(\d{4})(\d{2})(\d{2})(\d{2})?(\d{2})?/)
+      if (!m) return null
+      const [, y, mo, d, h, mi] = m
+      const time = h ? ` ${h}:${mi ?? '00'}` : ''
+      return `${d}-${mo}-${y}${time}`
+    }
+    return {
+      title: (info?.Title as string) || null,
+      author: (info?.Author as string) || null,
+      created: parseDate(info?.CreationDate),
+      modified: parseDate(info?.ModDate)
+    }
+  } catch {
+    return { title: null, author: null, created: null, modified: null }
+  }
+}
+
 export function forgetSource(sourceId: string): void {
   jsDocCache.delete(sourceId)
   libDocCache.delete(sourceId)
