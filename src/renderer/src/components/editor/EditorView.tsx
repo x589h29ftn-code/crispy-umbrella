@@ -432,6 +432,23 @@ export default function EditorView({ groupId }: Props): JSX.Element | null {
           <IconClose size={13} /> Volledig scherm afsluiten
         </button>
       )}
+      {presentationMode && (
+        <div className="presentation-zoom" title="Zoom (of Ctrl+scrollen)">
+          <button type="button" className="pill-btn pill-btn--icon" onClick={() => setZoom((z) => Math.max(0.3, z / 1.2))} title="Uitzoomen">
+            <IconMinus size={14} />
+          </button>
+          <button type="button" className="toolbar__zoom-pct" onClick={() => setZoom(1)} title="Zoom herstellen">
+            {Math.round(zoom * 100)}%
+          </button>
+          <button type="button" className="pill-btn pill-btn--icon" onClick={() => setZoom((z) => Math.min(5, z * 1.2))} title="Inzoomen">
+            <IconPlus size={14} />
+          </button>
+        </div>
+      )}
+      {/* De miniatuurstrip is duur om te tekenen; in volledig scherm laten we
+          hem helemaal weg (hij is daar toch verborgen) — dat scheelt bij grote
+          documenten flink in snelheid. */}
+      {!presentationMode && (
       <div className="editor-rail">
         {group.pages.map((page, i) => (
           <div key={page.id} className="editor-rail__slot">
@@ -471,6 +488,7 @@ export default function EditorView({ groupId }: Props): JSX.Element | null {
         ))}
         {railDrag && railDrag.toIndex === group.pages.length && <div className="editor-rail__indicator" />}
       </div>
+      )}
 
       <div className="editor-center" ref={centerRef}>
         <div className="editor-center__bar">

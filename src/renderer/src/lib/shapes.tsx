@@ -9,7 +9,46 @@ export const SHAPE_LABELS: Record<ShapeKind, string> = {
   arrow: 'Pijl',
   line: 'Lijn',
   rect: 'Rechthoek',
-  ellipse: 'Ovaal'
+  ellipse: 'Ovaal',
+  triangle: 'Driehoek',
+  callout: 'Tekstballon'
+}
+
+/** Hoekpunten van een driehoek binnen het slepende kader (apex boven-midden). */
+export function trianglePoints(p1: Point, p2: Point): [Point, Point, Point] {
+  const left = Math.min(p1.x, p2.x)
+  const right = Math.max(p1.x, p2.x)
+  const top = Math.min(p1.y, p2.y)
+  const bottom = Math.max(p1.y, p2.y)
+  return [
+    { x: (left + right) / 2, y: top },
+    { x: right, y: bottom },
+    { x: left, y: bottom }
+  ]
+}
+
+/**
+ * Pad-punten van een tekstballon (afgeronde rechthoek met een tekstwijzer
+ * linksonder). Geeft de omtrek als lijst punten terug — geschikt voor SVG én
+ * pdf-lib (die het pad zelf sluit).
+ */
+export function calloutPoints(p1: Point, p2: Point): Point[] {
+  const left = Math.min(p1.x, p2.x)
+  const right = Math.max(p1.x, p2.x)
+  const top = Math.min(p1.y, p2.y)
+  const rawBottom = Math.max(p1.y, p2.y)
+  // Onderste 22% is gereserveerd voor de wijzer.
+  const bodyBottom = rawBottom - (rawBottom - top) * 0.22
+  const tailX = left + (right - left) * 0.28
+  return [
+    { x: left, y: top },
+    { x: right, y: top },
+    { x: right, y: bodyBottom },
+    { x: tailX + (right - left) * 0.14, y: bodyBottom },
+    { x: left + (right - left) * 0.18, y: rawBottom }, // wijzerpunt
+    { x: tailX, y: bodyBottom },
+    { x: left, y: bodyBottom }
+  ]
 }
 
 export interface StampPreset {
@@ -63,6 +102,13 @@ export function ShapePreviewIcon({ kind, size = 15 }: { kind: ShapeKind; size?: 
       {kind === 'line' && <line x1={3} y1={13} x2={13} y2={3} {...s} />}
       {kind === 'rect' && <rect x={2.5} y={4} width={11} height={8} rx={1} {...s} strokeLinejoin="round" />}
       {kind === 'ellipse' && <ellipse cx={8} cy={8} rx={5.5} ry={4} {...s} />}
+      {kind === 'triangle' && <polygon points="8,3 14,13 2,13" {...s} strokeLinejoin="round" />}
+      {kind === 'callout' && (
+        <>
+          <rect x={2} y={3} width={12} height={7.5} rx={1.5} {...s} strokeLinejoin="round" />
+          <polyline points="5,10.5 4,14 7.5,10.5" {...s} strokeLinejoin="round" />
+        </>
+      )}
     </svg>
   )
 }
@@ -107,6 +153,14 @@ export function ShapeGeometry({
         {...stroke}
       />
     )
+  }
+  if (shape === 'triangle') {
+    const pts = trianglePoints(p1, p2)
+    return <polygon points={pts.map((p) => `${p.x},${p.y}`).join(' ')} {...stroke} strokeLinejoin="round" />
+  }
+  if (shape === 'callout') {
+    const pts = calloutPoints(p1, p2)
+    return <polygon points={pts.map((p) => `${p.x},${p.y}`).join(' ')} {...stroke} strokeLinejoin="round" />
   }
   const head = shape === 'arrow' ? arrowHeadPoints(p1, p2, strokeWidth) : null
   return (

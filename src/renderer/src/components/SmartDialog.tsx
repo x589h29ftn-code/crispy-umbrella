@@ -517,12 +517,9 @@ export default function SmartDialog(): JSX.Element | null {
                   setBusy(true)
                   void exportTablesToXlsx()
                     .then((r) => {
-                      if (r.ok) {
-                        addToast('success', `Tabel geëxporteerd naar Excel (${r.sheets} werkblad${r.sheets === 1 ? '' : 'en'})`)
-                        setOpen(false)
-                      } else {
-                        addToast('error', r.reason ?? 'Exporteren naar Excel is mislukt')
-                      }
+                      // saveWorkbook toont zelf de melding met "Open Excel-bestand"-knop.
+                      if (r.ok) setOpen(false)
+                      else addToast('error', r.reason ?? 'Exporteren naar Excel is mislukt')
                     })
                     .finally(() => setBusy(false))
                 }}

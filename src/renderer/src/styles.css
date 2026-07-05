@@ -80,6 +80,33 @@ body {
   height: 100vh;
 }
 
+/* Zwevende knop om de verborgen werkbalk terug te halen. */
+.toolbar-restore {
+  position: fixed;
+  top: 50%;
+  left: 0;
+  transform: translateY(-50%);
+  z-index: 40;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  height: 54px;
+  padding: 0;
+  border: 1px solid var(--border-soft);
+  border-left: none;
+  border-radius: 0 8px 8px 0;
+  background: var(--panel);
+  color: var(--text-dim);
+  cursor: pointer;
+  box-shadow: 2px 0 8px rgba(0, 0, 0, 0.12);
+}
+
+.toolbar-restore:hover {
+  color: var(--text);
+  background: var(--panel-hover, var(--panel));
+}
+
 .app-main {
   flex: 1;
   min-width: 0;
@@ -994,6 +1021,25 @@ body {
 
 .toast__message {
   flex: 1;
+}
+
+/* Actieknop in een melding (bv. "Open Excel-bestand"). */
+.toast__action {
+  flex: 0 0 auto;
+  padding: 4px 10px;
+  border: 1px solid rgba(255, 255, 255, 0.35);
+  border-radius: 6px;
+  background: rgba(255, 255, 255, 0.14);
+  color: inherit;
+  font: inherit;
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.toast__action:hover {
+  background: rgba(255, 255, 255, 0.26);
 }
 
 /* Modal (password dialog) */
@@ -3557,6 +3603,30 @@ button.group-row__date:hover {
 }
 
 .presentation-exit:hover {
+  opacity: 1;
+}
+
+/* Zwevende zoomknoppen in volledig scherm — zodat je kunt in-/uitzoomen
+   zonder de modus te verlaten. */
+.presentation-zoom {
+  position: fixed;
+  bottom: 18px;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 120;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 4px 6px;
+  border-radius: 999px;
+  background: var(--panel);
+  border: 1px solid var(--border-soft);
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.22);
+  opacity: 0.55;
+  transition: opacity 0.15s ease;
+}
+
+.presentation-zoom:hover {
   opacity: 1;
 }
 

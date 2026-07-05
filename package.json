@@ -1,7 +1,7 @@
 {
   "name": "pdf-studio",
   "productName": "PDF Studio",
-  "version": "1.8.1",
+  "version": "1.9.0",
   "description": "PDF Studio - PDF's samenvoegen, splitsen en pagina's beheren",
   "main": "./out/main/index.js",
   "author": "PDF Studio",

@@ -167,7 +167,8 @@ interface ReportPageDiff {
   pageNumber: number
   removed: string[]
   added: string[]
-  changed: string[]
+  changedOld: string[]
+  changedNew: string[]
   numbers: NumberChange[]
 }
 interface ReportChapter {
@@ -215,7 +216,8 @@ export async function exportDiffReport(left: DocGroup, right: DocGroup, sources:
         pageNumber: i + 1,
         removed: diff.left.filter((d) => d.kind === 'removed').map((d) => d.text),
         added: diff.right.filter((d) => d.kind === 'added').map((d) => d.text),
-        changed: [...diff.left.filter((d) => d.kind === 'changed').map((d) => d.text)],
+        changedOld: diff.left.filter((d) => d.kind === 'changed').map((d) => d.text),
+        changedNew: diff.right.filter((d) => d.kind === 'changed').map((d) => d.text),
         numbers: diff.numbers
       })
     }
@@ -232,7 +234,11 @@ export async function exportDiffReport(left: DocGroup, right: DocGroup, sources:
     const M = 56
     const ink = rgb(0.13, 0.15, 0.19)
     const dim = rgb(0.45, 0.48, 0.54)
-    const yellow = rgb(0.98, 0.85, 0.3)
+    const red = rgb(0.72, 0.15, 0.15)
+    const green = rgb(0.1, 0.5, 0.22)
+    const amber = rgb(0.72, 0.5, 0.05)
+    // Alleen tekst mag geen rare tekens bevatten die het subset-font niet kent.
+    const clean = (s: string): string => s.replace(/[→⇒]/g, '->').replace(/[^\x09\x0A\x0D\x20-￿]/g, '')
 
     let page = doc.addPage([W, H])
     let y = H - M
@@ -242,17 +248,22 @@ export async function exportDiffReport(left: DocGroup, right: DocGroup, sources:
         y = H - M
       }
     }
-    // Schrijft een (afbrekende) regel; optioneel met gele markering erachter.
-    const write = (text: string, font = regular, size = 10.5, color = ink, indent = 0, mark = false): void => {
+    // Schrijft een (afbrekende) regel; met een optionele gekleurde balk links
+    // (rood = verwijderd, groen = toegevoegd, geel = gewijzigd) i.p.v. een vlak.
+    const write = (
+      text: string,
+      opts: { font?: typeof regular; size?: number; color?: typeof ink; indent?: number; bar?: typeof ink } = {}
+    ): void => {
+      const font = opts.font ?? regular
+      const size = opts.size ?? 10.5
+      const color = opts.color ?? ink
+      const indent = opts.indent ?? 0
       const maxW = W - M * 2 - indent
-      const words = text.split(/\s+/)
+      const words = clean(text).split(/\s+/)
       let cur = ''
       const flush = (): void => {
         ensure(size + 4)
-        if (mark) {
-          const w = font.widthOfTextAtSize(cur, size)
-          page.drawRectangle({ x: M + indent - 1, y: y - size, width: w + 2, height: size + 3, color: yellow, opacity: 0.55 })
-        }
+        if (opts.bar) page.drawRectangle({ x: M + indent - 8, y: y - size, width: 2.5, height: size + 2, color: opts.bar })
         page.drawText(cur, { x: M + indent, y: y - size, size, font, color })
         y -= size + 4
       }
@@ -265,13 +276,30 @@ export async function exportDiffReport(left: DocGroup, right: DocGroup, sources:
       }
       if (cur) flush()
     }
+    // Kleine sectiekop met gekleurd bolletje ("Verwijderd" / "Toegevoegd" / ...).
+    const sectionTag = (label: string, color: typeof ink): void => {
+      ensure(16)
+      page.drawRectangle({ x: M + 4, y: y - 10, width: 8, height: 8, color })
+      page.drawText(label, { x: M + 18, y: y - 10, size: 9.5, font: bold, color })
+      y -= 16
+    }
 
     // Cover.
     page.drawText('Verschilrapport', { x: M, y: y - 26, size: 26, font: bold, color: ink })
-    y -= 44
-    write(`${left.name}   ↔   ${right.name}`, regular, 12, dim)
-    write(`${total} wijziging${total === 1 ? '' : 'en'} in ${changedChapters.length} hoofdstuk${changedChapters.length === 1 ? '' : 'ken'}`, regular, 11, dim)
-    y -= 12
+    y -= 46
+    write(`${left.name}   →   ${right.name}`, { size: 12, color: dim })
+    write(
+      `${total} wijziging${total === 1 ? '' : 'en'} in ${changedChapters.length} hoofdstuk${changedChapters.length === 1 ? '' : 'ken'}`,
+      { size: 11, color: dim }
+    )
+    y -= 14
+    // Legenda met de kleurcodering.
+    write('Legenda', { font: bold, size: 11 })
+    y -= 2
+    sectionTag('Verwijderd (oude tekst)', red)
+    sectionTag('Toegevoegd (nieuwe tekst)', green)
+    sectionTag('Gewijzigd / gewijzigd bedrag', amber)
+    y -= 14
 
     // Inhoudsopgave (paginanummers worden na de opbouw ingevuld).
     ensure(30)
@@ -279,10 +307,13 @@ export async function exportDiffReport(left: DocGroup, right: DocGroup, sources:
     y -= 30
     const tocSlots: { title: string; count: number; page: typeof page; y: number }[] = []
     if (!changedChapters.length) {
-      write('Geen verschillen gevonden — de documenten zijn gelijk.', regular, 11, dim)
+      write('Geen verschillen gevonden — de documenten zijn gelijk.', { size: 11, color: dim })
     }
     for (const ch of changedChapters) {
-      const changes = ch.pages.reduce((n, p) => n + p.removed.length + p.added.length + p.changed.length + p.numbers.length, 0)
+      const changes = ch.pages.reduce(
+        (n, p) => n + p.removed.length + p.added.length + Math.max(p.changedOld.length, p.changedNew.length) + p.numbers.length,
+        0
+      )
       ensure(18)
       tocSlots.push({ title: ch.title, count: changes, page, y })
       y -= 18
@@ -294,26 +325,45 @@ export async function exportDiffReport(left: DocGroup, right: DocGroup, sources:
     const pageIndexOf = new Map<typeof page, number>()
     doc.getPages().forEach((p, idx) => pageIndexOf.set(p, idx))
     for (const ch of changedChapters) {
-      ensure(40)
+      ensure(44)
       pageIndexOf.clear()
       doc.getPages().forEach((p, idx) => pageIndexOf.set(p, idx))
       chapterStartPage.set(ch.title, (pageIndexOf.get(page) ?? 0) + 1)
-      page.drawText(ch.title, { x: M, y: y - 15, size: 15, font: bold, color: ink })
-      y -= 26
-      for (const pd of ch.pages) {
-        ensure(24)
-        write(`Pagina ${pd.pageNumber}`, bold, 11.5, rgb(0.1, 0.12, 0.16))
-        for (const t of pd.changed) {
-          write(`~ ${t}`, regular, 10, ink, 8, true)
-        }
-        for (const nc of pd.numbers) {
-          write(`€ ${nc.label}: ${nc.from} → ${nc.to}`, bold, 10, rgb(0.13, 0.3, 0.6), 8, true)
-        }
-        for (const t of pd.removed) write(`Was:  ${t}`, regular, 9.5, rgb(0.6, 0.16, 0.16), 8)
-        for (const t of pd.added) write(`Werd: ${t}`, regular, 9.5, rgb(0.13, 0.45, 0.2), 8, true)
-        y -= 4
-      }
+      page.drawText(clean(ch.title), { x: M, y: y - 15, size: 15, font: bold, color: ink })
       y -= 8
+      page.drawRectangle({ x: M, y: y - 2, width: W - M * 2, height: 1.5, color: rgb(0.85, 0.87, 0.9) })
+      y -= 18
+      for (const pd of ch.pages) {
+        ensure(30)
+        write(`Pagina ${pd.pageNumber}`, { font: bold, size: 11.5, color: rgb(0.1, 0.12, 0.16) })
+        y -= 2
+        // Gewijzigde regels: oude tekst (rood) met daaronder de nieuwe tekst (groen).
+        const pairs = Math.max(pd.changedOld.length, pd.changedNew.length)
+        if (pairs) {
+          sectionTag('Gewijzigd', amber)
+          for (let k = 0; k < pairs; k += 1) {
+            if (pd.changedOld[k]) write(`Oud:    ${pd.changedOld[k]}`, { size: 9.5, color: red, indent: 8, bar: red })
+            if (pd.changedNew[k]) write(`Nieuw:  ${pd.changedNew[k]}`, { size: 9.5, color: green, indent: 8, bar: green })
+            y -= 3
+          }
+        }
+        if (pd.removed.length) {
+          sectionTag('Verwijderd', red)
+          for (const t of pd.removed) write(t, { size: 9.5, color: red, indent: 8, bar: red })
+        }
+        if (pd.added.length) {
+          sectionTag('Toegevoegd', green)
+          for (const t of pd.added) write(t, { size: 9.5, color: green, indent: 8, bar: green })
+        }
+        if (pd.numbers.length) {
+          sectionTag('Gewijzigd bedrag', amber)
+          for (const nc of pd.numbers) {
+            write(`${nc.label}:   ${nc.from}   →   ${nc.to}`, { font: bold, size: 10, color: amber, indent: 8, bar: amber })
+          }
+        }
+        y -= 8
+      }
+      y -= 10
     }
 
     // Inhoudsopgave-paginanummers invullen.

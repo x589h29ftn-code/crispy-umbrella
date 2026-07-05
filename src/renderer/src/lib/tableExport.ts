@@ -1,5 +1,6 @@
 import { useStudioStore } from '../store'
 import { getTextItems, type TextItem } from './textLines'
+import { makeSheet, saveWorkbook } from './xlsxUtil'
 import type { DocGroup, SourceFile } from '../types'
 
 /**
@@ -85,7 +86,7 @@ export async function exportTablesToXlsx(): Promise<{ ok: boolean; sheets: numbe
     if (!items.length) continue
     const grid = trimGrid(itemsToGrid(items))
     if (!grid.length) continue
-    const ws = XLSX.utils.aoa_to_sheet(grid)
+    const ws = makeSheet(XLSX, grid)
     let name = `Pagina ${i + 1}`
     let n = 2
     while (usedNames.has(name)) name = `Pagina ${i + 1} (${n++})`
@@ -96,9 +97,12 @@ export async function exportTablesToXlsx(): Promise<{ ok: boolean; sheets: numbe
 
   if (!sheets) return { ok: false, sheets: 0, reason: 'Geen tekst gevonden om als tabel te exporteren (scan? gebruik eerst OCR)' }
 
-  const out = XLSX.write(wb, { type: 'array', bookType: 'xlsx' }) as ArrayBuffer
-  const bytes = new Uint8Array(out)
   const base = group.name.replace(/\.pdf$/i, '').replace(/[\\/:*?"<>|]/g, '_') || 'tabel'
-  const result = await window.api.saveFile(`${base}.xlsx`, bytes, 'xlsx')
-  return { ok: Boolean(result.saved), sheets }
+  const ok = await saveWorkbook(
+    XLSX,
+    wb,
+    `${base}.xlsx`,
+    `Tabel geëxporteerd naar Excel (${sheets} werkblad${sheets === 1 ? '' : 'en'})`
+  )
+  return { ok, sheets }
 }

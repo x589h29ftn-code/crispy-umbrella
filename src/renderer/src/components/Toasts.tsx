@@ -12,6 +12,18 @@ export default function Toasts(): JSX.Element | null {
       {toasts.map((toast) => (
         <div key={toast.id} className={`toast toast--${toast.kind}`}>
           <span className="toast__message">{toast.message}</span>
+          {toast.action && (
+            <button
+              type="button"
+              className="toast__action"
+              onClick={() => {
+                toast.action?.run()
+                dismissToast(toast.id)
+              }}
+            >
+              {toast.action.label}
+            </button>
+          )}
           <button
             type="button"
             className="icon-btn icon-btn--chrome"

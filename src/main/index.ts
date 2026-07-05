@@ -391,6 +391,12 @@ app.whenReady().then(() => {
     return { ok: true, fallback: true }
   })
 
+  // Opent een bestand in de standaard-app (bv. het geëxporteerde Excel-bestand).
+  ipcMain.handle('shell:openPath', async (_evt, path: string) => {
+    const err = await shell.openPath(path)
+    return { ok: !err, error: err || undefined }
+  })
+
   // Overschrijft een bestaand bestand rechtstreeks (Ctrl+S → opslaan naar bron).
   ipcMain.handle('dialog:savePdfToPath', async (_evt, path: string, data: Uint8Array) => {
     try {

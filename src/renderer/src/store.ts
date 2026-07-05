@@ -13,6 +13,8 @@ export interface Toast {
   id: string
   kind: 'info' | 'success' | 'error'
   message: string
+  /** Optionele actieknop, bv. "Open Excel-bestand". */
+  action?: { label: string; run: () => void }
 }
 
 export interface PasswordRequest {
@@ -78,6 +80,7 @@ const READER_VIEW_STORAGE_KEY = 'pdf-studio-reader-view'
 const NIGHT_MODE_STORAGE_KEY = 'pdf-studio-night-mode'
 const FLATTEN_STORAGE_KEY = 'pdf-studio-flatten-forms'
 const CLEAN_META_STORAGE_KEY = 'pdf-studio-clean-metadata'
+const TOOLBAR_HIDDEN_STORAGE_KEY = 'pdf-studio-toolbar-hidden'
 
 function getInitialReaderView(): 'scroll' | 'spread' | 'single' {
   const v = window.localStorage.getItem(READER_VIEW_STORAGE_KEY)
@@ -155,7 +158,7 @@ interface StudioState {
   toggleSelectPage: (pageId: string) => void
   rangeSelectPage: (pageId: string) => void
   clearSelection: () => void
-  addToast: (kind: Toast['kind'], message: string) => void
+  addToast: (kind: Toast['kind'], message: string, action?: Toast['action']) => void
   dismissToast: (id: string) => void
   submitPassword: (password: string | null) => void
   setBusyExport: (busy: 'pdf' | 'zip' | null) => void
@@ -207,6 +210,9 @@ interface StudioState {
   /** Presentatiemodus: alles verbergen behalve de pagina's. */
   presentationMode: boolean
   setPresentationMode: (on: boolean) => void
+  /** Werkbalk (zijbalk) volledig verbergen voor meer documentruimte. */
+  toolbarHidden: boolean
+  setToolbarHidden: (hidden: boolean) => void
   /** Nachtmodus: pagina-kleuren omkeren tijdens het lezen (niet in de export). */
   readerNightMode: boolean
   setReaderNightMode: (on: boolean) => void
@@ -486,10 +492,11 @@ export const useStudioStore = create<StudioState>((set, get) => ({
 
   clearSelection: () => set({ selectedPageIds: new Set(), lastSelectedPageId: null }),
 
-  addToast: (kind, message) => {
+  addToast: (kind, message, action) => {
     const id = nanoid()
-    set((state) => ({ toasts: [...state.toasts, { id, kind, message }] }))
-    window.setTimeout(() => get().dismissToast(id), 4500)
+    set((state) => ({ toasts: [...state.toasts, { id, kind, message, action }] }))
+    // Meldingen met een actieknop blijven langer staan zodat je erop kunt klikken.
+    window.setTimeout(() => get().dismissToast(id), action ? 12000 : 4500)
   },
 
   dismissToast: (id) => {
@@ -956,6 +963,11 @@ export const useStudioStore = create<StudioState>((set, get) => ({
   setRemarkableDialogOpen: (open) => set({ remarkableDialogOpen: open }),
   presentationMode: false,
   setPresentationMode: (on) => set({ presentationMode: on }),
+  toolbarHidden: window.localStorage.getItem(TOOLBAR_HIDDEN_STORAGE_KEY) === '1',
+  setToolbarHidden: (hidden) => {
+    window.localStorage.setItem(TOOLBAR_HIDDEN_STORAGE_KEY, hidden ? '1' : '0')
+    set({ toolbarHidden: hidden })
+  },
   readerNightMode: window.localStorage.getItem(NIGHT_MODE_STORAGE_KEY) === '1',
   setReaderNightMode: (on) => {
     window.localStorage.setItem(NIGHT_MODE_STORAGE_KEY, on ? '1' : '0')

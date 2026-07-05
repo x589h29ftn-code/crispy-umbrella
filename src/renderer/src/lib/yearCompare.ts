@@ -1,5 +1,6 @@
 import { useStudioStore } from '../store'
 import { diffPages } from './pdfDiff'
+import { makeSheet, saveWorkbook } from './xlsxUtil'
 import type { DocGroup, SourceFile } from '../types'
 
 /**
@@ -44,10 +45,8 @@ export async function exportYearComparisonXlsx(
     }
     const XLSX = await import('@e965/xlsx')
     const wb = XLSX.utils.book_new()
-    XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(rows), 'Jaar-op-jaar')
-    const bytes = new Uint8Array(XLSX.write(wb, { type: 'array', bookType: 'xlsx' }) as ArrayBuffer)
-    const result = await window.api.saveFile('Jaar-op-jaar.xlsx', bytes, 'xlsx')
-    if (result.saved) state.addToast('success', `Jaar-op-jaar-overzicht opgeslagen (${rows.length - 1} regels)`)
+    XLSX.utils.book_append_sheet(wb, makeSheet(XLSX, rows, { header: true }), 'Jaar-op-jaar')
+    await saveWorkbook(XLSX, wb, 'Jaar-op-jaar.xlsx', `Jaar-op-jaar-overzicht opgeslagen (${rows.length - 1} regels)`)
   } catch {
     state.addToast('error', 'Jaar-op-jaar-export is mislukt')
   }

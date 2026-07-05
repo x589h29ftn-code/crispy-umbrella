@@ -45,6 +45,7 @@ const api = {
     ipcRenderer.invoke('dialog:savePdfToPath', path, data),
   saveToOneDrive: (defaultName: string, data: Uint8Array): Promise<SaveResult & { reason?: string }> =>
     ipcRenderer.invoke('onedrive:savePdf', defaultName, data),
+  openPath: (path: string): Promise<{ ok: boolean; error?: string }> => ipcRenderer.invoke('shell:openPath', path),
   mailPdf: (name: string, data: Uint8Array): Promise<{ ok: boolean; fallback?: boolean }> =>
     ipcRenderer.invoke('mail:pdf', name, data),
   openDocumentWindow: (payload: unknown): Promise<{ ok: boolean }> =>

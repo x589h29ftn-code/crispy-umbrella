@@ -68,7 +68,7 @@ export interface RedactAnnotation {
   fill: 'black' | 'white'
 }
 
-export type ShapeKind = 'arrow' | 'line' | 'rect' | 'ellipse'
+export type ShapeKind = 'arrow' | 'line' | 'rect' | 'ellipse' | 'triangle' | 'callout'
 
 export interface ShapeAnnotation {
   id: string

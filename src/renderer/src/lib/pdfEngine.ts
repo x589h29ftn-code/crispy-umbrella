@@ -25,7 +25,7 @@ import openSansBoldUrl from '../assets/fonts/OpenSans-Bold.ttf?url'
 import openSansItalicUrl from '../assets/fonts/OpenSans-Italic.ttf?url'
 import openSansBoldItalicUrl from '../assets/fonts/OpenSans-BoldItalic.ttf?url'
 import { getOcr } from './ocrStore'
-import { arrowHeadPoints } from './shapes'
+import { arrowHeadPoints, trianglePoints, calloutPoints } from './shapes'
 import type {
   AnnotationFont,
   DocGroup,
@@ -602,6 +602,20 @@ async function buildPdf(group: DocGroup, sources: Map<string, SourceFile>, optio
               yScale: Math.abs(b.y - a.y) / 2,
               borderColor: color,
               borderWidth: thickness
+            })
+          } else if (annotation.shape === 'triangle' || annotation.shape === 'callout') {
+            // Vorm in visuele ruimte opbouwen (y-omlaag), net als op het scherm,
+            // en via drawSvgPath op de pagina tekenen (identieke mapping als inkt).
+            const va = { x: a.x, y: -a.y }
+            const vb = { x: b.x, y: -b.y }
+            const pts = annotation.shape === 'triangle' ? trianglePoints(va, vb) : calloutPoints(va, vb)
+            const d = pts.map((p, i) => `${i === 0 ? 'M' : 'L'} ${p.x},${p.y}`).join(' ') + ' Z'
+            targetPage.drawSvgPath(d, {
+              x: 0,
+              y: 0,
+              borderColor: color,
+              borderWidth: thickness,
+              borderLineCap: LineCapStyle.Round
             })
           } else {
             targetPage.drawLine({ start: a, end: b, color, thickness, lineCap: LineCapStyle.Round })

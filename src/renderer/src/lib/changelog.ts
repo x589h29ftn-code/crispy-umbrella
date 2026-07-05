@@ -4,6 +4,16 @@
  */
 export const APP_CHANGELOG: { version: string; items: string[] }[] = [
   {
+    version: '1.9.0',
+    items: [
+      'Vernieuwd verschilrapport: kleurcodering (rood = verwijderd, groen = toegevoegd, geel = gewijzigd), oude en nieuwe tekst netjes onder elkaar, een kop per hoofdstuk met paginaverwijzing en een legenda — professioneel om te delen (geen gele "markeerstift-vlek" meer)',
+      'Excel-export mooier: getallen, bedragen, percentages en datums komen als échte waarden binnen (niet als tekst), met automatische kolombreedtes en een filterbare kopregel. Na het exporteren verschijnt een knop "Open Excel-bestand"',
+      'Meer vormen om te tekenen: naast de pijl nu ook rechthoek, ovaal/cirkel, lijn, driehoek en een tekstballon (callout). Vrij tekenen kan met het penseel',
+      'Werkbalk verbergen: klik op het kruisje in de zijbalk voor maximale documentruimte; een klein lipje links brengt de werkbalk terug',
+      'In volledig scherm kun je nu in- en uitzoomen zonder de modus te verlaten (zwevende zoomknoppen én Ctrl+scrollen), en volledig scherm opent sneller bij grote documenten'
+    ]
+  },
+  {
     version: '1.8.1',
     items: [
       'Bij gescande documenten verschijnt nu een duidelijke melding met een knop "Nu OCR uitvoeren" voordat je tekst, tabellen, vergelijken of de privacy-scan gebruikt',

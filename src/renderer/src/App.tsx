@@ -11,6 +11,7 @@ import StatusBar from './components/StatusBar'
 import ShortcutsDialog from './components/ShortcutsDialog'
 import PreferencesDialog from './components/PreferencesDialog'
 import TrashPanel from './components/TrashPanel'
+import { IconChevronRight } from './components/icons'
 import { exportAllZip, saveActiveToSource } from './lib/exportActions'
 
 // Zware overlays worden pas geladen wanneer ze echt geopend worden. Zo blijft
@@ -41,6 +42,8 @@ export default function App(): JSX.Element {
   const activeEditorTab = useStudioStore((s) => s.activeEditorTab)
   const presentationMode = useStudioStore((s) => s.presentationMode)
   const readerNightMode = useStudioStore((s) => s.readerNightMode)
+  const toolbarHidden = useStudioStore((s) => s.toolbarHidden)
+  const setToolbarHidden = useStudioStore((s) => s.setToolbarHidden)
 
   // Open-vlaggen bepalen welke zware overlay-brokken geladen worden.
   const lightboxOpen = useStudioStore((s) => s.lightbox.open)
@@ -123,13 +126,26 @@ export default function App(): JSX.Element {
 
   return (
     <div className={`app${presentationMode ? ' app--presentation' : ''}${readerNightMode ? ' app--night' : ''}`}>
-      <Toolbar
-        zoomPct={zoomPct}
-        onZoomIn={() => controlsRef.current?.zoomBy(1.2)}
-        onZoomOut={() => controlsRef.current?.zoomBy(1 / 1.2)}
-        onZoomReset={() => controlsRef.current?.zoomTo(1)}
-        onZoomTo={(scale) => controlsRef.current?.zoomTo(scale)}
-      />
+      {!toolbarHidden && (
+        <Toolbar
+          zoomPct={zoomPct}
+          onZoomIn={() => controlsRef.current?.zoomBy(1.2)}
+          onZoomOut={() => controlsRef.current?.zoomBy(1 / 1.2)}
+          onZoomReset={() => controlsRef.current?.zoomTo(1)}
+          onZoomTo={(scale) => controlsRef.current?.zoomTo(scale)}
+        />
+      )}
+      {toolbarHidden && (
+        <button
+          type="button"
+          className="toolbar-restore"
+          onClick={() => setToolbarHidden(false)}
+          title="Werkbalk tonen"
+          aria-label="Werkbalk tonen"
+        >
+          <IconChevronRight size={16} />
+        </button>
+      )}
       <main className="app-main">
         <TabStrip />
         {activeEditorTab ? (

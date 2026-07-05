@@ -98,6 +98,7 @@ export default function Toolbar({ zoomPct, onZoomIn, onZoomOut, onZoomReset, onZ
   const setShortcutsOpen = useStudioStore((s) => s.setShortcutsOpen)
   const setPreferencesOpen = useStudioStore((s) => s.setPreferencesOpen)
   const setTrashPanelOpen = useStudioStore((s) => s.setTrashPanelOpen)
+  const setToolbarHidden = useStudioStore((s) => s.setToolbarHidden)
   const trashCount = useStudioStore((s) => s.trash.length)
   const [showPasswordField, setShowPasswordField] = useState(false)
   const [sigMenuOpen, setSigMenuOpen] = useState(false)
@@ -154,6 +155,16 @@ export default function Toolbar({ zoomPct, onZoomIn, onZoomOut, onZoomReset, onZ
     <aside className={`sidebar${collapsed ? ' sidebar--collapsed' : ''}`}>
       <div className="sidebar__top">
         {!collapsed && <span className="sidebar__title">PDF Studio</span>}
+        {!collapsed && (
+          <button
+            type="button"
+            className="icon-btn icon-btn--chrome sidebar__collapse"
+            onClick={() => setToolbarHidden(true)}
+            title="Werkbalk verbergen (meer documentruimte)"
+          >
+            <IconClose size={14} />
+          </button>
+        )}
         <button
           type="button"
           className="icon-btn icon-btn--chrome sidebar__collapse"
