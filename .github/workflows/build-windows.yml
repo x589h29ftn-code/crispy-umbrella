@@ -25,16 +25,24 @@ jobs:
         # which fails without a GH_TOKEN; the upload-artifact step below is our
         # distribution channel instead.
         #
-        # Code signing: electron-builder ondertekent automatisch zodra de secrets
-        # WINDOWS_CSC_LINK (base64 van het .pfx-certificaat) en
-        # WINDOWS_CSC_KEY_PASSWORD in de repo staan. Zonder die secrets zijn deze
-        # variabelen leeg en wordt de build gewoon ongetekend gemaakt (zoals nu).
-        # Zie CODE-SIGNING.md voor het toevoegen van een certificaat of Azure
-        # Trusted Signing. Dit haalt de Windows SmartScreen-waarschuwing weg.
+        # Code signing: als de secrets WINDOWS_CSC_LINK (base64 van het
+        # .pfx-certificaat) en WINDOWS_CSC_KEY_PASSWORD bestaan, wordt de build
+        # automatisch ondertekend. Zonder die secrets wordt CSC_LINK NIET gezet
+        # (een lege CSC_LINK laat electron-builder crashen) en is de build gewoon
+        # ongetekend. Zie CODE-SIGNING.md. Dit haalt de SmartScreen-waarschuwing weg.
+        shell: bash
         env:
-          CSC_LINK: ${{ secrets.WINDOWS_CSC_LINK }}
-          CSC_KEY_PASSWORD: ${{ secrets.WINDOWS_CSC_KEY_PASSWORD }}
-        run: npm run build:win -- --publish never
+          CSC_LINK_SECRET: ${{ secrets.WINDOWS_CSC_LINK }}
+          CSC_KEY_PASSWORD_SECRET: ${{ secrets.WINDOWS_CSC_KEY_PASSWORD }}
+        run: |
+          if [ -n "$CSC_LINK_SECRET" ]; then
+            echo "Certificaat gevonden — installer wordt ondertekend."
+            export CSC_LINK="$CSC_LINK_SECRET"
+            export CSC_KEY_PASSWORD="$CSC_KEY_PASSWORD_SECRET"
+          else
+            echo "Geen certificaat-secret — ongetekende build."
+          fi
+          npm run build:win -- --publish never
 
       - name: Upload installer artifact
         uses: actions/upload-artifact@v4
