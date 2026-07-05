@@ -14,6 +14,7 @@ import {
   IconBookmark,
   IconComment,
   IconDownload,
+  IconExpand,
   IconFolderOpen,
   IconLock,
   IconMinus,
@@ -28,6 +29,9 @@ import {
   IconSignature,
   IconSparkles,
   IconSun,
+  IconSettings,
+  IconKeyboard,
+  IconTrash,
   IconUndo
 } from './icons'
 
@@ -89,6 +93,10 @@ export default function Toolbar({ zoomPct, onZoomIn, onZoomOut, onZoomReset, onZ
   const openCompare = useStudioStore((s) => s.openCompare)
   const setPrivacyScanOpen = useStudioStore((s) => s.setPrivacyScanOpen)
   const setSmartDialogOpen = useStudioStore((s) => s.setSmartDialogOpen)
+  const setShortcutsOpen = useStudioStore((s) => s.setShortcutsOpen)
+  const setPreferencesOpen = useStudioStore((s) => s.setPreferencesOpen)
+  const setTrashPanelOpen = useStudioStore((s) => s.setTrashPanelOpen)
+  const trashCount = useStudioStore((s) => s.trash.length)
   const [showPasswordField, setShowPasswordField] = useState(false)
   const [sigMenuOpen, setSigMenuOpen] = useState(false)
   const [collapsed, setCollapsed] = useState(() => window.localStorage.getItem(SIDEBAR_STORAGE_KEY) === '1')
@@ -425,6 +433,19 @@ export default function Toolbar({ zoomPct, onZoomIn, onZoomOut, onZoomReset, onZ
       <button
         type="button"
         className="sidebar-btn"
+        disabled={!activeGroup}
+        onClick={() =>
+          activeGroup &&
+          void import('../lib/detachWindow').then((m) => m.openDocumentInNewWindow(activeGroup.id))
+        }
+        title="Open het actieve document in een eigen venster"
+      >
+        <IconExpand size={15} />
+        <span className="sidebar-btn__label">Los venster</span>
+      </button>
+      <button
+        type="button"
+        className="sidebar-btn"
         disabled={!activeGroup || busyExport !== null}
         onClick={() => void exportActivePdf()}
         title="Exporteer het actieve document als PDF"
@@ -441,6 +462,36 @@ export default function Toolbar({ zoomPct, onZoomIn, onZoomOut, onZoomReset, onZ
       >
         <IconArchive size={15} />
         <span className="sidebar-btn__label">{busyExport === 'zip' ? 'Bezig…' : 'Exporteer zip'}</span>
+      </button>
+
+      <div className="sidebar__divider" />
+
+      <button
+        type="button"
+        className="sidebar-btn"
+        onClick={() => setTrashPanelOpen(true)}
+        title="Prullenbak: verwijderde pagina's terughalen"
+      >
+        <IconTrash size={15} />
+        <span className="sidebar-btn__label">Prullenbak{trashCount > 0 ? ` (${trashCount})` : ''}</span>
+      </button>
+      <button
+        type="button"
+        className="sidebar-btn"
+        onClick={() => setShortcutsOpen(true)}
+        title="Sneltoetsen-overzicht (?)"
+      >
+        <IconKeyboard size={15} />
+        <span className="sidebar-btn__label">Sneltoetsen</span>
+      </button>
+      <button
+        type="button"
+        className="sidebar-btn"
+        onClick={() => setPreferencesOpen(true)}
+        title="Voorkeuren"
+      >
+        <IconSettings size={15} />
+        <span className="sidebar-btn__label">Voorkeuren</span>
       </button>
     </aside>
   )

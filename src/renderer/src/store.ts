@@ -20,6 +20,14 @@ export interface PasswordRequest {
   attempt: number
 }
 
+/** Een verwijderde pagina die in de prullenbak wacht om teruggehaald te worden. */
+export interface TrashedPage {
+  id: string
+  page: PageRef
+  groupId: string
+  groupName: string
+}
+
 export type DropTarget =
   | { type: 'slot'; groupId: string; index: number; edge: 'before' | 'after' }
   | { type: 'canvas' }
@@ -37,10 +45,10 @@ export function isImportableFileName(name: string): boolean {
 
 /** Word/Excel/PowerPoint-bestanden worden eerst (in het main-proces) naar PDF omgezet. */
 async function prepareImportFiles(
-  files: { name: string; data: Uint8Array }[],
+  files: { name: string; data: Uint8Array; path?: string }[],
   addToast: StudioState['addToast']
-): Promise<{ name: string; data: Uint8Array }[]> {
-  const prepared: { name: string; data: Uint8Array }[] = []
+): Promise<{ name: string; data: Uint8Array; path?: string }[]> {
+  const prepared: { name: string; data: Uint8Array; path?: string }[] = []
   for (const file of files) {
     const ext = file.name.split('.').pop()?.toLowerCase() ?? ''
     if (!OFFICE_EXTENSIONS.includes(ext)) {
@@ -66,6 +74,14 @@ export type Theme = 'dark' | 'light'
 
 const THEME_STORAGE_KEY = 'pdf-studio-theme'
 const AUTHOR_STORAGE_KEY = 'pdf-studio-author'
+const READER_VIEW_STORAGE_KEY = 'pdf-studio-reader-view'
+const NIGHT_MODE_STORAGE_KEY = 'pdf-studio-night-mode'
+const FLATTEN_STORAGE_KEY = 'pdf-studio-flatten-forms'
+
+function getInitialReaderView(): 'scroll' | 'spread' | 'single' {
+  const v = window.localStorage.getItem(READER_VIEW_STORAGE_KEY)
+  return v === 'spread' || v === 'single' || v === 'scroll' ? v : 'scroll'
+}
 
 function getInitialTheme(): Theme {
   const stored = window.localStorage.getItem(THEME_STORAGE_KEY)
@@ -147,8 +163,8 @@ interface StudioState {
   setDragGroupId: (id: string | null) => void
   reorderGroups: (groupId: string, toIndex: number) => void
   removeGroup: (groupId: string) => void
-  importFiles: (files: { name: string; data: Uint8Array }[]) => Promise<void>
-  addPagesToGroup: (groupId: string, files: { name: string; data: Uint8Array }[]) => Promise<void>
+  importFiles: (files: { name: string; data: Uint8Array; path?: string }[]) => Promise<void>
+  addPagesToGroup: (groupId: string, files: { name: string; data: Uint8Array; path?: string }[]) => Promise<void>
   insertBlankPage: (groupId: string) => Promise<void>
   movePages: (pageIds: string[], toGroupId: string, toIndex: number) => void
   createGroupWithPages: (pageIds: string[]) => void
@@ -207,6 +223,18 @@ interface StudioState {
   /** "Slimme documenten"-dialoog (hernoemen, lege pagina's, opschonen, CSV). */
   smartDialogOpen: boolean
   setSmartDialogOpen: (open: boolean) => void
+  /** Sneltoetsen-overzicht (help). */
+  shortcutsOpen: boolean
+  setShortcutsOpen: (open: boolean) => void
+  /** Voorkeuren-scherm. */
+  preferencesOpen: boolean
+  setPreferencesOpen: (open: boolean) => void
+  /** Prullenbak: pagina's die deze sessie zijn verwijderd, om terug te halen. */
+  trash: TrashedPage[]
+  trashPanelOpen: boolean
+  setTrashPanelOpen: (open: boolean) => void
+  restoreTrashedPages: (entryIds: string[]) => void
+  clearTrash: () => void
   focusCommentId: string | null
   setCommentsPanelOpen: (open: boolean) => void
   openCommentThread: (pageId: string, commentId: string) => void
@@ -252,13 +280,13 @@ function requestPassword(fileName: string, attempt: number): Promise<string | nu
  * or the file is unreadable — a toast explains which.
  */
 async function loadFileInteractive(
-  file: { name: string; data: Uint8Array },
+  file: { name: string; data: Uint8Array; path?: string },
   addToast: StudioState['addToast']
 ): Promise<SourceFile | null> {
   let data = file.data
   for (let attempt = 1; ; attempt += 1) {
     try {
-      return await loadSourceFile(file.name, data, nanoid())
+      return await loadSourceFile(file.name, data, nanoid(), file.path)
     } catch (error) {
       if (!isPasswordError(error)) {
         addToast('error', `Kon "${file.name}" niet openen — is het een geldig PDF-bestand?`)
@@ -306,11 +334,11 @@ export const useStudioStore = create<StudioState>((set, get) => ({
   searchOpen: false,
   editorTabs: [],
   activeEditorTab: null,
-  editorViewMode: 'scroll',
+  editorViewMode: getInitialReaderView(),
   searchHighlight: null,
   authorName: window.localStorage.getItem(AUTHOR_STORAGE_KEY) ?? '',
   formValues: {},
-  flattenForms: false,
+  flattenForms: window.localStorage.getItem(FLATTEN_STORAGE_KEY) === '1',
 
   setFormValue: (sourceId, fieldName, value) => {
     set((state) => ({
@@ -321,7 +349,10 @@ export const useStudioStore = create<StudioState>((set, get) => ({
     }))
   },
 
-  setFlattenForms: (flatten) => set({ flattenForms: flatten }),
+  setFlattenForms: (flatten) => {
+    window.localStorage.setItem(FLATTEN_STORAGE_KEY, flatten ? '1' : '0')
+    set({ flattenForms: flatten })
+  },
 
   restoreSession: (payload) => {
     if (get().groups.length || !payload.groups.length) return false
@@ -371,7 +402,10 @@ export const useStudioStore = create<StudioState>((set, get) => ({
 
   setActiveEditorTab: (groupId) => set({ activeEditorTab: groupId }),
 
-  setEditorViewMode: (mode) => set({ editorViewMode: mode }),
+  setEditorViewMode: (mode) => {
+    window.localStorage.setItem(READER_VIEW_STORAGE_KEY, mode)
+    set({ editorViewMode: mode })
+  },
 
   setSearchOpen: (open) => set({ searchOpen: open }),
 
@@ -655,8 +689,16 @@ export const useStudioStore = create<StudioState>((set, get) => ({
     get().markHistory()
     set((state) => {
       const idSet = new Set(pageIds)
+      // Bewaar de verwijderde pagina's in de prullenbak zodat ze terug te halen zijn.
+      const removed: TrashedPage[] = []
+      for (const g of state.groups) {
+        for (const p of g.pages) {
+          if (idSet.has(p.id)) removed.push({ id: nanoid(), page: p, groupId: g.id, groupName: g.name })
+        }
+      }
       const groups = state.groups.map((g) => ({ ...g, pages: g.pages.filter((p) => !idSet.has(p.id)) }))
-      return { ...finalizeGroups(state, groups), ...pruneSelection(state, groups) }
+      const trash = [...removed, ...state.trash].slice(0, 200)
+      return { ...finalizeGroups(state, groups), ...pruneSelection(state, groups), trash }
     })
   },
 
@@ -905,8 +947,11 @@ export const useStudioStore = create<StudioState>((set, get) => ({
   setRemarkableDialogOpen: (open) => set({ remarkableDialogOpen: open }),
   presentationMode: false,
   setPresentationMode: (on) => set({ presentationMode: on }),
-  readerNightMode: false,
-  setReaderNightMode: (on) => set({ readerNightMode: on }),
+  readerNightMode: window.localStorage.getItem(NIGHT_MODE_STORAGE_KEY) === '1',
+  setReaderNightMode: (on) => {
+    window.localStorage.setItem(NIGHT_MODE_STORAGE_KEY, on ? '1' : '0')
+    set({ readerNightMode: on })
+  },
   exportPermissions: { printing: true, copying: true, modifying: true },
   setExportPermissions: (patch) => set((s) => ({ exportPermissions: { ...s.exportPermissions, ...patch } })),
   compare: { open: false, leftGroupId: null, rightGroupId: null },
@@ -927,6 +972,44 @@ export const useStudioStore = create<StudioState>((set, get) => ({
   setPrivacyScanOpen: (open) => set({ privacyScanOpen: open }),
   smartDialogOpen: false,
   setSmartDialogOpen: (open) => set({ smartDialogOpen: open }),
+  shortcutsOpen: false,
+  setShortcutsOpen: (open) => set({ shortcutsOpen: open }),
+  preferencesOpen: false,
+  setPreferencesOpen: (open) => set({ preferencesOpen: open }),
+  trash: [],
+  trashPanelOpen: false,
+  setTrashPanelOpen: (open) => set({ trashPanelOpen: open }),
+  restoreTrashedPages: (entryIds) => {
+    const ids = new Set(entryIds)
+    const entries = get().trash.filter((t) => ids.has(t.id))
+    if (!entries.length) return
+    get().markHistory()
+    set((state) => {
+      let groups = state.groups.map((g) => ({ ...g, pages: [...g.pages] }))
+      for (const entry of entries) {
+        // Terug in het oorspronkelijke document als dat er nog is, anders een nieuw document.
+        const target = groups.find((g) => g.id === entry.groupId)
+        if (target) {
+          target.pages.push(entry.page)
+        } else {
+          groups = [
+            ...groups,
+            {
+              id: nanoid(),
+              name: nextGroupName(groups, entry.groupName),
+              pages: [entry.page],
+              watermark: null,
+              pageNumbers: false,
+              documentDate: null
+            }
+          ]
+        }
+      }
+      const trash = state.trash.filter((t) => !ids.has(t.id))
+      return { ...finalizeGroups(state, groups), trash }
+    })
+  },
+  clearTrash: () => set({ trash: [] }),
   focusCommentId: null,
 
   setCommentsPanelOpen: (open) => set({ commentsPanelOpen: open }),

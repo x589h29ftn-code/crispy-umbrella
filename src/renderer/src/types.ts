@@ -3,6 +3,8 @@ export interface SourceFile {
   name: string
   data: Uint8Array
   pageCount: number
+  /** Oorspronkelijk pad op schijf, indien bekend (voor "opslaan naar bron"). */
+  path?: string
 }
 
 export interface SignaturePlacement {

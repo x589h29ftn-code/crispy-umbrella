@@ -50,9 +50,9 @@ export function isPasswordError(error: unknown): boolean {
   return (error as { name?: string } | null)?.name === 'PasswordException'
 }
 
-export async function loadSourceFile(name: string, data: Uint8Array, id: string): Promise<SourceFile> {
+export async function loadSourceFile(name: string, data: Uint8Array, id: string, path?: string): Promise<SourceFile> {
   const doc = await pdfjsLib.getDocument({ data: cloneBytes(data) }).promise
-  const source: SourceFile = { id, name, data, pageCount: doc.numPages }
+  const source: SourceFile = { id, name, data, pageCount: doc.numPages, path }
   jsDocCache.set(id, Promise.resolve(doc))
   return source
 }

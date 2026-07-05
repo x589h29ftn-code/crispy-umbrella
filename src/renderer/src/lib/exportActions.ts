@@ -55,6 +55,39 @@ export async function exportActivePdf(): Promise<void> {
   }
 }
 
+/**
+ * Slaat het actieve document op. Als het document uit één bronbestand met een
+ * bekend pad komt, wordt dat bestand rechtstreeks overschreven (Ctrl+S). Anders
+ * (samengevoegd, of geen pad bekend) valt het terug op "Exporteer als…".
+ */
+export async function saveActiveToSource(): Promise<void> {
+  const state = useStudioStore.getState()
+  const group = state.groups.find((g) => g.id === state.activeGroupId) ?? state.groups[0]
+  if (!group || !group.pages.length || state.busyExport) return
+
+  const sourceIds = new Set(group.pages.map((p) => p.sourceId))
+  const single = sourceIds.size === 1 ? state.sources.get([...sourceIds][0]) : undefined
+  const path = single?.path
+
+  if (!path || typeof window.api.savePdfToPath !== 'function') {
+    // Geen bekende bron → normale "opslaan als" via het exportvenster.
+    await exportActivePdf()
+    return
+  }
+
+  state.setBusyExport('pdf')
+  try {
+    const bytes = await maybeEncrypt(await exportGroup(group, state.sources, exportOptions()))
+    const result = await window.api.savePdfToPath(path, bytes)
+    if (result.saved) state.addToast('success', `Opgeslagen naar "${group.name}"`)
+    else state.addToast('error', `Kon "${group.name}" niet opslaan naar het bronbestand`)
+  } catch {
+    state.addToast('error', `Opslaan van "${group.name}" is mislukt`)
+  } finally {
+    useStudioStore.getState().setBusyExport(null)
+  }
+}
+
 /** Exports every document as its own PDF, bundled in one zip, via a save dialog. */
 export async function exportAllZip(): Promise<void> {
   const state = useStudioStore.getState()

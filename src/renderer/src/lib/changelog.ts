@@ -4,6 +4,20 @@
  */
 export const APP_CHANGELOG: { version: string; items: string[] }[] = [
   {
+    version: '1.5.0',
+    items: [
+      'Sneller opstarten: het programma laadt de zware onderdelen pas wanneer je ze gebruikt',
+      'Voorkeuren-scherm voor thema, naam, standaard leesweergave, nachtmodus en formulieren',
+      'Statusbalk onderaan met document, aantal pagina\'s, selectie en zoomniveau',
+      'Ctrl+S slaat het actieve document op (overschrijft het bronbestand indien bekend)',
+      'Prullenbak: verwijderde pagina\'s zijn binnen de sessie terug te halen',
+      'Sneltoetsen-overzicht (druk op ?)',
+      'Uitlijn-hulplijnen die op het paginamidden snappen bij het slepen',
+      'Grote documenten blijven soepel doordat pagina\'s pas in beeld worden gerenderd',
+      'Een document in een eigen venster openen'
+    ]
+  },
+  {
     version: '1.4.0',
     items: [
       'Splitsen op bladwijzer: een document opknippen langs zijn inhoudsopgave',

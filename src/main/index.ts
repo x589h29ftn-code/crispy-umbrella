@@ -2,10 +2,15 @@ import { app, shell, BrowserWindow, ipcMain, dialog } from 'electron'
 import { join, basename } from 'path'
 import { mkdir, mkdtemp, readdir, readFile, rm, stat, unlink, writeFile } from 'fs/promises'
 import { tmpdir } from 'os'
+import { randomUUID } from 'node:crypto'
 import { electronApp, optimizer, is } from '@electron-toolkit/utils'
 import icon from '../../resources/icon.png?asset'
 
 let mainWindow: BrowserWindow | null = null
+
+// Losse vensters: een document dat naar een eigen venster is losgekoppeld. De
+// payload wacht hier tot het nieuwe venster hem via 'window:consumeHandoff' ophaalt.
+const documentHandoffs = new Map<string, unknown>()
 
 // ---- Recent geopende bestanden (userData/recent.json) ----
 
@@ -65,7 +70,7 @@ async function sendFilesToWindow(win: BrowserWindow, paths: string[]): Promise<v
     await Promise.all(
       paths.map(async (p) => {
         try {
-          return { name: basename(p), data: await readFile(p) }
+          return { name: basename(p), data: await readFile(p), path: p }
         } catch {
           return null
         }
@@ -121,6 +126,39 @@ function createWindow(): void {
     win.webContents.once('did-finish-load', () => {
       void sendFilesToWindow(win, filesToOpen)
     })
+  }
+}
+
+/**
+ * Opent een los venster dat één document toont. Het document wordt via een
+ * handoff-id doorgegeven; dit venster herstelt géén sessie en overschrijft de
+ * gedeelde sessie niet (de renderer herkent de handoff aan de URL-hash).
+ */
+function createDetachedWindow(handoffId: string): void {
+  const win = new BrowserWindow({
+    width: 1100,
+    height: 780,
+    minWidth: 720,
+    minHeight: 520,
+    show: false,
+    autoHideMenuBar: true,
+    backgroundColor: '#141416',
+    ...(process.platform === 'linux' ? { icon } : {}),
+    webPreferences: {
+      preload: join(__dirname, '../preload/index.js'),
+      sandbox: false
+    }
+  })
+  win.on('ready-to-show', () => win.show())
+  win.webContents.setWindowOpenHandler((details) => {
+    shell.openExternal(details.url)
+    return { action: 'deny' }
+  })
+  const hash = `handoff=${handoffId}`
+  if (is.dev && process.env['ELECTRON_RENDERER_URL']) {
+    void win.loadURL(`${process.env['ELECTRON_RENDERER_URL']}#${hash}`)
+  } else {
+    void win.loadFile(join(__dirname, '../renderer/index.html'), { hash })
   }
 }
 
@@ -209,7 +247,8 @@ app.whenReady().then(() => {
     return Promise.all(
       result.filePaths.map(async (p) => ({
         name: basename(p),
-        data: await readFile(p)
+        data: await readFile(p),
+        path: p
       }))
     )
   })
@@ -232,7 +271,7 @@ app.whenReady().then(() => {
     try {
       const data = await readFile(path)
       void rememberRecent([path])
-      return { name: basename(path), data }
+      return { name: basename(path), data, path }
     } catch {
       return { error: 'Het bestand is verplaatst of verwijderd' }
     }
@@ -310,10 +349,34 @@ app.whenReady().then(() => {
     return { saved: true, path: result.filePath }
   })
 
+  // Overschrijft een bestaand bestand rechtstreeks (Ctrl+S → opslaan naar bron).
+  ipcMain.handle('dialog:savePdfToPath', async (_evt, path: string, data: Uint8Array) => {
+    try {
+      await writeFile(path, Buffer.from(data))
+      return { saved: true, path }
+    } catch {
+      return { saved: false }
+    }
+  })
+
   ipcMain.handle('ocr:recognize', async (_evt, png: Uint8Array) => {
     // Lazy import so tesseract.js only loads when OCR is actually used.
     const { recognizePng } = await import('./ocr')
     return recognizePng(png)
+  })
+
+  // ---- Losse vensters ----
+  ipcMain.handle('window:openDocument', async (_evt, payload: unknown) => {
+    const id = randomUUID()
+    documentHandoffs.set(id, payload)
+    createDetachedWindow(id)
+    return { ok: true }
+  })
+
+  ipcMain.handle('window:consumeHandoff', async (_evt, id: string) => {
+    const payload = documentHandoffs.get(id) ?? null
+    documentHandoffs.delete(id)
+    return payload
   })
 
   ipcMain.handle('dialog:saveZip', async (_evt, defaultName: string, data: Uint8Array) => {

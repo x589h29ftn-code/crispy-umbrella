@@ -52,13 +52,22 @@ Gebouwd met Electron, Vite, TypeScript en React. PDF-weergave via [pdf.js](https
 - **Tekst selecteren en kopiëren**: in de modus "Selecteren" is de paginatekst gewoon selecteerbaar; na een selectie verschijnt een klein menu om te kopiëren of de selectie meteen te markeren, onderstrepen of doorhalen (tekst-volgend, per regel).
 - **Recente bestanden en sessieherstel**: het startscherm toont recent geopende bestanden (één klik om te heropenen), en de hele werksessie — documenten met alle bewerkingen — wordt automatisch bewaard en bij het opstarten teruggezet. De installer registreert PDF Studio bovendien als "Openen met"-app voor PDF's; dubbelklikken op een PDF opent hem in het bestaande venster.
 - **Automatische updates**: de geïnstalleerde app controleert op nieuwe versies (GitHub-releases), downloadt ze op de achtergrond en installeert bij de volgende start — met een "Nu opnieuw starten"-knop als je niet wilt wachten. Na een update verschijnt eenmalig een "Wat is nieuw"-overzicht.
+- **Sneller opstarten**: de zware bibliotheken (pdf-lib, pdf.js) en alle overlays worden pas geladen wanneer je ze echt gebruikt. Het opstartscript kromp van ~3,9 MB naar ~290 KB en de 2,3 MB pdf-lib-bundel wordt niet meer bij de start ingeladen (pas bij de eerste export/bewerking).
+- **Voorkeuren-scherm**: één plek voor thema (licht/donker), je naam voor opmerkingen, de standaard leesweergave (doorlopend / één pagina / twee pagina's), nachtmodus en "formulieren platslaan" — de instellingen blijven tussen sessies bewaard.
+- **Statusbalk**: onderaan zie je in één oogopslag het actieve document, het aantal pagina's, het aantal documenten, de selectie en het zoomniveau.
+- **Opslaan (Ctrl+S)**: slaat het actieve document op. Komt het uit één bekend bronbestand, dan wordt dat bestand rechtstreeks overschreven; anders opent het gewone opslaan-venster.
+- **Prullenbak**: verwijderde pagina's belanden in een prullenbak en zijn binnen de sessie per stuk of in één keer terug te halen (los van Ongedaan maken).
+- **Sneltoetsen-overzicht**: druk op `?` (of de knop "Sneltoetsen") voor een compleet overzicht van alle sneltoetsen.
+- **Uitlijn-hulplijnen**: sleep je een handtekening of element over de pagina, dan verschijnen hulplijnen op het paginamidden en snapt het element er netjes op vast.
+- **Soepel bij grote documenten**: pagina-miniaturen worden pas gerenderd wanneer ze (bijna) in beeld komen, zodat documenten van honderden pagina's vlot blijven.
+- **Los venster per document**: open het actieve document in een eigen venster ("Los venster"), zodat je twee documenten naast elkaar in aparte vensters kunt bekijken.
 - **Pagina's slepen in de editor**: in het tabblad-bewerkscherm versleep je pagina's in de miniaturenrail links om de volgorde te wijzigen; alle gereedschappen hebben er sneltoetsen (V/M/P/S/K/F/T/B/R/C/E, zichtbaar op de knoppen).
 - **Documentdatum instellen**: via de kalenderknop in de documentkop (of het ⋯-menu) kies je een datum (bv. 1-1-2026) die bij export als aanmaak- én wijzigingsdatum in de PDF-metadata wordt geschreven — ook in combinatie met een exportwachtwoord. Een blauw label in de documentkop toont de ingestelde datum; klik erop om hem aan te passen.
 - **Beveiligde PDF's openen**: importeer je een PDF mét wachtwoord, dan verschijnt een wachtwoord-prompt (met nette foutmelding bij een onjuist wachtwoord); het bestand wordt ontsleuteld ingeladen.
 - **Ongedaan maken / opnieuw**: Ctrl+Z / Ctrl+Y (of Ctrl+Shift+Z) voor alle bewerkingen — verplaatsen, verwijderen, roteren, watermerk, handtekeningen, importeren — plus knoppen in de werkbalk.
 - **Meerdere pagina's selecteren**: Ctrl+klik om pagina's aan de selectie toe te voegen, Shift+klik voor een bereik. Sleep één geselecteerde pagina en de hele selectie verhuist mee; Delete verwijdert, R roteert en Ctrl+D dupliceert de selectie; Esc wist de selectie.
 - **Selectiebalk**: zodra je pagina's selecteert verschijnt onderin een zwevende actiebalk met roteren (linksom én rechtsom), dupliceren, verwijderen en selectie wissen — zoals in de meeste PDF-pakketten.
-- **Sneltoetsen**: Ctrl+O openen, Ctrl+E alles exporteren als zip, naast bovenstaande selectie- en undo-sneltoetsen.
+- **Sneltoetsen**: Ctrl+O openen, Ctrl+S opslaan, Ctrl+E alles exporteren als zip, Ctrl+P afdrukken, Ctrl+F zoeken, `?` sneltoetsen-overzicht, naast bovenstaande selectie- en undo-sneltoetsen.
 - **Meldingen**: geslaagde exports en fouten (onleesbaar bestand, mislukte export, overgeslagen beveiligd bestand) verschijnen als toast rechtsonder.
 - **Exporteren**: "Exporteer PDF" slaat het actieve document op als los PDF-bestand; "Exporteer zip" bundelt alle documenten als aparte PDF's in één zip-bestand.
 

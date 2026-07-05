@@ -145,6 +145,8 @@ export default function Lightbox(): JSX.Element | null {
   const [annoBoxes, setAnnoBoxes] = useState<Record<string, SignatureVisualBox>>({})
   const [inkVisual, setInkVisual] = useState<Record<string, { x: number; y: number }[]>>({})
   const [pageVisualSize, setPageVisualSize] = useState<{ width: number; height: number } | null>(null)
+  // Hulplijnen bij slepen: geven aan wanneer een element op het paginamidden ligt.
+  const [snapGuides, setSnapGuides] = useState<{ v: boolean; h: boolean }>({ v: false, h: false })
   const stageImgRef = useRef<HTMLImageElement>(null)
   const stageRef = useRef<HTMLDivElement>(null)
   const dragOriginRef = useRef<DragTarget | null>(null)
@@ -577,12 +579,32 @@ export default function Lightbox(): JSX.Element | null {
     }
 
     if (origin.kind === 'move') {
+      let pivotX = origin.startPivotVisualX + dx
+      let pivotY = origin.startPivotVisualY + dy
+      // Uitlijnen op het paginamidden (alleen bij niet-gedraaide pagina's), met
+      // een drempel in beeldpunten. De hulplijnen laten zien dat het gesnapt is.
+      let guideV = false
+      let guideH = false
+      if (pageVisualSize && Math.abs(origin.rotateDeg) < 0.5) {
+        const SNAP = 7
+        const centerX = pageVisualSize.width / 2
+        const centerY = pageVisualSize.height / 2
+        if (Math.abs(pivotX + origin.startWidth / 2 - centerX) < SNAP) {
+          pivotX = centerX - origin.startWidth / 2
+          guideV = true
+        }
+        if (Math.abs(pivotY + origin.startHeight / 2 - centerY) < SNAP) {
+          pivotY = centerY - origin.startHeight / 2
+          guideH = true
+        }
+      }
+      setSnapGuides((prev) => (prev.v === guideV && prev.h === guideH ? prev : { v: guideV, h: guideH }))
       void visualPointToContentPoint(
         source,
         context.page.sourcePageIndex,
         context.page.rotation,
-        origin.startPivotVisualX + dx,
-        origin.startPivotVisualY + dy
+        pivotX,
+        pivotY
       ).then(({ x, y }) => {
         if (origin.type === 'signature') updateSignaturePlacement(pageId, origin.targetId, { x, y })
         else updateAnnotation(pageId, origin.targetId, { x, y })
@@ -604,6 +626,7 @@ export default function Lightbox(): JSX.Element | null {
     const el = e.currentTarget as Element
     if (el.hasPointerCapture(e.pointerId)) el.releasePointerCapture(e.pointerId)
     dragOriginRef.current = null
+    setSnapGuides((prev) => (prev.v || prev.h ? { v: false, h: false } : prev))
   }
 
   // --- Stage pointer handling: highlight band, freehand stroke, panning ---
@@ -1786,6 +1809,8 @@ export default function Lightbox(): JSX.Element | null {
               onClick={onStageClick}
             >
               <img ref={stageImgRef} src={image} alt={context.group.name} draggable={false} />
+              {snapGuides.v && <div className="align-guide align-guide--v" />}
+              {snapGuides.h && <div className="align-guide align-guide--h" />}
               <div
                 ref={textLayerRef}
                 className={`text-select-layer${mode === 'view' ? '' : ' text-select-layer--passive'}`}

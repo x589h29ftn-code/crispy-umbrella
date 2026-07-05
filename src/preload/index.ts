@@ -4,6 +4,8 @@ import { electronAPI } from '@electron-toolkit/preload'
 export interface LoadedFile {
   name: string
   data: Uint8Array
+  /** Absoluut pad op schijf (afwezig bij bv. de web-versie). */
+  path?: string
 }
 
 export interface SaveResult {
@@ -39,6 +41,11 @@ const api = {
   printHtml: (html: string): Promise<{ ok: boolean; reason?: string }> => ipcRenderer.invoke('print:html', html),
   savePdf: (defaultName: string, data: Uint8Array): Promise<SaveResult> =>
     ipcRenderer.invoke('dialog:savePdf', defaultName, data),
+  savePdfToPath: (path: string, data: Uint8Array): Promise<SaveResult> =>
+    ipcRenderer.invoke('dialog:savePdfToPath', path, data),
+  openDocumentWindow: (payload: unknown): Promise<{ ok: boolean }> =>
+    ipcRenderer.invoke('window:openDocument', payload),
+  consumeHandoff: (id: string): Promise<unknown> => ipcRenderer.invoke('window:consumeHandoff', id),
   saveZip: (defaultName: string, data: Uint8Array): Promise<SaveResult> =>
     ipcRenderer.invoke('dialog:saveZip', defaultName, data),
   saveFile: (defaultName: string, data: Uint8Array, extension: string): Promise<SaveResult> =>

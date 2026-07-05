@@ -7,7 +7,11 @@ import SelectionBar from './components/SelectionBar'
 import WhatsNewDialog from './components/WhatsNewDialog'
 import UpdateBanner from './components/UpdateBanner'
 import TabStrip from './components/TabStrip'
-import { exportAllZip } from './lib/exportActions'
+import StatusBar from './components/StatusBar'
+import ShortcutsDialog from './components/ShortcutsDialog'
+import PreferencesDialog from './components/PreferencesDialog'
+import TrashPanel from './components/TrashPanel'
+import { exportAllZip, saveActiveToSource } from './lib/exportActions'
 
 // Zware overlays worden pas geladen wanneer ze echt geopend worden. Zo blijft
 // het opstartscript klein en verschijnt de app sneller in beeld.
@@ -80,6 +84,12 @@ export default function App(): JSX.Element {
       } else if (mod && key === 'e') {
         e.preventDefault()
         void exportAllZip()
+      } else if (mod && key === 's') {
+        e.preventDefault()
+        void saveActiveToSource()
+      } else if (!mod && (e.key === '?' || (e.key === '/' && e.shiftKey))) {
+        e.preventDefault()
+        state.setShortcutsOpen(!state.shortcutsOpen)
       } else if (mod && key === 'p') {
         e.preventDefault()
         void printActiveGroup()
@@ -134,6 +144,7 @@ export default function App(): JSX.Element {
           {commentsPanelOpen && <CommentsPanel />}
           {bookmarksPanelOpen && <BookmarksPanel />}
         </Suspense>
+        <StatusBar />
       </main>
       <Suspense fallback={null}>
         {lightboxOpen && <Lightbox />}
@@ -147,6 +158,9 @@ export default function App(): JSX.Element {
       <PasswordDialog />
       <WhatsNewDialog />
       <UpdateBanner />
+      <ShortcutsDialog />
+      <PreferencesDialog />
+      <TrashPanel />
       <Toasts />
     </div>
   )

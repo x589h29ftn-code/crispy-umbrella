@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import {
   contentPointsToVisualPoints,
   getPageVisualSize,
@@ -122,10 +122,33 @@ export default function PageThumb({ page, source, index }: Props): JSX.Element {
   const isDragSource = useStudioStore((s) => s.dragPageIds?.includes(page.id) ?? false)
   const resolutionScale = useThumbResolutionScale()
   const decorations = useDecorations(page, source)
+  const rootRef = useRef<HTMLDivElement>(null)
+  // Virtualisatie: pas renderen wanneer de pagina (bijna) in beeld komt, zodat
+  // een document van honderden pagina's niet alles tegelijk hoeft te renderen.
+  const [visible, setVisible] = useState(false)
+
+  useEffect(() => {
+    const el = rootRef.current
+    if (!el || typeof IntersectionObserver === 'undefined') {
+      setVisible(true)
+      return
+    }
+    const observer = new IntersectionObserver(
+      (entries) => {
+        if (entries.some((e) => e.isIntersecting)) {
+          setVisible(true)
+          observer.disconnect()
+        }
+      },
+      { rootMargin: '600px 0px' }
+    )
+    observer.observe(el)
+    return () => observer.disconnect()
+  }, [])
 
   useEffect(() => {
     let cancelled = false
-    if (!source) return
+    if (!source || !visible) return
     setFailed(false)
     const targetWidth = Math.round(BASE_WIDTH * (window.devicePixelRatio || 1) * resolutionScale)
     renderThumbnail(source, page.sourcePageIndex, page.rotation, targetWidth)
@@ -138,7 +161,7 @@ export default function PageThumb({ page, source, index }: Props): JSX.Element {
     return () => {
       cancelled = true
     }
-  }, [source, page.sourcePageIndex, page.rotation, resolutionScale, retryToken])
+  }, [source, page.sourcePageIndex, page.rotation, resolutionScale, retryToken, visible])
 
   const dragHandlers = usePressDrag({
     ignoreSelector: 'button',
@@ -159,6 +182,7 @@ export default function PageThumb({ page, source, index }: Props): JSX.Element {
 
   return (
     <div
+      ref={rootRef}
       className={`page-thumb${isSelected ? ' page-thumb--selected' : ''}${isDragSource ? ' page-thumb--drag-source' : ''}`}
       data-page-id={page.id}
       data-index={index}
