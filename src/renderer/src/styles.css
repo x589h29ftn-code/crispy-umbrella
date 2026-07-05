@@ -3591,6 +3591,33 @@ button.group-row__date:hover {
   display: none;
 }
 
+/* In volledig scherm kan de miniaturenstrip als zwevend paneel terugkomen. */
+.editor-view--present-thumbs .editor-rail {
+  display: flex;
+  position: fixed;
+  top: 0;
+  left: 0;
+  bottom: 0;
+  z-index: 115;
+  box-shadow: 2px 0 18px rgba(0, 0, 0, 0.3);
+}
+
+/* Knoppengroep linksboven in volledig scherm: miniaturen / inhoudsopgave. */
+.presentation-panels {
+  position: fixed;
+  top: 14px;
+  left: 16px;
+  z-index: 120;
+  display: inline-flex;
+  gap: 6px;
+  opacity: 0.55;
+  transition: opacity 0.15s ease;
+}
+
+.presentation-panels:hover {
+  opacity: 1;
+}
+
 .presentation-exit {
   position: fixed;
   top: 14px;

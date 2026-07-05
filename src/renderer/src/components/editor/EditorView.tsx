@@ -21,6 +21,7 @@ import {
   IconChevronRight,
   IconClose,
   IconComment,
+  IconBookmark,
   IconCursor,
   IconEditText,
   IconEraser,
@@ -148,8 +149,13 @@ export default function EditorView({ groupId }: Props): JSX.Element | null {
   const deletePages = useStudioStore((s) => s.deletePages)
   const presentationMode = useStudioStore((s) => s.presentationMode)
   const setPresentationMode = useStudioStore((s) => s.setPresentationMode)
+  const bookmarksPanelOpen = useStudioStore((s) => s.bookmarksPanelOpen)
+  const setBookmarksPanelOpen = useStudioStore((s) => s.setBookmarksPanelOpen)
   const nightMode = useStudioStore((s) => s.readerNightMode)
   const setNightMode = useStudioStore((s) => s.setReaderNightMode)
+  // In volledig scherm kun je de miniaturenstrip los aan-/uitzetten (standaard
+  // uit voor snelheid); de inhoudsopgave gebruikt het bestaande bladwijzerpaneel.
+  const [presentThumbs, setPresentThumbs] = useState(false)
 
   const [mode, setMode] = useState<EditorMode>('view')
   const [selection, setSelection] = useState<EditorSelection | null>(null)
@@ -421,7 +427,11 @@ export default function EditorView({ groupId }: Props): JSX.Element | null {
   ]
 
   return (
-    <div className={`editor-view${presentationMode ? ' editor-view--presentation' : ''}`}>
+    <div
+      className={`editor-view${presentationMode ? ' editor-view--presentation' : ''}${
+        presentationMode && presentThumbs ? ' editor-view--present-thumbs' : ''
+      }`}
+    >
       {presentationMode && (
         <button
           type="button"
@@ -431,6 +441,26 @@ export default function EditorView({ groupId }: Props): JSX.Element | null {
         >
           <IconClose size={13} /> Volledig scherm afsluiten
         </button>
+      )}
+      {presentationMode && (
+        <div className="presentation-panels">
+          <button
+            type="button"
+            className={`pill-btn${presentThumbs ? ' pill-btn--primary' : ''}`}
+            onClick={() => setPresentThumbs((v) => !v)}
+            title="Miniaturen tonen/verbergen"
+          >
+            <IconGridView size={13} /> Miniaturen
+          </button>
+          <button
+            type="button"
+            className={`pill-btn${bookmarksPanelOpen ? ' pill-btn--primary' : ''}`}
+            onClick={() => setBookmarksPanelOpen(!bookmarksPanelOpen)}
+            title="Inhoudsopgave tonen/verbergen"
+          >
+            <IconBookmark size={13} /> Inhoud
+          </button>
+        </div>
       )}
       {presentationMode && (
         <div className="presentation-zoom" title="Zoom (of Ctrl+scrollen)">
@@ -446,9 +476,9 @@ export default function EditorView({ groupId }: Props): JSX.Element | null {
         </div>
       )}
       {/* De miniatuurstrip is duur om te tekenen; in volledig scherm laten we
-          hem helemaal weg (hij is daar toch verborgen) — dat scheelt bij grote
-          documenten flink in snelheid. */}
-      {!presentationMode && (
+          hem standaard weg (dat scheelt bij grote documenten flink in snelheid),
+          maar met de knop "Miniaturen" toont de gebruiker hem daar alsnog. */}
+      {(!presentationMode || presentThumbs) && (
       <div className="editor-rail">
         {group.pages.map((page, i) => (
           <div key={page.id} className="editor-rail__slot">
