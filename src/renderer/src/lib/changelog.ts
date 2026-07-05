@@ -4,6 +4,13 @@
  */
 export const APP_CHANGELOG: { version: string; items: string[] }[] = [
   {
+    version: '1.8.1',
+    items: [
+      'Bij gescande documenten verschijnt nu een duidelijke melding met een knop "Nu OCR uitvoeren" voordat je tekst, tabellen, vergelijken of de privacy-scan gebruikt',
+      'Herkende (OCR-)tekst wordt nu ook echt gebruikt door tabellen, vergelijken, sorteren en de privacy-scan — niet meer alleen bij zoeken'
+    ]
+  },
+  {
     version: '1.8.0',
     items: [
       'PDF kleiner maken (comprimeren) om makkelijk te mailen',

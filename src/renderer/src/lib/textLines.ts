@@ -1,4 +1,5 @@
 import { getPdfJsDocument, getPageVisualSize } from './pdfEngine'
+import { getOcr } from './ocrStore'
 import type { SourceFile } from '../types'
 
 export interface TextLineBox {
@@ -39,6 +40,18 @@ export async function getTextLineBoxes(
     const [a, b, , , e, f] = item.transform
     const fontSize = Math.hypot(a, b) || item.height || 10
     items.push({ str: item.str, x: e, y: f, width: item.width || fontSize * item.str.length * 0.5, height: fontSize })
+  }
+
+  // Geen ingebouwde tekstlaag (gescande pagina)? Val terug op OCR-resultaten,
+  // die in dezelfde content-ruimte staan — zo werken zoeken, tabellen,
+  // vergelijken en de privacy-scan ook op scans zodra OCR is uitgevoerd.
+  if (!items.length) {
+    const ocr = getOcr(source.id, pageIndex)
+    if (ocr) {
+      for (const w of ocr.words) {
+        items.push({ str: w.text, x: w.x, y: w.y, width: w.size * w.text.length * 0.5, height: w.size })
+      }
+    }
   }
 
   // Group items that share a baseline into lines.
@@ -117,6 +130,11 @@ export async function getTextItems(source: SourceFile, pageIndex: number): Promi
       width: item.width || fontSize * item.str.length * 0.5,
       height: fontSize
     })
+  }
+  // Terugval op OCR bij een gescande pagina zonder tekstlaag.
+  if (!items.length) {
+    const ocr = getOcr(source.id, pageIndex)
+    if (ocr) for (const w of ocr.words) items.push({ str: w.text, x: w.x, y: w.y, width: w.size * w.text.length * 0.5, height: w.size })
   }
   return items
 }

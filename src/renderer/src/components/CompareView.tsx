@@ -3,6 +3,7 @@ import { useStudioStore } from '../store'
 import { getPageVisualSize, getPdfMetadata, renderThumbnail, type PdfMetadata } from '../lib/pdfRender'
 import { diffPages, exportDiffReport, type PageDiff, type NumberChange } from '../lib/pdfDiff'
 import { IconClose, IconFolderOpen, IconMinus, IconPlus } from './icons'
+import ScanNotice from './ScanNotice'
 import type { DocGroup, PageRef, SourceFile } from '../types'
 
 const BASE_WIDTH = 460
@@ -341,6 +342,8 @@ export default function CompareView(): JSX.Element | null {
         <MetaLine group={left} />
         <MetaLine group={right} />
       </div>
+      <ScanNotice group={left} />
+      {left?.id !== right?.id && <ScanNotice group={right} />}
       <div className="compare-view__scroll" ref={scrollRef}>
         {Array.from({ length: maxPages }, (_, i) => (
           <CompareRow key={`${compare.leftGroupId}-${compare.rightGroupId}-${i}`} index={i} left={left} right={right} width={paneWidth} />

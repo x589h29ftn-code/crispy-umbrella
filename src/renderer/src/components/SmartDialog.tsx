@@ -9,6 +9,7 @@ import { exportGroupText } from '../lib/textExport'
 import { getGroupBookmarks } from '../lib/bookmarks'
 import { getTextLineBoxes } from '../lib/textLines'
 import { IconClose, IconFile, IconTrash } from './icons'
+import ScanNotice from './ScanNotice'
 import type { DocGroup } from '../types'
 
 type Tab = 'rename' | 'blank' | 'cleanup' | 'data' | 'split' | 'sort' | 'text' | 'table' | 'compress' | 'portfolio'
@@ -251,6 +252,8 @@ export default function SmartDialog(): JSX.Element | null {
             </button>
           ))}
         </div>
+
+        {(['table', 'data', 'text', 'sort', 'rename'] as Tab[]).includes(tab) && <ScanNotice group={activeGroup} />}
 
         {tab === 'rename' && (
           <div className="smart-card__body">

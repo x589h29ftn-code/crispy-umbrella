@@ -10,6 +10,7 @@ import {
   type SensitiveMatch
 } from '../lib/sensitiveData'
 import { IconClose, IconShield } from './icons'
+import ScanNotice from './ScanNotice'
 
 /**
  * Privacy-scan (AVG): doorzoekt het actieve document op BSN, IBAN, e-mail en
@@ -111,6 +112,7 @@ export default function PrivacyScanDialog(): JSX.Element | null {
         <h3>
           <IconShield size={16} /> Privacy-scan (AVG)
         </h3>
+        <ScanNotice group={groups.find((g) => g.id === activeGroupId) ?? groups[0]} />
         <div className="privacy-card__kinds">
           <span className="privacy-card__kinds-label">Scannen op:</span>
           {SENSITIVE_KINDS.map((kind) => (
