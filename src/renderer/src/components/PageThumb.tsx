@@ -69,11 +69,17 @@ function useDecorations(page: PageRef, source: SourceFile | undefined): Decorati
               x: annotation.x,
               y: annotation.y,
               width:
-                annotation.type === 'highlight' || annotation.type === 'redact' || annotation.type === 'stamp'
+                annotation.type === 'highlight' ||
+                annotation.type === 'redact' ||
+                annotation.type === 'stamp' ||
+                annotation.type === 'field'
                   ? annotation.width
                   : 0,
               height:
-                annotation.type === 'highlight' || annotation.type === 'redact' || annotation.type === 'stamp'
+                annotation.type === 'highlight' ||
+                annotation.type === 'redact' ||
+                annotation.type === 'stamp' ||
+                annotation.type === 'field'
                   ? annotation.height
                   : textAnnotationBlockHeight(annotation)
             })

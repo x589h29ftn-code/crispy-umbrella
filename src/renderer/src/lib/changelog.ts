@@ -4,6 +4,15 @@
  */
 export const APP_CHANGELOG: { version: string; items: string[] }[] = [
   {
+    version: '1.7.0',
+    items: [
+      'Tabellen uit een PDF naar Excel (.xlsx) — één werkblad per pagina, ideaal voor cijferoverzichten',
+      'Handtekeningvelden: teken een invulbaar vak (handtekening, datum of tekst) dat de ontvanger kan invullen/ondertekenen',
+      'Metadata opschonen bij export (auteur, maker, producer en verborgen XMP-data weg) — AVG',
+      'Vergelijken herkent nu ook gewijzigde bedragen op dezelfde regel (jaarrekeningen), met een oud → nieuw-overzicht'
+    ]
+  },
+  {
     version: '1.6.0',
     items: [
       'Soepeler scrollen door lange documenten (pagina\'s buiten beeld worden niet meer getekend)',

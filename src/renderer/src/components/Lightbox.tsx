@@ -30,6 +30,7 @@ import { buildStampSub, ShapeGeometry, ShapePreviewIcon, SHAPE_LABELS, STAMP_PRE
 import type {
   Annotation,
   AnnotationFont,
+  FieldAnnotation,
   HighlightAnnotation,
   InkAnnotation,
   PageComment,
@@ -59,6 +60,7 @@ import {
   IconRedact,
   IconRotate,
   IconShapes,
+  IconSignature,
   IconStamp,
   IconStrike,
   IconTrash,
@@ -84,6 +86,13 @@ type EditMode =
   | 'shape'
   | 'stamp'
   | 'form'
+  | 'field'
+
+const FIELD_LABELS: Record<'signature' | 'date' | 'text', string> = {
+  signature: 'Handtekening',
+  date: 'Datum',
+  text: 'Tekst'
+}
 
 export function formatCommentTime(ms: number): string {
   const d = new Date(ms)
@@ -163,6 +172,7 @@ export default function Lightbox(): JSX.Element | null {
   const [selectedAnnotationId, setSelectedAnnotationId] = useState<string | null>(null)
   const [highlightColor, setHighlightColor] = useState(HIGHLIGHT_COLORS[0])
   const [highlightOpacity, setHighlightOpacity] = useState(0.4)
+  const [fieldTool, setFieldTool] = useState<'signature' | 'date' | 'text'>('signature')
   const [inkColor, setInkColor] = useState(HIGHLIGHT_COLORS[1])
   const [inkWidth, setInkWidth] = useState(INK_WIDTHS[1])
   const [shapeKind, setShapeKind] = useState<ShapeKind>('arrow')
@@ -453,11 +463,12 @@ export default function Lightbox(): JSX.Element | null {
         boxAnnotations.map(async (a) => [
           a.id,
           await getPlacementVisualBox(source, context.page.sourcePageIndex, context.page.rotation, {
-            x: (a as HighlightAnnotation | RedactAnnotation | TextAnnotation | StampAnnotation).x,
-            y: (a as HighlightAnnotation | RedactAnnotation | TextAnnotation | StampAnnotation).y,
-            width: a.type === 'highlight' || a.type === 'redact' || a.type === 'stamp' ? a.width : 0,
+            x: (a as HighlightAnnotation | RedactAnnotation | TextAnnotation | StampAnnotation | FieldAnnotation).x,
+            y: (a as HighlightAnnotation | RedactAnnotation | TextAnnotation | StampAnnotation | FieldAnnotation).y,
+            width:
+              a.type === 'highlight' || a.type === 'redact' || a.type === 'stamp' || a.type === 'field' ? a.width : 0,
             height:
-              a.type === 'highlight' || a.type === 'redact' || a.type === 'stamp'
+              a.type === 'highlight' || a.type === 'redact' || a.type === 'stamp' || a.type === 'field'
                 ? a.height
                 : textAnnotationBlockHeight(a as TextAnnotation)
           })
@@ -636,7 +647,7 @@ export default function Lightbox(): JSX.Element | null {
     const inside =
       e.clientX >= rect.left && e.clientX <= rect.right && e.clientY >= rect.top && e.clientY <= rect.bottom
 
-    if ((mode === 'highlight' || mode === 'redact' || mode === 'shape') && inside) {
+    if ((mode === 'highlight' || mode === 'redact' || mode === 'shape' || mode === 'field') && inside) {
       e.preventDefault()
       e.currentTarget.setPointerCapture(e.pointerId)
       const point = stagePointToVisual(e.clientX, e.clientY)!
@@ -736,6 +747,23 @@ export default function Lightbox(): JSX.Element | null {
 
       const pageId = context.page.id
       const bandMode = mode
+
+      if (bandMode === 'field') {
+        // Handtekeningveld: één invulbaar vak op de sleep-rechthoek.
+        const pIndex = context.page.sourcePageIndex
+        const rot = context.page.rotation
+        void visualRectToContentRect(source, pIndex, rot, {
+          xPct: left / pageVisualSize.width,
+          yPct: top / pageVisualSize.height,
+          wPct: width / pageVisualSize.width,
+          hPct: height / pageVisualSize.height
+        }).then((rect) => {
+          const annotation: Annotation = { id: nanoid(), type: 'field', ...rect, fieldKind: fieldTool, label: FIELD_LABELS[fieldTool] }
+          addAnnotation(pageId, annotation)
+          setSelectedAnnotationId(annotation.id)
+        })
+        return
+      }
       // Tekst onder de sleep? Dan volgen markering/redigeren de tekstregels;
       // zonder tekst (scans, marges) blijft het een gewone rechthoek.
       const pad = bandMode === 'redact' ? 1.5 : 0.5
@@ -1252,7 +1280,10 @@ export default function Lightbox(): JSX.Element | null {
           overlaysPassive || mode === 'erase' ? ' annotation-overlay--passive' : ''
         }`}
         style={
-          annotation.type === 'highlight' || annotation.type === 'redact' || annotation.type === 'stamp'
+          annotation.type === 'highlight' ||
+          annotation.type === 'redact' ||
+          annotation.type === 'stamp' ||
+          annotation.type === 'field'
             ? { ...common, width: box.width * layoutScale, height: box.height * layoutScale }
             : common
         }
@@ -1268,7 +1299,11 @@ export default function Lightbox(): JSX.Element | null {
           if (annotation.type === 'text') openTextEditorFor(annotation)
         }}
       >
-        {annotation.type === 'redact' ? (
+        {annotation.type === 'field' ? (
+          <div className={`annotation-overlay__field annotation-overlay__field--${annotation.fieldKind}`}>
+            <span className="annotation-overlay__field-label">{annotation.label}</span>
+          </div>
+        ) : annotation.type === 'redact' ? (
           <div
             className={`annotation-overlay__redact annotation-overlay__redact--${annotation.fill}`}
           />
@@ -1315,7 +1350,10 @@ export default function Lightbox(): JSX.Element | null {
             >
               <IconClose size={11} />
             </button>
-            {(annotation.type === 'highlight' || annotation.type === 'redact' || annotation.type === 'stamp') && (
+            {(annotation.type === 'highlight' ||
+              annotation.type === 'redact' ||
+              annotation.type === 'stamp' ||
+              annotation.type === 'field') && (
               <div
                 className="signature-overlay__resize"
                 onPointerDown={(e) => beginDrag(e, 'annotation', 'resize', annotation.id, box)}
@@ -1424,6 +1462,17 @@ export default function Lightbox(): JSX.Element | null {
             title="Formulier: vul formuliervelden in dit document in"
           >
             <IconForm size={14} /> Formulier
+          </button>
+          <button
+            type="button"
+            className={`editbar__mode${mode === 'field' ? ' editbar__mode--active' : ''}`}
+            onClick={() => {
+              setMode((m) => (m === 'field' ? 'view' : 'field'))
+              setSelectedAnnotationId(null)
+            }}
+            title="Handtekeningveld: teken een invulbaar vak dat de ontvanger kan invullen"
+          >
+            <IconSignature size={14} /> Veld
           </button>
           <button
             type="button"
@@ -1639,6 +1688,24 @@ export default function Lightbox(): JSX.Element | null {
               ))}
             </div>
             <span className="editbar__note">Klik op de pagina — met datum{authorName.trim() ? ' en naam' : ''}</span>
+          </div>
+        )}
+
+        {mode === 'field' && (
+          <div className="editbar__group">
+            <div className="editbar__stamps">
+              {(['signature', 'date', 'text'] as const).map((k) => (
+                <button
+                  key={k}
+                  type="button"
+                  className={`stamp-chip${fieldTool === k ? ' stamp-chip--active' : ''}`}
+                  onClick={() => setFieldTool(k)}
+                >
+                  {FIELD_LABELS[k]}
+                </button>
+              ))}
+            </div>
+            <span className="editbar__note">Teken een vak — de ontvanger kan het straks invullen</span>
           </div>
         )}
 

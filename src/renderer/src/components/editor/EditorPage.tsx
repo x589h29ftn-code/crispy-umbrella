@@ -22,6 +22,7 @@ import FormLayer from '../FormLayer'
 import { buildStampSub, ShapeGeometry, STAMP_PRESETS } from '../../lib/shapes'
 import type {
   Annotation,
+  FieldAnnotation,
   HighlightAnnotation,
   InkAnnotation,
   PageComment,
@@ -204,11 +205,12 @@ export default function EditorPage({
         boxAnnotations.map(async (a) => [
           a.id,
           await getPlacementVisualBox(source, page.sourcePageIndex, page.rotation, {
-            x: (a as HighlightAnnotation | RedactAnnotation | TextAnnotation | StampAnnotation).x,
-            y: (a as HighlightAnnotation | RedactAnnotation | TextAnnotation | StampAnnotation).y,
-            width: a.type === 'highlight' || a.type === 'redact' || a.type === 'stamp' ? a.width : 0,
+            x: (a as HighlightAnnotation | RedactAnnotation | TextAnnotation | StampAnnotation | FieldAnnotation).x,
+            y: (a as HighlightAnnotation | RedactAnnotation | TextAnnotation | StampAnnotation | FieldAnnotation).y,
+            width:
+              a.type === 'highlight' || a.type === 'redact' || a.type === 'stamp' || a.type === 'field' ? a.width : 0,
             height:
-              a.type === 'highlight' || a.type === 'redact' || a.type === 'stamp'
+              a.type === 'highlight' || a.type === 'redact' || a.type === 'stamp' || a.type === 'field'
                 ? a.height
                 : textAnnotationBlockHeight(a as TextAnnotation)
           })
@@ -898,7 +900,10 @@ export default function EditorPage({
           overlaysPassive || mode === 'erase' ? ' annotation-overlay--passive' : ''
         }`}
         style={
-          annotation.type === 'highlight' || annotation.type === 'redact' || annotation.type === 'stamp'
+          annotation.type === 'highlight' ||
+          annotation.type === 'redact' ||
+          annotation.type === 'stamp' ||
+          annotation.type === 'field'
             ? { ...common, width: box.width * scale, height: box.height * scale }
             : common
         }
@@ -923,7 +928,11 @@ export default function EditorPage({
           }
         }}
       >
-        {annotation.type === 'redact' ? (
+        {annotation.type === 'field' ? (
+          <div className={`annotation-overlay__field annotation-overlay__field--${annotation.fieldKind}`}>
+            <span className="annotation-overlay__field-label">{annotation.label}</span>
+          </div>
+        ) : annotation.type === 'redact' ? (
           <div className={`annotation-overlay__redact annotation-overlay__redact--${annotation.fill}`} />
         ) : annotation.type === 'stamp' ? (
           <div
@@ -972,7 +981,10 @@ export default function EditorPage({
             >
               <IconClose size={11} />
             </button>
-            {(annotation.type === 'highlight' || annotation.type === 'redact' || annotation.type === 'stamp') && (
+            {(annotation.type === 'highlight' ||
+              annotation.type === 'redact' ||
+              annotation.type === 'stamp' ||
+              annotation.type === 'field') && (
               <div
                 className="signature-overlay__resize"
                 onPointerDown={(e) => beginDrag(e, 'annotation', 'resize', annotation.id, box)}

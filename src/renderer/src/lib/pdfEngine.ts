@@ -650,6 +650,36 @@ async function buildPdf(group: DocGroup, sources: Map<string, SourceFile>, optio
             rotate: degrees(rotateDeg)
           })
         }
+      } else if (annotation.type === 'field') {
+        // Zichtbaar, afdrukbaar invulveld: kader + label + onderlijn om op te
+        // ondertekenen/invullen. (De ontvanger kan het printen en tekenen.)
+        const border = rgb(0.45, 0.5, 0.6)
+        const fieldFont = await getFont({ kind: 'embedded', ref: FONT_VARIANTS.arial.variants[0] })
+        targetPage.drawRectangle({
+          x: annotation.x - ox,
+          y: annotation.y - oy,
+          width: annotation.width,
+          height: annotation.height,
+          borderColor: border,
+          borderWidth: 0.75,
+          color: rgb(0.96, 0.97, 1),
+          opacity: 0.35
+        })
+        // Onderlijn om op te tekenen.
+        targetPage.drawLine({
+          start: { x: annotation.x - ox + annotation.width * 0.05, y: annotation.y - oy + annotation.height * 0.28 },
+          end: { x: annotation.x - ox + annotation.width * 0.95, y: annotation.y - oy + annotation.height * 0.28 },
+          color: rgb(0.4, 0.45, 0.55),
+          thickness: 0.6
+        })
+        const labelSize = Math.min(9, annotation.height * 0.32)
+        targetPage.drawText(annotation.label, {
+          x: annotation.x - ox + annotation.width * 0.05,
+          y: annotation.y - oy + annotation.height - labelSize - 3,
+          size: labelSize,
+          font: fieldFont,
+          color: rgb(0.35, 0.4, 0.5)
+        })
       } else {
         const textFont = await getFont(annotationFontSource(annotation))
         const lines = textAnnotationLines(annotation)

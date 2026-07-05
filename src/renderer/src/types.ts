@@ -96,6 +96,20 @@ export interface StampAnnotation {
   color: string
 }
 
+/** Een invulbaar veld dat bij export een AcroForm-veld wordt (handtekening/datum/tekst). */
+export interface FieldAnnotation {
+  id: string
+  type: 'field'
+  /** Zelfde bottom-left-pivot conventie als highlights. */
+  x: number
+  y: number
+  width: number
+  height: number
+  fieldKind: 'signature' | 'date' | 'text'
+  /** Label dat op/boven het veld staat, bv. "Handtekening". */
+  label: string
+}
+
 export type Annotation =
   | HighlightAnnotation
   | TextAnnotation
@@ -103,6 +117,7 @@ export type Annotation =
   | RedactAnnotation
   | ShapeAnnotation
   | StampAnnotation
+  | FieldAnnotation
 
 export interface CommentReply {
   id: string
