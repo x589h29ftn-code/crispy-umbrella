@@ -43,7 +43,7 @@ export async function exportYearComparisonXlsx(
       state.addToast('info', 'Geen cijferwijzigingen gevonden tussen deze documenten')
       return
     }
-    const XLSX = await import('@e965/xlsx')
+    const XLSX = await import('xlsx-js-style')
     const wb = XLSX.utils.book_new()
     XLSX.utils.book_append_sheet(wb, makeSheet(XLSX, rows, { header: true }), 'Jaar-op-jaar')
     await saveWorkbook(XLSX, wb, 'Jaar-op-jaar.xlsx', `Jaar-op-jaar-overzicht opgeslagen (${rows.length - 1} regels)`)

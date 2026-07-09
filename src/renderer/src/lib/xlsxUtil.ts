@@ -38,18 +38,32 @@ export function cellFromText(raw: string): ParsedCell {
  * opmaak, kolombreedtes passen automatisch, en met `header` krijgt de eerste
  * rij een autofilter en blijft die in beeld bij scrollen.
  */
+// Celstijlen (xlsx-js-style): dunne rand rondom, vette koprij met grijze vulling.
+const THIN = { style: 'thin', color: { rgb: 'FFD0D5DD' } }
+const CELL_BORDER = { top: THIN, bottom: THIN, left: THIN, right: THIN }
+const HEADER_STYLE = {
+  font: { bold: true, color: { rgb: 'FF1F2937' } },
+  fill: { fgColor: { rgb: 'FFEFF2F7' } },
+  alignment: { vertical: 'center' },
+  border: CELL_BORDER
+}
+
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 export function makeSheet(XLSX: any, rows: (string | number)[][], opts: { header?: boolean } = {}): any {
   const parsed = rows.map((row) => row.map((c) => (typeof c === 'number' ? { v: c } : cellFromText(String(c)))))
   const ws = XLSX.utils.aoa_to_sheet(parsed.map((r) => r.map((c) => c.v)))
-  // Opmaak (z) per cel toepassen.
+  // Opmaak (z) + celstijl per cel toepassen.
   const colCount = Math.max(0, ...parsed.map((r) => r.length))
   for (let r = 0; r < parsed.length; r += 1) {
     for (let c = 0; c < parsed[r].length; c += 1) {
-      const z = parsed[r][c].z
-      if (!z) continue
       const addr = XLSX.utils.encode_cell({ r, c })
-      if (ws[addr]) ws[addr].z = z
+      if (!ws[addr]) continue
+      const z = parsed[r][c].z
+      if (z) ws[addr].z = z
+      const isHeaderCell = opts.header && r === 0
+      ws[addr].s = isHeaderCell
+        ? HEADER_STYLE
+        : { border: CELL_BORDER, alignment: { vertical: 'center', horizontal: typeof parsed[r][c].v === 'number' ? 'right' : 'left' } }
     }
   }
   // Kolombreedtes.
@@ -60,6 +74,7 @@ export function makeSheet(XLSX: any, rows: (string | number)[][], opts: { header
     const range = { s: { r: 0, c: 0 }, e: { r: rows.length - 1, c: Math.max(0, colCount - 1) } }
     ws['!autofilter'] = { ref: XLSX.utils.encode_range(range) }
     ws['!freeze'] = { xSplit: 0, ySplit: 1, topLeftCell: 'A2', activePane: 'bottomLeft', state: 'frozen' }
+    ws['!rows'] = [{ hpt: 20 }]
   }
   return ws
 }

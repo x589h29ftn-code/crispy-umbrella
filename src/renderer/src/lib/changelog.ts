@@ -14,7 +14,9 @@ export const APP_CHANGELOG: { version: string; items: string[] }[] = [
       'In volledig scherm kun je de miniaturen en de inhoudsopgave los tonen of verbergen met de knoppen "Miniaturen" en "Inhoud" linksboven',
       'Markeren voelt nu als tekst markeren: sleep in de modus Markeren over de tekst en je ziet de tekst oplichten (net als bij Selecteren) — bij loslaten krijgt precies die tekst de markeerkleur. Buiten tekst (scans) blijft het een gewoon sleepvak',
       'AVG-scan nauwkeuriger: bedragen in een jaarrekening worden niet meer per ongeluk als BSN gezien (een BSN wordt herkend als 9 aaneengesloten cijfers, of gegroepeerd alleen als het woord "BSN"/"sofinummer" op de regel staat), en bedrijfsnamen met tussenwoorden zoals "Timmerfabriek De Houtmolen Makkum B.V." of "Van der Meer Bouw B.V." worden nu wél herkend',
-      'Veel soepeler scrollen door grote documenten: pagina\'s worden nu pas op hoge resolutie gerenderd wanneer ze in beeld komen (in plaats van alle pagina\'s tegelijk bij het openen), afbeeldingen worden buiten beeld gedecodeerd, en tijdens (Ctrl-)zoomen wordt pas scherp opnieuw gerenderd zodra het zoomen tot rust komt'
+      'Veel soepeler scrollen door grote documenten: pagina\'s worden nu pas op hoge resolutie gerenderd wanneer ze in beeld komen (in plaats van alle pagina\'s tegelijk bij het openen), afbeeldingen worden buiten beeld gedecodeerd, en tijdens (Ctrl-)zoomen wordt pas scherp opnieuw gerenderd zodra het zoomen tot rust komt',
+      'Exporteren naar bewerkbaar Word (.docx): via "Slim → Tekst → Als Word" met behoud van lettergroottes, koppen (vet) en een pagina-einde per pagina — dus geen blok platte tekst meer',
+      'Excel-export met echte celopmaak: nette tabel met randen, een vetgedrukte filterbare kopregel (grijze balk) die in beeld blijft, en getallen/bedragen/percentages/datums als échte waarden met automatische kolombreedtes'
     ]
   },
   {

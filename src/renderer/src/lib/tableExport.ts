@@ -73,7 +73,7 @@ export async function exportTablesToXlsx(): Promise<{ ok: boolean; sheets: numbe
   const group: DocGroup | undefined = state.groups.find((g) => g.id === state.activeGroupId) ?? state.groups[0]
   if (!group) return { ok: false, sheets: 0, reason: 'Geen document' }
 
-  const XLSX = await import('@e965/xlsx')
+  const XLSX = await import('xlsx-js-style')
   const wb = XLSX.utils.book_new()
   const usedNames = new Set<string>()
   let sheets = 0

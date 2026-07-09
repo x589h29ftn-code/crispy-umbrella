@@ -533,8 +533,8 @@ export default function SmartDialog(): JSX.Element | null {
         {tab === 'text' && (
           <div className="smart-card__body">
             <p className="smart-card__intro">
-              Haalt alle tekst uit "{activeGroup?.name ?? '—'}" en slaat die op als tekstbestand of als
-              Word-compatibel bestand (.rtf).
+              Haalt alle tekst uit "{activeGroup?.name ?? '—'}" en slaat die op als tekstbestand, als bewerkbaar
+              Word-document (.docx, met behoud van lettergroottes en koppen) of als Word-compatibele .rtf.
             </p>
             <div className="modal-card__actions">
               <button
@@ -552,10 +552,20 @@ export default function SmartDialog(): JSX.Element | null {
                 className="pill-btn pill-btn--primary"
                 onClick={() => {
                   setOpen(false)
+                  void import('../lib/wordExport').then((m) => m.exportGroupWord())
+                }}
+              >
+                Als Word (.docx)
+              </button>
+              <button
+                type="button"
+                className="pill-btn"
+                onClick={() => {
+                  setOpen(false)
                   void exportGroupText('rtf')
                 }}
               >
-                Voor Word (.rtf)
+                Word-compatibel (.rtf)
               </button>
             </div>
           </div>
