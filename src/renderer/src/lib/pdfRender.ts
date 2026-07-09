@@ -73,7 +73,11 @@ export function forgetSource(sourceId: string): void {
   jsDocCache.delete(sourceId)
   libDocCache.delete(sourceId)
   for (const key of thumbCache.keys()) {
-    if (key.startsWith(`${sourceId}::`)) thumbCache.delete(key)
+    if (key.startsWith(`${sourceId}::`)) {
+      const url = thumbCache.get(key)
+      if (url && url.startsWith('blob:')) URL.revokeObjectURL(url)
+      thumbCache.delete(key)
+    }
   }
 }
 
@@ -317,10 +321,17 @@ async function renderThumbnailOnce(
   if (!ctx) throw new Error('Canvas 2D context unavailable')
 
   await page.render({ canvasContext: ctx, viewport }).promise
-  const dataUrl = canvas.toDataURL('image/png')
+  // Blob-URL i.p.v. base64 data-URL: geen (blokkerende) base64-encode op de
+  // hoofdthread, kleiner in geheugen en sneller te decoderen bij het scrollen.
+  const url = await new Promise<string>((resolve, reject) => {
+    canvas.toBlob((blob) => {
+      if (blob) resolve(URL.createObjectURL(blob))
+      else reject(new Error('Canvas toBlob mislukt'))
+    }, 'image/png')
+  })
   canvas.width = 0
   canvas.height = 0
-  return dataUrl
+  return url
 }
 
 /**

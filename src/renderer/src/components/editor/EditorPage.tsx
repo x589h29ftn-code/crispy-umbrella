@@ -167,16 +167,29 @@ export default function EditorPage({
   const scale = pageVisualSize ? cssWidth / pageVisualSize.width : 1
   const selectedAnnotationId = selection?.pageId === page.id ? selection.annotationId : null
 
-  // Render the page at a resolution quantized to the display width.
-  const renderWidth = Math.min(2800, Math.ceil((cssWidth * (window.devicePixelRatio || 1) * 1.3) / 200) * 200)
+  // Virtualisatie: pas als de pagina (bijna) in beeld komt, doen we het zware
+  // werk (op hoge resolutie renderen + tekstlaag). Zo blijft scrollen door een
+  // groot document soepel; de placeholder houdt intussen de juiste hoogte vast.
+  const rootRef = useRef<HTMLDivElement>(null)
+  const [active, setActive] = useState(false)
+  useEffect(() => {
+    const el = rootRef.current
+    if (!el || typeof IntersectionObserver === 'undefined') {
+      setActive(true)
+      return
+    }
+    const observer = new IntersectionObserver((entries) => setActive(entries.some((e) => e.isIntersecting)), {
+      rootMargin: '1400px 0px'
+    })
+    observer.observe(el)
+    return () => observer.disconnect()
+  }, [])
+
+  // Paginaformaat altijd ophalen (goedkoop, gecachet) zodat de placeholder de
+  // juiste hoogte reserveert — anders klappen alle pagina's samen bovenaan.
   useEffect(() => {
     let cancelled = false
     if (!source) return
-    renderThumbnail(source, page.sourcePageIndex, page.rotation, renderWidth)
-      .then((url) => {
-        if (!cancelled) setImage(url)
-      })
-      .catch(() => undefined)
     getPageVisualSize(source, page.sourcePageIndex, page.rotation)
       .then((size) => {
         if (!cancelled) setPageVisualSize(size)
@@ -185,7 +198,42 @@ export default function EditorPage({
     return () => {
       cancelled = true
     }
-  }, [source, page.sourcePageIndex, page.rotation, renderWidth])
+  }, [source, page.sourcePageIndex, page.rotation])
+
+  // Render at a resolution quantized to the display width. Tijdens (Ctrl-)zoomen
+  // schaalt de browser de bestaande afbeelding mee; de dure her-render op de
+  // nieuwe resolutie gebeurt pas ~200ms nadat het zoomen tot rust komt.
+  const targetRenderWidth = Math.min(2800, Math.ceil((cssWidth * (window.devicePixelRatio || 1) * 1.3) / 200) * 200)
+  const [renderWidth, setRenderWidth] = useState(targetRenderWidth)
+  useEffect(() => {
+    if (!image) {
+      setRenderWidth(targetRenderWidth) // eerste keer meteen scherp renderen
+      return
+    }
+    const timer = window.setTimeout(() => setRenderWidth(targetRenderWidth), 200)
+    return () => window.clearTimeout(timer)
+  }, [targetRenderWidth, image])
+  useEffect(() => {
+    let cancelled = false
+    if (!source || !active) return
+    renderThumbnail(source, page.sourcePageIndex, page.rotation, renderWidth)
+      .then(async (url) => {
+        // Decodeer de afbeelding buiten beeld af, zodat het tonen ervan tijdens
+        // het scrollen niet meer hapert (geen synchrone decode op het scrollpad).
+        try {
+          const probe = new Image()
+          probe.src = url
+          if (probe.decode) await probe.decode()
+        } catch {
+          /* decode niet ondersteund of afgebroken — toon alsnog */
+        }
+        if (!cancelled) setImage(url)
+      })
+      .catch(() => undefined)
+    return () => {
+      cancelled = true
+    }
+  }, [source, page.sourcePageIndex, page.rotation, renderWidth, active])
 
   useEffect(() => {
     let cancelled = false
@@ -254,7 +302,7 @@ export default function EditorPage({
       .then((rects) => {
         if (!cancelled) {
           setSearchHits(rects)
-          if (searchHighlight.pageId === page.id) imgRef.current?.scrollIntoView({ block: 'center' })
+          if (searchHighlight.pageId === page.id) (rootRef.current ?? imgRef.current)?.scrollIntoView({ block: 'center' })
         }
       })
       .catch(() => undefined)
@@ -298,7 +346,8 @@ export default function EditorPage({
     if (page.comments.some((c) => c.id === focusCommentId)) {
       setOpenCommentId(focusCommentId)
       clearFocusComment()
-      imgRef.current?.scrollIntoView({ block: 'center' })
+      const target = rootRef.current ?? imgRef.current
+      target?.scrollIntoView({ block: 'center' })
     }
   }, [focusCommentId, page.comments, clearFocusComment])
 
@@ -1039,8 +1088,14 @@ export default function EditorPage({
   const openComment = page.comments.find((c) => c.id === openCommentId)
   const openPin = openComment ? commentPins[openComment.id] : null
 
+  const placeholderRatio = pageVisualSize ? pageVisualSize.height / pageVisualSize.width : 1.4142
   return (
-    <div className="editor-page" data-page-id={page.id} style={{ width: cssWidth }}>
+    <div
+      ref={rootRef}
+      className="editor-page"
+      data-page-id={page.id}
+      style={{ width: cssWidth, minHeight: image ? undefined : Math.round(cssWidth * placeholderRatio) }}
+    >
       <div
         className={`editor-page__surface${modeClass}`}
         onPointerDown={onStagePointerDown}
@@ -1049,9 +1104,9 @@ export default function EditorPage({
         onClick={onStageClick}
       >
         {image ? (
-          <img ref={imgRef} src={image} alt={`Pagina ${pageNumber}`} draggable={false} />
+          <img ref={imgRef} src={image} alt={`Pagina ${pageNumber}`} draggable={false} decoding="async" />
         ) : (
-          <div className="editor-page__loading" style={{ height: cssWidth * 1.35 }} />
+          <div className="editor-page__loading" style={{ height: Math.round(cssWidth * placeholderRatio) }} />
         )}
         <div
           ref={textLayerRef}
