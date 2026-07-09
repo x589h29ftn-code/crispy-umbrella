@@ -16,7 +16,7 @@ export const APP_CHANGELOG: { version: string; items: string[] }[] = [
       'AVG-scan nauwkeuriger: bedragen in een jaarrekening worden niet meer per ongeluk als BSN gezien (een BSN wordt herkend als 9 aaneengesloten cijfers, of gegroepeerd alleen als het woord "BSN"/"sofinummer" op de regel staat), en bedrijfsnamen met tussenwoorden zoals "Timmerfabriek De Houtmolen Makkum B.V." of "Van der Meer Bouw B.V." worden nu wél herkend',
       'Veel soepeler scrollen door grote documenten: pagina\'s worden nu pas op hoge resolutie gerenderd wanneer ze in beeld komen (in plaats van alle pagina\'s tegelijk bij het openen), afbeeldingen worden buiten beeld gedecodeerd, en tijdens (Ctrl-)zoomen wordt pas scherp opnieuw gerenderd zodra het zoomen tot rust komt',
       'Exporteren naar bewerkbaar Word (.docx): via "Slim → Tekst → Als Word" met behoud van lettergroottes, koppen (vet) en een pagina-einde per pagina — dus geen blok platte tekst meer',
-      'Excel-export met echte celopmaak: nette tabel met randen, een vetgedrukte filterbare kopregel (grijze balk) die in beeld blijft, en getallen/bedragen/percentages/datums als échte waarden met automatische kolombreedtes'
+      'Excel-export met echte celopmaak: nette tabel met randen, een vetgedrukte filterbare kopregel (grijze balk) die in beeld blijft, en financiële opmaak — bedragen (€) en getallen met duizendtal-scheiding en negatieven in rood, percentages als echt percentage, en datums als échte (sorteerbare) datums. Ook boekhoudkundige negatieven zoals (1.234) en 1.234- worden herkend'
     ]
   },
   {

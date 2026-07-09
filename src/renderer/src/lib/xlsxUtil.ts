@@ -1,33 +1,51 @@
 import { useStudioStore } from '../store'
 
 interface ParsedCell {
-  v: string | number
+  v: string | number | Date
   z?: string
 }
 
+// Getalopmaak met duizendtal-scheiding; negatieven rood (financiële conventie).
+const FMT_INT = '#,##0;[Red]-#,##0'
+const FMT_DEC = '#,##0.00;[Red]-#,##0.00'
+const FMT_EUR = '€ #,##0.00;[Red]-€ #,##0.00'
+const FMT_DATE = 'dd-mm-jjjj'
+
 /**
  * Herkent een Nederlands getal/bedrag/percentage/datum in een tekstcel en geeft
- * een echte waarde + Excel-opmaak terug — zo komen bedragen als getallen in
- * Excel, niet als tekst.
+ * een echte waarde + Excel-opmaak terug — zo komen bedragen, percentages en
+ * datums als échte waarden in Excel, niet als tekst. Ondersteunt ook
+ * boekhoudkundige negatieven: "(1.234)" en "1.234-" (bedrag tussen haakjes of
+ * met een min-teken erachter) worden als negatief getal gelezen.
  */
 export function cellFromText(raw: string): ParsedCell {
   const s = String(raw ?? '').trim()
   if (!s) return { v: '' }
+  // Datum: d-m-jjjj / d/m/jj → echte Excel-datum (sorteerbaar, rekenbaar).
   const dm = s.match(/^(\d{1,2})[-/.](\d{1,2})[-/.](\d{2,4})$/)
   if (dm) {
     const [, d, mo, y] = dm
     const year = y.length === 2 ? 2000 + Number(y) : Number(y)
-    return { v: `${String(d).padStart(2, '0')}-${String(mo).padStart(2, '0')}-${year}` }
+    const date = new Date(year, Number(mo) - 1, Number(d))
+    if (!Number.isNaN(date.getTime()) && Number(mo) >= 1 && Number(mo) <= 12 && Number(d) >= 1 && Number(d) <= 31) {
+      return { v: date, z: FMT_DATE }
+    }
   }
   const isPct = /%$/.test(s)
   const isCur = /€|EUR/i.test(s)
-  const numPart = s.replace(/[€\s%]|EUR/gi, '')
-  if (/^-?\d{1,3}(\.\d{3})*(,\d+)?$/.test(numPart) || /^-?\d+(,\d+)?$/.test(numPart)) {
-    const value = Number(numPart.replace(/\./g, '').replace(',', '.'))
+  // Boekhoudkundige negatieven: (1.234) of 1.234- .
+  const paren = /^\(.*\)$/.test(s)
+  const trailingMinus = /-\s*$/.test(s.replace(/[)\s]*$/, '')) || /\d[-]$/.test(s.replace(/[€\s%)]|EUR/gi, ''))
+  let numPart = s.replace(/[€\s%()]|EUR/gi, '').replace(/-\s*$/, '')
+  const negative = paren || trailingMinus || /^-/.test(numPart)
+  numPart = numPart.replace(/^-/, '')
+  if (/^\d{1,3}(\.\d{3})*(,\d+)?$/.test(numPart) || /^\d+(,\d+)?$/.test(numPart)) {
+    let value = Number(numPart.replace(/\./g, '').replace(',', '.'))
     if (Number.isFinite(value)) {
+      if (negative) value = -value
       if (isPct) return { v: value / 100, z: '0.0%' }
-      if (isCur) return { v: value, z: '€ #,##0.00' }
-      return { v: value, z: Number.isInteger(value) ? '#,##0' : '#,##0.00' }
+      if (isCur) return { v: value, z: FMT_EUR }
+      return { v: value, z: Number.isInteger(value) ? FMT_INT : FMT_DEC }
     }
   }
   return { v: s }
@@ -51,7 +69,11 @@ const HEADER_STYLE = {
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 export function makeSheet(XLSX: any, rows: (string | number)[][], opts: { header?: boolean } = {}): any {
   const parsed = rows.map((row) => row.map((c) => (typeof c === 'number' ? { v: c } : cellFromText(String(c)))))
-  const ws = XLSX.utils.aoa_to_sheet(parsed.map((r) => r.map((c) => c.v)))
+  // cellDates zorgt dat Date-waarden echte datumcellen worden (niet als getal/tekst).
+  const ws = XLSX.utils.aoa_to_sheet(
+    parsed.map((r) => r.map((c) => c.v)),
+    { cellDates: true }
+  )
   // Opmaak (z) + celstijl per cel toepassen.
   const colCount = Math.max(0, ...parsed.map((r) => r.length))
   for (let r = 0; r < parsed.length; r += 1) {
@@ -60,15 +82,21 @@ export function makeSheet(XLSX: any, rows: (string | number)[][], opts: { header
       if (!ws[addr]) continue
       const z = parsed[r][c].z
       if (z) ws[addr].z = z
+      const val = parsed[r][c].v
+      const rightAlign = typeof val === 'number' || val instanceof Date
       const isHeaderCell = opts.header && r === 0
       ws[addr].s = isHeaderCell
         ? HEADER_STYLE
-        : { border: CELL_BORDER, alignment: { vertical: 'center', horizontal: typeof parsed[r][c].v === 'number' ? 'right' : 'left' } }
+        : { border: CELL_BORDER, alignment: { vertical: 'center', horizontal: rightAlign ? 'right' : 'left' } }
     }
   }
-  // Kolombreedtes.
+  // Kolombreedtes (datums tellen als ~10 tekens, niet als hun lange JS-string).
   const widths: number[] = []
-  for (const row of parsed) row.forEach((c, i) => (widths[i] = Math.max(widths[i] ?? 8, Math.min(60, String(c.v).length + 2))))
+  for (const row of parsed)
+    row.forEach((c, i) => {
+      const len = c.v instanceof Date ? 10 : String(c.v).length
+      widths[i] = Math.max(widths[i] ?? 8, Math.min(60, len + 2))
+    })
   ws['!cols'] = widths.map((wch) => ({ wch }))
   if (opts.header && rows.length > 1) {
     const range = { s: { r: 0, c: 0 }, e: { r: rows.length - 1, c: Math.max(0, colCount - 1) } }
