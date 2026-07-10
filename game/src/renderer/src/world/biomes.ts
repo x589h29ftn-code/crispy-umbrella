@@ -1,0 +1,74 @@
+import { clamp, lerp, smoothstep } from './noise'
+import type { World } from './terrain'
+
+// Vrolijk low-poly palet (RGB in [0,1]).
+const COLORS = {
+  sandWet: [0.78, 0.68, 0.5],
+  sand: [0.93, 0.85, 0.62],
+  grass: [0.5, 0.72, 0.29],
+  forest: [0.32, 0.56, 0.24],
+  rock: [0.55, 0.53, 0.5],
+  snow: [0.94, 0.95, 0.97]
+} as const
+
+type Rgb = [number, number, number]
+
+function mix(out: Rgb, target: readonly number[], t: number): void {
+  out[0] = lerp(out[0], target[0], t)
+  out[1] = lerp(out[1], target[1], t)
+  out[2] = lerp(out[2], target[2], t)
+}
+
+/**
+ * Vertex-kleur voor een terreinpunt: vloeiende blend tussen biomen op basis
+ * van hoogte, bosdichtheid en helling. `jitter` (0..1) geeft per vertex een
+ * subtiele variatie voor het handgemaakte low-poly gevoel.
+ */
+export function terrainColor(
+  world: World,
+  x: number,
+  z: number,
+  height: number,
+  normalY: number,
+  jitter: number,
+  out: Rgb
+): Rgb {
+  // Basis: zand onder/rond zeeniveau, daarboven gras.
+  out[0] = COLORS.sandWet[0]
+  out[1] = COLORS.sandWet[1]
+  out[2] = COLORS.sandWet[2]
+
+  mix(out, COLORS.sand, smoothstep(-1.5, 0.4, height))
+  mix(out, COLORS.grass, smoothstep(1.2, 2.6, height))
+
+  // Bos: donkerder groen waar de boslaag actief is.
+  const forest = world.forestness(x, z) * smoothstep(1.5, 3, height)
+  mix(out, COLORS.forest, forest * 0.85)
+
+  // Rots op steile hellingen en hoog in de heuvels.
+  const steep = smoothstep(0.82, 0.62, normalY)
+  const high = smoothstep(24, 34, height)
+  mix(out, COLORS.rock, clamp(steep + high * 0.7, 0, 1))
+
+  // Sneeuw op de toppen.
+  mix(out, COLORS.snow, smoothstep(38, 44, height) * smoothstep(0.55, 0.8, normalY))
+
+  // Per-vertex kleurjitter.
+  const j = 0.93 + jitter * 0.14
+  out[0] = clamp(out[0] * j, 0, 1)
+  out[1] = clamp(out[1] * j, 0, 1)
+  out[2] = clamp(out[2] * j, 0, 1)
+  return out
+}
+
+/** Naam van het bioom op een punt, voor de HUD. */
+export function biomeName(world: World, x: number, z: number): string {
+  const h = world.height(x, z)
+  if (h < -0.2) return 'Zee'
+  if (h < 2.2) return 'Strand'
+  if (h > 38) return 'Bergtop'
+  const n = world.normal(x, z)
+  if (n.y < 0.68 || (world.hilliness(x, z) > 0.6 && h > 18)) return 'Heuvels'
+  if (world.forestness(x, z) > 0.5) return 'Bos'
+  return 'Grasland'
+}

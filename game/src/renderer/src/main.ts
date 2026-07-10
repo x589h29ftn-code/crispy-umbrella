@@ -1,12 +1,49 @@
-// Entrypunt: startmenu tonen, daarna de game opstarten met de gekozen seed.
-// De echte gamemodules volgen in latere stappen; dit is de scaffold-versie.
+import { Game } from './core/Game'
+import { Hud } from './ui/hud'
 
-const playButton = document.getElementById('play') as HTMLButtonElement
-const seedInput = document.getElementById('seed') as HTMLInputElement
+// Startmenu → game. De game leeft zolang het venster leeft; een nieuwe wereld
+// starten gebeurt door de app opnieuw te openen (v1).
 
-playButton.addEventListener('click', () => {
-  const seed = seedInput.value.trim() || `wereld-${Math.floor(Math.random() * 100000)}`
-  console.log('Start game met seed:', seed)
-})
+const hud = new Hud()
+const container = document.getElementById('app')!
+let game: Game | null = null
 
-export {}
+hud.onPlay = (seedText) => {
+  const seed = seedText || `wereld-${Math.floor(Math.random() * 1_000_000)}`
+  if (!game) {
+    game = new Game(seed, container, hud)
+    wireGame(game)
+    game.start()
+  }
+  hud.showGame()
+  game.setPaused(false)
+  game.input.requestLock()
+}
+
+hud.onResume = () => {
+  if (!game) return
+  hud.hidePause()
+  game.setPaused(false)
+  game.input.requestLock()
+}
+
+hud.onQuit = () => {
+  if (window.gameAPI) window.gameAPI.quit()
+  else window.close()
+}
+
+function wireGame(g: Game): void {
+  g.graphics.setQuality(hud.initialQuality)
+  hud.onQuality = (q) => g.graphics.setQuality(q)
+
+  // Esc (pointer lock kwijt) → pauzemenu.
+  g.input.onLockChange = (locked) => {
+    if (!locked && !g.paused) {
+      g.setPaused(true)
+      hud.showPause()
+    }
+  }
+  hud.setSelectedSlot(0)
+}
+
+hud.showMenu()
