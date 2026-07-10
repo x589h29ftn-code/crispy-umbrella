@@ -340,6 +340,63 @@ app.whenReady().then(() => {
     return true
   })
 
+  // ---- Documentsjablonen (userData/templates): index.json + {id}.docx ----
+  const templatesDir = (): string => join(app.getPath('userData'), 'templates')
+  const templatesIndexPath = (): string => join(templatesDir(), 'index.json')
+
+  ipcMain.handle('templates:list', async () => {
+    try {
+      return JSON.parse(await readFile(templatesIndexPath(), 'utf-8'))
+    } catch {
+      return []
+    }
+  })
+
+  ipcMain.handle('templates:save', async (_evt, metaJson: string, docx: Uint8Array | null) => {
+    try {
+      await mkdir(templatesDir(), { recursive: true })
+      const meta = JSON.parse(metaJson) as { id: string }
+      let list: { id: string }[] = []
+      try {
+        list = JSON.parse(await readFile(templatesIndexPath(), 'utf-8'))
+      } catch {
+        /* nog geen index */
+      }
+      const idx = list.findIndex((t) => t.id === meta.id)
+      if (idx >= 0) list[idx] = meta
+      else list.push(meta)
+      await writeFile(templatesIndexPath(), JSON.stringify(list, null, 1), 'utf-8')
+      if (docx) await writeFile(join(templatesDir(), `${meta.id}.docx`), Buffer.from(docx))
+      return { ok: true }
+    } catch (error) {
+      return { ok: false, error: String(error) }
+    }
+  })
+
+  ipcMain.handle('templates:delete', async (_evt, id: string) => {
+    try {
+      let list: { id: string }[] = []
+      try {
+        list = JSON.parse(await readFile(templatesIndexPath(), 'utf-8'))
+      } catch {
+        /* geen index */
+      }
+      await writeFile(templatesIndexPath(), JSON.stringify(list.filter((t) => t.id !== id), null, 1), 'utf-8')
+      await unlink(join(templatesDir(), `${id}.docx`)).catch(() => undefined)
+      return { ok: true }
+    } catch {
+      return { ok: false }
+    }
+  })
+
+  ipcMain.handle('templates:loadDocx', async (_evt, id: string) => {
+    try {
+      return await readFile(join(templatesDir(), `${id}.docx`))
+    } catch {
+      return null
+    }
+  })
+
   ipcMain.handle('dialog:savePdf', async (_evt, defaultName: string, data: Uint8Array) => {
     const result = await dialog.showSaveDialog({
       defaultPath: defaultName,

@@ -26,6 +26,7 @@ const DrawSignatureDialog = lazy(() => import('./components/DrawSignatureDialog'
 const PrivacyScanDialog = lazy(() => import('./components/PrivacyScanDialog'))
 const CompareView = lazy(() => import('./components/CompareView'))
 const SmartDialog = lazy(() => import('./components/SmartDialog'))
+const TemplatesDialog = lazy(() => import('./components/TemplatesDialog'))
 import { printActiveGroup } from './lib/printActions'
 import { cancelDrag, isDragActive } from './lib/dragController'
 import { useStudioStore } from './store'
@@ -55,6 +56,7 @@ export default function App(): JSX.Element {
   const privacyScanOpen = useStudioStore((s) => s.privacyScanOpen)
   const compareOpen = useStudioStore((s) => s.compare.open)
   const smartDialogOpen = useStudioStore((s) => s.smartDialogOpen)
+  const templatesDialogOpen = useStudioStore((s) => s.templatesDialogOpen)
 
   useEffect(() => window.api.onFilesOpened((files) => void useStudioStore.getState().importFiles(files)), [])
 
@@ -170,6 +172,7 @@ export default function App(): JSX.Element {
         {privacyScanOpen && <PrivacyScanDialog />}
         {compareOpen && <CompareView />}
         {smartDialogOpen && <SmartDialog />}
+        {templatesDialogOpen && <TemplatesDialog />}
       </Suspense>
       <SelectionBar />
       <PasswordDialog />

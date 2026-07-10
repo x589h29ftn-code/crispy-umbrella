@@ -17,6 +17,7 @@ import {
   IconDownload,
   IconExpand,
   IconFolderOpen,
+  IconForm,
   IconLock,
   IconMail,
   IconMinus,
@@ -95,6 +96,7 @@ export default function Toolbar({ zoomPct, onZoomIn, onZoomOut, onZoomReset, onZ
   const openCompare = useStudioStore((s) => s.openCompare)
   const setPrivacyScanOpen = useStudioStore((s) => s.setPrivacyScanOpen)
   const setSmartDialogOpen = useStudioStore((s) => s.setSmartDialogOpen)
+  const setTemplatesDialogOpen = useStudioStore((s) => s.setTemplatesDialogOpen)
   const setShortcutsOpen = useStudioStore((s) => s.setShortcutsOpen)
   const setPreferencesOpen = useStudioStore((s) => s.setPreferencesOpen)
   const setTrashPanelOpen = useStudioStore((s) => s.setTrashPanelOpen)
@@ -289,6 +291,16 @@ export default function Toolbar({ zoomPct, onZoomIn, onZoomOut, onZoomReset, onZ
       >
         <IconSparkles size={15} />
         <span className="sidebar-btn__label">Slim</span>
+      </button>
+
+      <button
+        type="button"
+        className="sidebar-btn"
+        onClick={() => setTemplatesDialogOpen(true)}
+        title="Documentsjablonen: Word-sjablonen met {variabelen} invullen en genereren naar Word of PDF"
+      >
+        <IconForm size={15} />
+        <span className="sidebar-btn__label">Sjablonen</span>
       </button>
 
       <button

@@ -233,6 +233,9 @@ interface StudioState {
   /** "Slimme documenten"-dialoog (hernoemen, lege pagina's, opschonen, CSV). */
   smartDialogOpen: boolean
   setSmartDialogOpen: (open: boolean) => void
+  /** Documentsjablonen: Word-sjablonen met {variabelen} invullen en genereren. */
+  templatesDialogOpen: boolean
+  setTemplatesDialogOpen: (open: boolean) => void
   /** Sneltoetsen-overzicht (help). */
   shortcutsOpen: boolean
   setShortcutsOpen: (open: boolean) => void
@@ -993,6 +996,8 @@ export const useStudioStore = create<StudioState>((set, get) => ({
   setPrivacyScanOpen: (open) => set({ privacyScanOpen: open }),
   smartDialogOpen: false,
   setSmartDialogOpen: (open) => set({ smartDialogOpen: open }),
+  templatesDialogOpen: false,
+  setTemplatesDialogOpen: (open) => set({ templatesDialogOpen: open }),
   shortcutsOpen: false,
   setShortcutsOpen: (open) => set({ shortcutsOpen: open }),
   preferencesOpen: false,

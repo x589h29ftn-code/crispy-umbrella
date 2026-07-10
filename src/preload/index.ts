@@ -55,6 +55,11 @@ const api = {
     ipcRenderer.invoke('dialog:saveZip', defaultName, data),
   saveFile: (defaultName: string, data: Uint8Array, extension: string): Promise<SaveResult> =>
     ipcRenderer.invoke('dialog:saveFile', defaultName, data, extension),
+  templatesList: (): Promise<unknown[]> => ipcRenderer.invoke('templates:list'),
+  templatesSave: (metaJson: string, docx: Uint8Array | null): Promise<{ ok: boolean; error?: string }> =>
+    ipcRenderer.invoke('templates:save', metaJson, docx),
+  templatesDelete: (id: string): Promise<{ ok: boolean }> => ipcRenderer.invoke('templates:delete', id),
+  templatesLoadDocx: (id: string): Promise<Uint8Array | null> => ipcRenderer.invoke('templates:loadDocx', id),
   onFilesOpened: (callback: (files: LoadedFile[]) => void): (() => void) => {
     const listener = (_evt: unknown, files: LoadedFile[]): void => callback(files)
     ipcRenderer.on('files:opened', listener)
