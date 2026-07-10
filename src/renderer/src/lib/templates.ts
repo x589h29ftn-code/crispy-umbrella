@@ -6,6 +6,16 @@ export interface TemplateField {
   label: string
   type: 'text' | 'multiline' | 'date'
   required: boolean
+  /** Voorbeeldtekst in het lege invulveld. */
+  placeholder?: string
+  /** Extra uitleg onder het veld. */
+  help?: string
+  /** Sectiegroep-kop waaronder het veld in het formulier staat. */
+  section?: string
+  /** Verborgen: variabele bestaat in het sjabloon maar staat niet in het formulier. */
+  hidden?: boolean
+  /** Conditioneel zichtbaar: alleen tonen als een ander veld (een bepaalde) waarde heeft. */
+  visibleIf?: { key: string; equals?: string }
 }
 
 export interface DocTemplate {
@@ -16,8 +26,57 @@ export interface DocTemplate {
   version: number
   /** Bestandsnaam-patroon, bv. "{Klantnaam} {datum} {templatenaam}". */
   filePattern?: string
+  /** Automatisch oplopend volgnummer, beschikbaar als {volgnummer}. */
+  autoNumber?: boolean
+  nextNumber?: number
   fields: TemplateField[]
   createdAt: number
+}
+
+/** Is het veld zichtbaar in het formulier bij de huidige waarden? */
+export function isFieldVisible(field: TemplateField, values: Record<string, string>): boolean {
+  if (field.hidden) return false
+  if (!field.visibleIf?.key) return true
+  const other = (values[field.visibleIf.key] ?? '').trim()
+  if (field.visibleIf.equals !== undefined && field.visibleIf.equals !== '') {
+    return other.toLowerCase() === field.visibleIf.equals.trim().toLowerCase()
+  }
+  return other.length > 0
+}
+
+/**
+ * Automatische variabelen die altijd beschikbaar zijn bij het invullen:
+ * {datum}, {templatenaam} en — met volgnummer aan — {volgnummer}.
+ */
+export function autoValues(template: DocTemplate): Record<string, string> {
+  const d = new Date()
+  const out: Record<string, string> = {
+    datum: `${d.getDate()}-${d.getMonth() + 1}-${d.getFullYear()}`,
+    templatenaam: template.name
+  }
+  if (template.autoNumber) out.volgnummer = String(template.nextNumber ?? 1)
+  return out
+}
+
+// ---- Concepten: half-ingevulde formulieren per sjabloon bewaren ----
+
+const LS_DRAFT_PREFIX = 'pdf-studio-template-draft-'
+
+export function saveDraft(templateId: string, values: Record<string, string>): void {
+  window.localStorage.setItem(LS_DRAFT_PREFIX + templateId, JSON.stringify(values))
+}
+
+export function loadDraft(templateId: string): Record<string, string> | null {
+  try {
+    const raw = window.localStorage.getItem(LS_DRAFT_PREFIX + templateId)
+    return raw ? (JSON.parse(raw) as Record<string, string>) : null
+  } catch {
+    return null
+  }
+}
+
+export function clearDraft(templateId: string): void {
+  window.localStorage.removeItem(LS_DRAFT_PREFIX + templateId)
 }
 
 // ---- Opslag: via de desktop-API (userData/templates); in de browser/test
@@ -144,13 +203,14 @@ export async function fillDocxTemplate(docx: Uint8Array, values: Record<string, 
   return out
 }
 
-/** Past het bestandsnaam-patroon toe: {templatenaam}, {datum} en veldsleutels. */
+/** Past het bestandsnaam-patroon toe: {templatenaam}, {datum}, {volgnummer} en veldsleutels. */
 export function applyFilePattern(template: DocTemplate, values: Record<string, string>): string {
-  const d = new Date()
-  const datum = `${d.getDate()}-${d.getMonth() + 1}-${d.getFullYear()}`
+  const all = { ...autoValues(template), ...values }
   let name = (template.filePattern || '{templatenaam} {datum}').trim()
-  name = name.replace(/\{templatenaam\}/gi, template.name).replace(/\{datum\}/gi, datum)
-  name = name.replace(/\{([^{}]+)\}/g, (_, key: string) => values[key.trim()] ?? '')
+  name = name.replace(/\{([^{}]+)\}/g, (_, key: string) => {
+    const k = key.trim()
+    return all[k] ?? all[k.toLowerCase()] ?? ''
+  })
   name = name.replace(/[\\/:*?"<>|]/g, '_').replace(/\s+/g, ' ').trim().replace(/\.$/, '')
   return name || template.name
 }

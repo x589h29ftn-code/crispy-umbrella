@@ -4290,3 +4290,59 @@ button.group-row__date:hover {
   color: var(--text-dim);
   white-space: nowrap;
 }
+
+/* Sjablonen v2: secties, veldkaarten, condities */
+.templates-fill__section {
+  font-weight: 700;
+  font-size: 13.5px;
+  margin: 14px 0 8px;
+  padding-bottom: 4px;
+  border-bottom: 1px solid var(--border-soft);
+}
+
+.templates-edit__fieldcard {
+  border: 1px solid var(--border-soft);
+  border-radius: 8px;
+  margin-bottom: 6px;
+  background: var(--panel-2);
+}
+
+.templates-edit__fieldcard .templates-edit__field {
+  border: none;
+  margin-bottom: 0;
+  background: transparent;
+  grid-template-columns: minmax(110px, 0.9fr) 1.1fr auto auto auto;
+}
+
+.templates-edit__more {
+  padding: 4px 10px 10px;
+  border-top: 1px dashed var(--border-soft);
+}
+
+.templates-edit__cond {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+}
+
+.templates-edit__cond select,
+.templates-edit__cond input {
+  font: inherit;
+  font-size: 13px;
+  padding: 7px 9px;
+  border: 1px solid var(--border-soft);
+  border-radius: 7px;
+  background: var(--panel);
+  color: var(--text);
+}
+
+.templates-edit__number {
+  width: 70px;
+  font: inherit;
+  font-size: 12.5px;
+  padding: 3px 6px;
+  border: 1px solid var(--border-soft);
+  border-radius: 6px;
+  background: var(--panel);
+  color: var(--text);
+}
