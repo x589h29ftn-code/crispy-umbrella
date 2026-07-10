@@ -5,8 +5,11 @@ import type { World } from './terrain'
 const COLORS = {
   sandWet: [0.78, 0.68, 0.5],
   sand: [0.93, 0.85, 0.62],
-  grass: [0.5, 0.72, 0.29],
-  forest: [0.32, 0.56, 0.24],
+  grass: [0.48, 0.7, 0.28],
+  meadowFresh: [0.56, 0.78, 0.32], // frisse lichte veldjes
+  meadowHerb: [0.42, 0.62, 0.27], // kruidenrijk, iets dieper groen
+  forest: [0.3, 0.53, 0.22],
+  forestFloor: [0.36, 0.42, 0.2], // strooisellaag onder dichte bomen
   rock: [0.55, 0.53, 0.5],
   snow: [0.94, 0.95, 0.97]
 } as const
@@ -41,9 +44,18 @@ export function terrainColor(
   mix(out, COLORS.sand, smoothstep(-1.5, 0.4, height))
   mix(out, COLORS.grass, smoothstep(1.2, 2.6, height))
 
-  // Bos: donkerder groen waar de boslaag actief is.
+  // Weidepatronen: vlekken fris en kruidenrijk groen door elkaar,
+  // zodat het grasland niet één egale kleur is.
+  const grassy = smoothstep(1.4, 2.8, height)
+  const patch = world.meadow(x, z)
+  mix(out, COLORS.meadowFresh, smoothstep(0.52, 0.78, patch) * 0.85 * grassy)
+  mix(out, COLORS.meadowHerb, smoothstep(0.48, 0.22, patch) * 0.75 * grassy)
+
+  // Bos: donkerder groen waar de boslaag actief is, met strooisellaag
+  // in de dichtste kernen.
   const forest = world.forestness(x, z) * smoothstep(1.5, 3, height)
   mix(out, COLORS.forest, forest * 0.85)
+  mix(out, COLORS.forestFloor, smoothstep(0.75, 1, world.forestness(x, z)) * 0.5 * grassy)
 
   // Rots op steile hellingen en hoog in de heuvels.
   const steep = smoothstep(0.82, 0.62, normalY)

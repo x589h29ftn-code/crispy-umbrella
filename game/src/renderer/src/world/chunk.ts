@@ -98,7 +98,92 @@ export function buildChunkGeometry(world: World, cx: number, cz: number): THREE.
   return geometry
 }
 
-/** Gedeeld terreinmateriaal: vertex-kleuren, smooth shading. */
+/**
+ * Tegelbare grijswaarden-ruistextuur (valuenoise, 3 octaven) voor
+ * oppervlaktedetail op het terrein — proceduraal, dus geen assetbestanden.
+ */
+function generateDetailTexture(): THREE.DataTexture {
+  const size = 256
+  const data = new Uint8Array(size * size * 4)
+
+  const octaves = [
+    { cells: 8, weight: 0.5 },
+    { cells: 32, weight: 0.3 },
+    { cells: 128, weight: 0.2 }
+  ].map((o) => ({
+    ...o,
+    lattice: Float32Array.from({ length: o.cells * o.cells }, () => Math.random())
+  }))
+
+  const smooth = (t: number): number => t * t * (3 - 2 * t)
+
+  for (let y = 0; y < size; y++) {
+    for (let x = 0; x < size; x++) {
+      let v = 0
+      for (const { cells, weight, lattice } of octaves) {
+        const gx = (x / size) * cells
+        const gy = (y / size) * cells
+        const x0 = Math.floor(gx) % cells
+        const y0 = Math.floor(gy) % cells
+        const x1 = (x0 + 1) % cells
+        const y1 = (y0 + 1) % cells
+        const fx = smooth(gx - Math.floor(gx))
+        const fy = smooth(gy - Math.floor(gy))
+        const a = lattice[y0 * cells + x0]
+        const b = lattice[y0 * cells + x1]
+        const c = lattice[y1 * cells + x0]
+        const d = lattice[y1 * cells + x1]
+        v += weight * (a + (b - a) * fx + (c - a) * fy + (a - b - c + d) * fx * fy)
+      }
+      const g = Math.round(v * 255)
+      const i = (y * size + x) * 4
+      data[i] = g
+      data[i + 1] = g
+      data[i + 2] = g
+      data[i + 3] = 255
+    }
+  }
+
+  const texture = new THREE.DataTexture(data, size, size)
+  texture.wrapS = THREE.RepeatWrapping
+  texture.wrapT = THREE.RepeatWrapping
+  texture.magFilter = THREE.LinearFilter
+  texture.minFilter = THREE.LinearMipmapLinearFilter
+  texture.generateMipmaps = true
+  texture.anisotropy = 4
+  texture.needsUpdate = true
+  return texture
+}
+
+/**
+ * Gedeeld terreinmateriaal: vertex-kleuren, smooth shading, plus een
+ * wereld-uitgelijnde detailtextuur op twee schalen (grove vlekken ~6 m en
+ * fijn "sprietjes"-detail ~1 m) die de vlakke kleuren doorbreekt.
+ */
 export function createTerrainMaterial(): THREE.MeshLambertMaterial {
-  return new THREE.MeshLambertMaterial({ vertexColors: true })
+  const material = new THREE.MeshLambertMaterial({ vertexColors: true })
+  const detail = generateDetailTexture()
+  material.onBeforeCompile = (shader) => {
+    shader.uniforms.uDetail = { value: detail }
+    shader.vertexShader =
+      'varying vec3 vDetailWorld;\n' +
+      shader.vertexShader.replace(
+        '#include <begin_vertex>',
+        `#include <begin_vertex>
+        vDetailWorld = (modelMatrix * vec4(transformed, 1.0)).xyz;`
+      )
+    shader.fragmentShader =
+      'uniform sampler2D uDetail;\nvarying vec3 vDetailWorld;\n' +
+      shader.fragmentShader.replace(
+        '#include <color_fragment>',
+        `#include <color_fragment>
+        {
+          float coarse = texture2D(uDetail, vDetailWorld.xz * 0.031).r;
+          float mid = texture2D(uDetail, vDetailWorld.xz * 0.085).r;
+          float fine = texture2D(uDetail, vDetailWorld.xz * 0.21).r;
+          diffuseColor.rgb *= 0.72 + coarse * 0.32 + (mid - 0.5) * 0.18 + (fine - 0.5) * 0.2;
+        }`
+      )
+  }
+  return material
 }

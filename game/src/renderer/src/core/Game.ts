@@ -8,6 +8,7 @@ import { BlockStore } from '../build/blockStore'
 import { BuildSystem } from '../build/placement'
 import { Animals } from '../fauna/animals'
 import { Birds } from '../fauna/birds'
+import { Butterflies } from '../fauna/butterflies'
 import { PlayerController } from '../player/controller'
 import { biomeName } from '../world/biomes'
 import { ChunkManager, VIEW_DISTANCE } from '../world/chunkManager'
@@ -89,6 +90,12 @@ export class Game {
 
     const birds = new Birds(this.world, this.scene)
     this.addUpdater((dt) => birds.update(dt, this.player.position))
+
+    const butterflies = new Butterflies(this.world, this.scene)
+    this.addUpdater((dt) => butterflies.update(dt, this.player.position, this.sky.nightness))
+
+    // Niet door boomstammen heen kunnen lopen.
+    this.player.setTreeQuery((x, z) => vegetation.collidersNear(x, z))
 
     // Audio: volledig gesynthetiseerd, bussen gekoppeld aan de sliders.
     this.audio = new AudioEngine()

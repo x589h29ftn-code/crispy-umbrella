@@ -35,6 +35,9 @@ export type BlockQuery = (
   maxZ: number
 ) => BlockAabb[]
 
+/** Botsingscirkels van boomstammen in de buurt (levert de vegetatie). */
+export type TreeQuery = (x: number, z: number) => { x: number; z: number; r: number }[]
+
 export class PlayerController {
   readonly position = new THREE.Vector3() // voeten
   readonly velocity = new THREE.Vector3()
@@ -45,6 +48,7 @@ export class PlayerController {
   private world: World
   private input: Input
   private blockQuery: BlockQuery | null = null
+  private treeQuery: TreeQuery | null = null
   private groundNormal = { x: 0, y: 1, z: 0 }
 
   constructor(world: World, input: Input) {
@@ -54,6 +58,10 @@ export class PlayerController {
 
   setBlockQuery(query: BlockQuery): void {
     this.blockQuery = query
+  }
+
+  setTreeQuery(query: TreeQuery): void {
+    this.treeQuery = query
   }
 
   /** Zet de speler net boven het terrein op deze plek. */
@@ -127,6 +135,22 @@ export class PlayerController {
     this.moveAxis(0, vel.x * dt)
     this.moveAxis(2, vel.z * dt)
     this.moveAxis(1, vel.y * dt)
+
+    // Boomstammen: cirkel-uitduwing zodat je niet door bomen heen loopt.
+    if (this.treeQuery) {
+      for (const tree of this.treeQuery(pos.x, pos.z)) {
+        const dx = pos.x - tree.x
+        const dz = pos.z - tree.z
+        const minDist = tree.r + HALF_WIDTH
+        const distSq = dx * dx + dz * dz
+        if (distSq < minDist * minDist && distSq > 1e-8) {
+          const dist = Math.sqrt(distSq)
+          const push = (minDist - dist) / dist
+          pos.x += dx * push
+          pos.z += dz * push
+        }
+      }
+    }
 
     // Terrein: de vloer onder alles.
     const groundH = this.world.height(pos.x, pos.z)

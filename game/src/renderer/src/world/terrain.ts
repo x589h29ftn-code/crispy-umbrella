@@ -18,6 +18,7 @@ export class World {
   private nDetail: NoiseFunction2D
   private nMoisture: NoiseFunction2D
   private nForest: NoiseFunction2D
+  private nMeadow: NoiseFunction2D
 
   constructor(seedText: string) {
     this.seed = hashString(seedText)
@@ -27,6 +28,7 @@ export class World {
     this.nDetail = seededNoise2D(this.seed, 4)
     this.nMoisture = seededNoise2D(this.seed, 5)
     this.nForest = seededNoise2D(this.seed, 6)
+    this.nMeadow = seededNoise2D(this.seed, 7)
   }
 
   /** Terreinhoogte in meters (zeeniveau = 0). */
@@ -82,5 +84,13 @@ export class World {
   /** Sterkte van het heuvellandschap (0 = vlak, 1 = vol heuvelgebied). */
   hilliness(x: number, z: number): number {
     return smoothstep(0.15, 0.65, fbm01(this.nHillMask, x, z, 2, 1 / 900))
+  }
+
+  /**
+   * Weidepatronen in [0, 1]: middelgrote kleurvlekken (frisse veldjes,
+   * kruidenrijke plekken, bloemenweides) die het grasland levendig maken.
+   */
+  meadow(x: number, z: number): number {
+    return fbm01(this.nMeadow, x, z, 2, 1 / 42)
   }
 }
