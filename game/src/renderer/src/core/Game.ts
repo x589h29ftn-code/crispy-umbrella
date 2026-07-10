@@ -11,10 +11,10 @@ import { Birds } from '../fauna/birds'
 import { Butterflies } from '../fauna/butterflies'
 import { PlayerController } from '../player/controller'
 import { biomeName } from '../world/biomes'
-import { ChunkManager, VIEW_DISTANCE } from '../world/chunkManager'
+import { ChunkManager } from '../world/chunkManager'
 import { clamp } from '../world/noise'
 import { Sky } from '../world/sky'
-import { CHUNK_SIZE, SEA_LEVEL, World } from '../world/terrain'
+import { SEA_LEVEL, World } from '../world/terrain'
 import { Vegetation } from '../world/vegetation'
 import { Water } from '../world/water'
 import type { Hud } from '../ui/hud'
@@ -22,8 +22,10 @@ import { Graphics } from './graphics'
 import { Input } from './input'
 
 const FIXED_DT = 1 / 120
-const FOG_NEAR = VIEW_DISTANCE * CHUNK_SIZE * 0.55
-const FOG_FAR = VIEW_DISTANCE * CHUNK_SIZE * 0.95
+// Sfeervolle exponentiële mist (referentiestijl): dichtbij al zachtjes
+// aanwezig tussen de bomen, veraf lost het landschap erin op.
+const FOG_DENSITY = 0.003
+const FOG_DENSITY_UNDERWATER = 0.09
 
 /** Verbindt alle systemen en draait de game-lus. */
 export class Game {
@@ -47,7 +49,8 @@ export class Game {
   private statsTimer = 0
   private eye = new THREE.Vector3()
   private look = new THREE.Vector3()
-  private fog: THREE.Fog
+  private fog: THREE.FogExp2
+  private vegetation: Vegetation
   /** Extra systemen (vegetatie-tijd, fauna, audio) haken hier in. */
   private updaters: ((dt: number) => void)[] = []
 
@@ -55,7 +58,7 @@ export class Game {
     this.hud = hud
     this.world = new World(seed)
     this.scene = new THREE.Scene()
-    this.fog = new THREE.Fog(0xd8ecf4, FOG_NEAR, FOG_FAR)
+    this.fog = new THREE.FogExp2(0xd8ecf4, FOG_DENSITY)
     this.scene.fog = this.fog
 
     this.graphics = new Graphics(container, this.scene)
@@ -67,7 +70,7 @@ export class Game {
     this.water = new Water(this.world)
     this.scene.add(this.water.mesh)
     this.sky = new Sky(this.scene)
-    this.sky.dome.scale.setScalar(600)
+    this.sky.dome.scale.setScalar(920)
 
     this.blocks = new BlockStore()
     this.mesher = new BlockMesher(this.scene, this.blocks)
@@ -79,6 +82,7 @@ export class Game {
 
     // Vegetatie en fauna leven mee met de chunks.
     const vegetation = new Vegetation(this.world, this.scene)
+    this.vegetation = vegetation
     this.chunks.onLoad((c) => vegetation.populate(c))
     this.addUpdater((dt) => vegetation.tick(dt))
 
@@ -213,16 +217,19 @@ export class Game {
       this.sky.update(dt, this.eye)
     }
 
+    // Detailring van het dichte gras volgt de speler en de kwaliteitsstand.
+    this.vegetation.detailRadius =
+      this.graphics.quality === 'high' ? 4 : this.graphics.quality === 'medium' ? 3 : 2
+    this.vegetation.updateDetail(pos.x, pos.z)
+
     // Mist en onderwater-beeld.
     const underwater = this.player.eyesUnderwater
     if (underwater) {
       this.fog.color.setRGB(0.08, 0.25, 0.38)
-      this.fog.near = 1
-      this.fog.far = 30
+      this.fog.density = FOG_DENSITY_UNDERWATER
     } else {
       this.fog.color.copy(this.sky.fogColor)
-      this.fog.near = FOG_NEAR
-      this.fog.far = FOG_FAR
+      this.fog.density = FOG_DENSITY
     }
     this.graphics.setUnderwater(underwater)
     this.hud.setUnderwater(underwater)

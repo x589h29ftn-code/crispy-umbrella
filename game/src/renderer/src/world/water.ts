@@ -1,7 +1,7 @@
 import * as THREE from 'three'
 import { SEA_LEVEL, type World } from './terrain'
 
-const SIZE = 1024 // zichtbaar watervlak (m), ruim voorbij de mist
+const SIZE = 1536 // zichtbaar watervlak (m), ruim voorbij de mist
 const SEGMENTS = 96
 const CELL = SIZE / SEGMENTS
 

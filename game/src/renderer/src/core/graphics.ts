@@ -36,6 +36,10 @@ const GradeShader = {
     varying vec2 vUv;
     void main() {
       vec4 col = texture2D(tDiffuse, vUv);
+      // Rijkere, iets warmere kleuren (referentie-artstijl).
+      float luma = dot(col.rgb, vec3(0.299, 0.587, 0.114));
+      col.rgb = mix(vec3(luma), col.rgb, 1.14);
+      col.rgb *= vec3(1.02, 1.0, 0.965);
       // Onderwater: blauwgroene zweem en iets minder contrast.
       col.rgb = mix(col.rgb, col.rgb * vec3(0.55, 0.85, 1.05) + vec3(0.0, 0.03, 0.07), uUnderwater);
       // Zachte vignette.
@@ -69,11 +73,11 @@ export class Graphics {
     this.renderer.shadowMap.type = THREE.PCFSoftShadowMap
     container.appendChild(this.renderer.domElement)
 
-    this.camera = new THREE.PerspectiveCamera(VFOV, 1, 0.1, 700)
+    this.camera = new THREE.PerspectiveCamera(VFOV, 1, 0.1, 1000)
 
     this.composer = new EffectComposer(this.renderer)
     this.composer.addPass(new RenderPass(scene, this.camera))
-    this.bloomPass = new UnrealBloomPass(new THREE.Vector2(1, 1), 0.22, 0.6, 0.92)
+    this.bloomPass = new UnrealBloomPass(new THREE.Vector2(1, 1), 0.32, 0.65, 0.88)
     this.composer.addPass(this.bloomPass)
     this.gradePass = new ShaderPass(GradeShader)
     this.composer.addPass(this.gradePass)
