@@ -48,25 +48,38 @@ export function buildChunkGeometry(world: World, cx: number, cz: number): THREE.
 
   const ox = cx * CHUNK_SIZE
   const oz = cz * CHUNK_SIZE
-  const n = { x: 0, y: 0, z: 0 }
   const rgb: [number, number, number] = [0, 0, 0]
+
+  // Eerst één hoogtegrid met een rand van 1 cel: de normalen komen dan uit
+  // buurverschillen in plaats van vier extra ruis-evaluaties per vertex.
+  const G = VERTS + 2
+  const heights = new Float32Array(G * G)
+  for (let z = 0; z < G; z++) {
+    for (let x = 0; x < G; x++) {
+      heights[z * G + x] = world.height(ox + x - 1, oz + z - 1)
+    }
+  }
 
   let p = 0
   for (let z = 0; z < VERTS; z++) {
     for (let x = 0; x < VERTS; x++) {
       const wx = ox + x
       const wz = oz + z
-      const h = world.height(wx, wz)
+      const gi = (z + 1) * G + (x + 1)
+      const h = heights[gi]
       positions[p] = x
       positions[p + 1] = h
       positions[p + 2] = z
 
-      world.normal(wx, wz, n)
-      normals[p] = n.x
-      normals[p + 1] = n.y
-      normals[p + 2] = n.z
+      // Central differences over het grid (stap 1 m), zoals world.normal.
+      const nx = heights[gi - 1] - heights[gi + 1]
+      const nz = heights[gi - G] - heights[gi + G]
+      const inv = 1 / Math.hypot(nx, 2, nz)
+      normals[p] = nx * inv
+      normals[p + 1] = 2 * inv
+      normals[p + 2] = nz * inv
 
-      terrainColor(world, wx, wz, h, n.y, vertexJitter(world.seed, wx, wz), rgb)
+      terrainColor(world, wx, wz, h, normals[p + 1], vertexJitter(world.seed, wx, wz), rgb)
       colors[p] = rgb[0]
       colors[p + 1] = rgb[1]
       colors[p + 2] = rgb[2]

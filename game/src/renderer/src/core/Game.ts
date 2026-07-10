@@ -101,8 +101,8 @@ export class Game {
     this.addUpdater((dt) => this.updateAudio(dt))
 
     this.spawnPlayer()
-    // Eerste ring chunks meteen bouwen zodat je niet in het luchtledige start.
-    this.chunks.update(this.player.position.x, this.player.position.z, 250)
+    // De omgeving rond de spawn meteen bouwen zodat je niet in het luchtledige start.
+    this.chunks.update(this.player.position.x, this.player.position.z, 1000)
   }
 
   private animals: Animals

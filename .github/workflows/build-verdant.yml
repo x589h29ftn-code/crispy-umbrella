@@ -1,0 +1,47 @@
+name: Bouw Verdant (Windows)
+
+on:
+  push:
+    branches: [claude/procedural-terrain-game-igtyi4]
+    tags: ['verdant-v*']
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: windows-latest
+    permissions:
+      contents: write
+    defaults:
+      run:
+        working-directory: game
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+          cache-dependency-path: game/package-lock.json
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Build Windows installer and portable exe
+        # --publish never: electron-builder probeert anders zelf te publiceren
+        # zodra hij CI detecteert. De artifact-upload en release-stap hieronder
+        # zijn onze distributiekanalen.
+        run: npm run build:win -- --publish never
+
+      - name: Upload installer artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: verdant-windows
+          path: game/dist/*.exe
+          if-no-files-found: error
+
+      - name: Attach to GitHub release (tags only)
+        if: startsWith(github.ref, 'refs/tags/verdant-v')
+        uses: softprops/action-gh-release@v2
+        with:
+          name: Verdant ${{ github.ref_name }}
+          files: game/dist/*.exe

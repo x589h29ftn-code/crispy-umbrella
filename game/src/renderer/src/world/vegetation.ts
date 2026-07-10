@@ -46,11 +46,20 @@ function canopyGeometry(): THREE.BufferGeometry {
 }
 
 function grassGeometry(): THREE.BufferGeometry {
-  const a = new THREE.PlaneGeometry(0.4, 0.5)
-  a.translate(0, 0.25, 0)
-  const b = a.clone()
-  b.rotateY(Math.PI / 2)
-  return mergeGeometries([a, b])
+  // Plukje van drie smalle kegeltjes: leest vanuit elke hoek als gras en
+  // krijgt mooie low-poly schaduwvlakken (platte quads werden donkere platen).
+  const parts: THREE.BufferGeometry[] = []
+  const offsets: [number, number, number][] = [
+    [0, 0.42, 0],
+    [-0.13, 0.3, 0.08],
+    [0.11, 0.34, -0.09]
+  ]
+  for (const [x, h, z] of offsets) {
+    const blade = new THREE.ConeGeometry(0.09, h, 4)
+    blade.translate(x, h / 2, z)
+    parts.push(blade)
+  }
+  return mergeGeometries(parts)
 }
 
 function stemGeometry(): THREE.BufferGeometry {
@@ -71,6 +80,7 @@ function rockGeometry(): THREE.BufferGeometry {
 
 const FLOWER_COLORS = [0xffffff, 0xffd54a, 0xff6d75, 0xb987ff, 0xff9a3d]
 const CANOPY_COLORS = [0x3f7d2e, 0x4c8f36, 0x35702a, 0x5da03f]
+const GRASS_COLORS = [0x6fb54c, 0x7dc257, 0x63a844, 0x8acb62]
 
 interface Placement {
   x: number
@@ -97,7 +107,9 @@ export class Vegetation {
 
   private trunkMat = new THREE.MeshLambertMaterial({ color: 0x7a5b38, flatShading: true })
   private canopyMat = swayMaterial({ flatShading: true }, 0.012)
-  private grassMat = swayMaterial({ color: 0x66a844, side: THREE.DoubleSide }, 0.12)
+  // Kleur komt volledig uit de instantiekleur (materiaal wit laten, anders
+  // vermenigvuldigen de kleuren en wordt het gras bijna zwart).
+  private grassMat = swayMaterial({ flatShading: true }, 0.12)
   private stemMat = swayMaterial({ color: 0x4c8f36 }, 0.1)
   private headMat = swayMaterial({ flatShading: true }, 0.1)
   private rockMat = new THREE.MeshLambertMaterial({ color: 0x8d8a83, flatShading: true })
@@ -154,8 +166,8 @@ export class Vegetation {
         y: h,
         z,
         yaw: rng() * Math.PI * 2,
-        scale: 0.7 + rng() * 0.8,
-        color: 0x559a3d + (Math.floor(rng() * 3) << 12)
+        scale: 0.6 + rng() * 0.6,
+        color: GRASS_COLORS[Math.floor(rng() * GRASS_COLORS.length)]
       })
     }
 

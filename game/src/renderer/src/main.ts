@@ -14,6 +14,8 @@ hud.onPlay = (seedText) => {
     game = new Game(seed, container, hud)
     wireGame(game)
     game.start()
+    // Voor de geautomatiseerde smoke-test.
+    ;(window as unknown as Record<string, unknown>).__game = game
   }
   hud.showGame()
   game.setPaused(false)
