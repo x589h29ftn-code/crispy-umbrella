@@ -17,6 +17,7 @@ hud.onPlay = (seedText) => {
   }
   hud.showGame()
   game.setPaused(false)
+  game.resumeAudio()
   game.input.requestLock()
 }
 
@@ -24,7 +25,12 @@ hud.onResume = () => {
   if (!game) return
   hud.hidePause()
   game.setPaused(false)
+  game.resumeAudio()
   game.input.requestLock()
+}
+
+hud.onVolume = (bus, value) => {
+  game?.setVolume(bus, value)
 }
 
 hud.onQuit = () => {

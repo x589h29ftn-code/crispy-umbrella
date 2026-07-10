@@ -1,12 +1,20 @@
 import * as THREE from 'three'
+import { Ambient } from '../audio/ambient'
+import { Creatures } from '../audio/creatures'
+import { AudioEngine, type Bus } from '../audio/engine'
+import { Music } from '../audio/music'
 import { BlockMesher } from '../build/blockMesher'
 import { BlockStore } from '../build/blockStore'
 import { BuildSystem } from '../build/placement'
+import { Animals } from '../fauna/animals'
+import { Birds } from '../fauna/birds'
 import { PlayerController } from '../player/controller'
 import { biomeName } from '../world/biomes'
 import { ChunkManager, VIEW_DISTANCE } from '../world/chunkManager'
+import { clamp } from '../world/noise'
 import { Sky } from '../world/sky'
 import { CHUNK_SIZE, SEA_LEVEL, World } from '../world/terrain'
+import { Vegetation } from '../world/vegetation'
 import { Water } from '../world/water'
 import type { Hud } from '../ui/hud'
 import { Graphics } from './graphics'
@@ -68,9 +76,66 @@ export class Game {
     )
     this.build.onSelectionChanged = (slot) => hud.setSelectedSlot(slot)
 
+    // Vegetatie en fauna leven mee met de chunks.
+    const vegetation = new Vegetation(this.world, this.scene)
+    this.chunks.onLoad((c) => vegetation.populate(c))
+    this.addUpdater((dt) => vegetation.tick(dt))
+
+    const animals = new Animals(this.world, this.scene)
+    this.animals = animals
+    this.chunks.onLoad((c) => animals.spawnForChunk(c))
+    this.chunks.onUnload((c) => animals.despawnChunk(c))
+    this.addUpdater((dt) => animals.update(dt, this.player.position))
+
+    const birds = new Birds(this.world, this.scene)
+    this.addUpdater((dt) => birds.update(dt, this.player.position))
+
+    // Audio: volledig gesynthetiseerd, bussen gekoppeld aan de sliders.
+    this.audio = new AudioEngine()
+    this.ambient = new Ambient(this.audio)
+    this.creatures = new Creatures(this.audio)
+    this.music = new Music(this.audio)
+    for (const bus of ['music', 'ambient', 'effects'] as const) {
+      this.audio.setVolume(bus, hud.volume(bus))
+    }
+    this.addUpdater((dt) => this.updateAudio(dt))
+
     this.spawnPlayer()
     // Eerste ring chunks meteen bouwen zodat je niet in het luchtledige start.
     this.chunks.update(this.player.position.x, this.player.position.z, 250)
+  }
+
+  private animals: Animals
+  private audio: AudioEngine
+  private ambient: Ambient
+  private creatures: Creatures
+  private music: Music
+  private wasSwimming = false
+
+  /** Volumeslider uit het pauzemenu. */
+  setVolume(bus: Bus, value: number): void {
+    this.audio.setVolume(bus, value)
+  }
+
+  /** Audio mag pas starten na een gebruikersklik (autoplay-beleid). */
+  resumeAudio(): void {
+    this.audio.resume()
+    this.ambient.start()
+    this.music.start()
+  }
+
+  private updateAudio(dt: number): void {
+    const pos = this.player.position
+    const h = this.world.height(pos.x, pos.z)
+    // Dicht bij zee (laag terrein) of zwemmend: watergeluid aan.
+    const shore = this.player.swimming ? 1 : clamp(1 - (h - 0.5) / 6, 0, 1)
+    const underwater = this.player.eyesUnderwater
+    this.ambient.update(dt, shore, pos.y, underwater, this.sky.nightness)
+    this.creatures.update(dt, this.sky.nightness, this.animals.countNear(pos.x, pos.z, 14), underwater)
+    this.music.update(this.sky.nightness)
+
+    if (this.player.swimming && !this.wasSwimming) this.ambient.splash()
+    this.wasSwimming = this.player.swimming
   }
 
   /** Registreer een systeem dat elke frame een update wil (vegetatie, fauna, audio). */
