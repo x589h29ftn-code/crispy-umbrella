@@ -39,9 +39,22 @@ jobs:
           path: game/dist/*.exe
           if-no-files-found: error
 
-      - name: Attach to GitHub release (tags only)
-        if: startsWith(github.ref, 'refs/tags/verdant-v')
+      - name: Read version
+        id: version
+        shell: bash
+        run: echo "version=$(node -p "require('./package.json').version")" >> "$GITHUB_OUTPUT"
+
+      - name: Publish GitHub release with the exe
+        # Maakt de tag verdant-v<versie> en de bijbehorende release aan (of
+        # werkt de bestaande bij), zodat er altijd een directe downloadlink is.
         uses: softprops/action-gh-release@v2
         with:
-          name: Verdant ${{ github.ref_name }}
+          tag_name: verdant-v${{ steps.version.outputs.version }}
+          name: Verdant v${{ steps.version.outputs.version }}
+          body: |
+            Low-poly openwereldspel: procedureel gegenereerde werelden met bossen,
+            velden, heuvels en zee. Rondlopen, springen, zwemmen, bouwen met blokken,
+            dag/nachtcyclus, dieren en rustgevende muziek.
+
+            **Download:** `Verdant-…-setup.exe` (installer) of `Verdant ….exe` (portable, direct starten).
           files: game/dist/*.exe
