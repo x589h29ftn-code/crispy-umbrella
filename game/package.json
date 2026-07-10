@@ -1,0 +1,35 @@
+{
+  "name": "verdant",
+  "productName": "Verdant",
+  "version": "1.0.0",
+  "description": "Verdant - procedureel gegenereerde open wereld om in rond te lopen, te zwemmen en te bouwen",
+  "main": "./out/main/index.js",
+  "author": "Verdant",
+  "license": "MIT",
+  "private": true,
+  "scripts": {
+    "dev": "electron-vite dev",
+    "typecheck:node": "tsc --noEmit -p tsconfig.node.json --composite false",
+    "typecheck:web": "tsc --noEmit -p tsconfig.web.json --composite false",
+    "typecheck": "npm run typecheck:node && npm run typecheck:web",
+    "build": "npm run typecheck && electron-vite build",
+    "postinstall": "electron-builder install-app-deps",
+    "build:unpack": "npm run build && electron-builder --dir",
+    "build:win": "npm run build && electron-builder --win"
+  },
+  "dependencies": {
+    "@electron-toolkit/utils": "^4.0.0",
+    "simplex-noise": "^4.0.3",
+    "three": "^0.178.0"
+  },
+  "devDependencies": {
+    "@electron-toolkit/tsconfig": "^1.0.1",
+    "@types/node": "^20.14.0",
+    "@types/three": "^0.178.0",
+    "electron": "^31.3.0",
+    "electron-builder": "^24.13.3",
+    "electron-vite": "^2.3.0",
+    "typescript": "^5.5.3",
+    "vite": "^5.3.4"
+  }
+}

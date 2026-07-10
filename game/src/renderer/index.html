@@ -1,0 +1,339 @@
+<!doctype html>
+<html lang="nl">
+  <head>
+    <meta charset="UTF-8" />
+    <title>Verdant</title>
+    <meta
+      http-equiv="Content-Security-Policy"
+      content="default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'"
+    />
+    <style>
+      :root {
+        --ui-font: 'Segoe UI', system-ui, sans-serif;
+      }
+      * {
+        margin: 0;
+        padding: 0;
+        box-sizing: border-box;
+      }
+      html,
+      body {
+        width: 100%;
+        height: 100%;
+        overflow: hidden;
+        background: #0b1020;
+        font-family: var(--ui-font);
+        user-select: none;
+      }
+      #app {
+        position: fixed;
+        inset: 0;
+      }
+      canvas {
+        display: block;
+      }
+
+      /* ---- Overlays (schermvullend, ultrawide-veilig gecentreerd) ---- */
+      .overlay {
+        position: fixed;
+        inset: 0;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        z-index: 20;
+      }
+      .overlay.hidden {
+        display: none;
+      }
+      .panel {
+        width: min(92vw, 420px);
+        background: rgba(12, 20, 16, 0.82);
+        border: 1px solid rgba(255, 255, 255, 0.14);
+        border-radius: 14px;
+        padding: 28px 30px;
+        color: #eef4ea;
+        text-align: center;
+        backdrop-filter: blur(6px);
+      }
+      .panel h1 {
+        font-size: 34px;
+        letter-spacing: 2px;
+        margin-bottom: 4px;
+        color: #bfe6a1;
+        text-shadow: 0 2px 12px rgba(60, 160, 80, 0.35);
+      }
+      .panel .subtitle {
+        font-size: 13px;
+        opacity: 0.75;
+        margin-bottom: 22px;
+      }
+      .panel label {
+        display: block;
+        font-size: 12px;
+        text-transform: uppercase;
+        letter-spacing: 1px;
+        opacity: 0.7;
+        margin-bottom: 6px;
+        text-align: left;
+      }
+      .panel input[type='text'] {
+        width: 100%;
+        padding: 10px 12px;
+        border-radius: 8px;
+        border: 1px solid rgba(255, 255, 255, 0.2);
+        background: rgba(0, 0, 0, 0.35);
+        color: #fff;
+        font-size: 15px;
+        margin-bottom: 18px;
+        outline: none;
+      }
+      .panel input[type='text']:focus {
+        border-color: #8fce6e;
+      }
+      .btn {
+        display: block;
+        width: 100%;
+        padding: 12px;
+        border: none;
+        border-radius: 8px;
+        background: #4f8f3b;
+        color: #fff;
+        font-size: 16px;
+        font-weight: 600;
+        cursor: pointer;
+        margin-bottom: 10px;
+        transition: background 0.15s;
+      }
+      .btn:hover {
+        background: #5ea649;
+      }
+      .btn.secondary {
+        background: rgba(255, 255, 255, 0.12);
+        font-weight: 400;
+      }
+      .btn.secondary:hover {
+        background: rgba(255, 255, 255, 0.2);
+      }
+      .hint {
+        font-size: 12px;
+        opacity: 0.65;
+        line-height: 1.7;
+      }
+      .setting-row {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 12px;
+        margin-bottom: 12px;
+        font-size: 14px;
+      }
+      .setting-row label {
+        margin: 0;
+        text-transform: none;
+        font-size: 14px;
+        opacity: 0.9;
+      }
+      .setting-row input[type='range'] {
+        width: 55%;
+        accent-color: #8fce6e;
+      }
+      .setting-row select {
+        padding: 6px 8px;
+        border-radius: 6px;
+        border: 1px solid rgba(255, 255, 255, 0.2);
+        background: rgba(0, 0, 0, 0.35);
+        color: #fff;
+      }
+
+      /* ---- HUD ---- */
+      #hud {
+        position: fixed;
+        inset: 0;
+        pointer-events: none;
+        z-index: 10;
+      }
+      #hud.hidden {
+        display: none;
+      }
+      #crosshair {
+        position: absolute;
+        left: 50%;
+        top: 50%;
+        width: 18px;
+        height: 18px;
+        transform: translate(-50%, -50%);
+        opacity: 0.85;
+      }
+      #crosshair::before,
+      #crosshair::after {
+        content: '';
+        position: absolute;
+        background: #fff;
+        box-shadow: 0 0 3px rgba(0, 0, 0, 0.7);
+      }
+      #crosshair::before {
+        left: 50%;
+        top: 2px;
+        bottom: 2px;
+        width: 2px;
+        transform: translateX(-50%);
+      }
+      #crosshair::after {
+        top: 50%;
+        left: 2px;
+        right: 2px;
+        height: 2px;
+        transform: translateY(-50%);
+      }
+      #stats {
+        position: absolute;
+        left: 14px;
+        top: 12px;
+        color: rgba(255, 255, 255, 0.85);
+        font-size: 12px;
+        line-height: 1.6;
+        text-shadow: 0 1px 3px rgba(0, 0, 0, 0.8);
+        max-width: 320px;
+      }
+      #clock {
+        position: absolute;
+        right: 14px;
+        top: 12px;
+        color: rgba(255, 255, 255, 0.85);
+        font-size: 13px;
+        text-shadow: 0 1px 3px rgba(0, 0, 0, 0.8);
+        text-align: right;
+      }
+      #hotbar {
+        position: absolute;
+        left: 50%;
+        bottom: 18px;
+        transform: translateX(-50%);
+        display: flex;
+        gap: 6px;
+        padding: 6px;
+        background: rgba(0, 0, 0, 0.35);
+        border-radius: 10px;
+      }
+      .slot {
+        width: 52px;
+        height: 52px;
+        border-radius: 8px;
+        border: 2px solid rgba(255, 255, 255, 0.25);
+        background: rgba(0, 0, 0, 0.3);
+        position: relative;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+      }
+      .slot.selected {
+        border-color: #ffe9a8;
+        box-shadow: 0 0 10px rgba(255, 233, 168, 0.45);
+      }
+      .slot .swatch {
+        width: 30px;
+        height: 30px;
+        border-radius: 5px;
+        box-shadow: inset 0 -6px rgba(0, 0, 0, 0.25);
+      }
+      .slot .num {
+        position: absolute;
+        left: 4px;
+        top: 2px;
+        font-size: 10px;
+        color: rgba(255, 255, 255, 0.75);
+      }
+      .slot .name {
+        position: absolute;
+        bottom: -18px;
+        left: 50%;
+        transform: translateX(-50%);
+        white-space: nowrap;
+        font-size: 10px;
+        color: rgba(255, 255, 255, 0);
+        transition: color 0.2s;
+      }
+      .slot.selected .name {
+        color: rgba(255, 255, 255, 0.9);
+      }
+      #underwater {
+        position: absolute;
+        inset: 0;
+        background: radial-gradient(ellipse at center, rgba(20, 70, 110, 0.25), rgba(8, 40, 70, 0.55));
+        opacity: 0;
+        transition: opacity 0.25s;
+      }
+      #toast {
+        position: absolute;
+        left: 50%;
+        bottom: 96px;
+        transform: translateX(-50%);
+        color: #fff;
+        font-size: 13px;
+        background: rgba(0, 0, 0, 0.45);
+        padding: 6px 14px;
+        border-radius: 8px;
+        opacity: 0;
+        transition: opacity 0.3s;
+        white-space: nowrap;
+      }
+    </style>
+  </head>
+  <body>
+    <div id="app"></div>
+
+    <div id="hud" class="hidden">
+      <div id="underwater"></div>
+      <div id="crosshair"></div>
+      <div id="stats"></div>
+      <div id="clock"></div>
+      <div id="hotbar"></div>
+      <div id="toast"></div>
+    </div>
+
+    <div id="menu" class="overlay">
+      <div class="panel">
+        <h1>VERDANT</h1>
+        <div class="subtitle">Een vrolijke, procedureel gegenereerde wereld</div>
+        <label for="seed">Wereld-seed</label>
+        <input id="seed" type="text" autocomplete="off" spellcheck="false" placeholder="bijv. groene-heuvels" />
+        <button id="play" class="btn">Klik om te spelen</button>
+        <div class="hint">
+          Bewegen: WASD &nbsp;·&nbsp; Springen: Spatie &nbsp;·&nbsp; Sprinten: Shift<br />
+          Bouwen: 1–5 + muisklik &nbsp;·&nbsp; Pauze: Esc &nbsp;·&nbsp; Volledig scherm: F11
+        </div>
+      </div>
+    </div>
+
+    <div id="pause" class="overlay hidden">
+      <div class="panel">
+        <h1 style="font-size: 24px">Gepauzeerd</h1>
+        <div class="subtitle">Even op adem komen</div>
+        <div class="setting-row">
+          <label for="quality">Grafische kwaliteit</label>
+          <select id="quality">
+            <option value="low">Laag</option>
+            <option value="medium">Normaal</option>
+            <option value="high" selected>Hoog</option>
+          </select>
+        </div>
+        <div class="setting-row">
+          <label for="vol-music">Muziek</label>
+          <input id="vol-music" type="range" min="0" max="100" value="60" />
+        </div>
+        <div class="setting-row">
+          <label for="vol-ambient">Omgeving</label>
+          <input id="vol-ambient" type="range" min="0" max="100" value="80" />
+        </div>
+        <div class="setting-row" style="margin-bottom: 20px">
+          <label for="vol-effects">Effecten</label>
+          <input id="vol-effects" type="range" min="0" max="100" value="80" />
+        </div>
+        <button id="resume" class="btn">Verder spelen</button>
+        <button id="quit" class="btn secondary">Afsluiten</button>
+      </div>
+    </div>
+
+    <script type="module" src="/src/main.ts"></script>
+  </body>
+</html>
