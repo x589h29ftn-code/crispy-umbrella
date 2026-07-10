@@ -20,6 +20,7 @@ export class World {
   private nForest: NoiseFunction2D
   private nMeadow: NoiseFunction2D
   private nPath: NoiseFunction2D
+  private nLake: NoiseFunction2D
 
   constructor(seedText: string) {
     this.seed = hashString(seedText)
@@ -31,6 +32,7 @@ export class World {
     this.nForest = seededNoise2D(this.seed, 6)
     this.nMeadow = seededNoise2D(this.seed, 7)
     this.nPath = seededNoise2D(this.seed, 8)
+    this.nLake = seededNoise2D(this.seed, 9)
   }
 
   /** Terreinhoogte in meters (zeeniveau = 0). */
@@ -45,11 +47,27 @@ export class World {
     const hills = ridged(this.nHills, x, z, 4, 1 / 220) * 62 * mask
 
     // Klein reliëf voor een levendig, glooiend oppervlak.
-    const detail = fbm(this.nDetail, x, z, 3, 1 / 28) * 1.4
+    const detail = fbm(this.nDetail, x, z, 4, 1 / 30) * 1.6
 
     // Vlakke stranden: reliëf pas laten meedoen boven het strand.
     const land = smoothstep(0, 4, base)
-    return base + (hills + detail) * land
+    let h = base + (hills + detail) * land
+
+    // Meertjes: kommen die in laag, vlak terrein tot onder het waterpeil
+    // worden uitgesleten. Het globale watervlak (y=0) vult ze vanzelf.
+    // Smalle overgangsband = steile oevers, dus gras tot aan de waterlijn.
+    const lake = smoothstep(0.6, 0.68, fbm01(this.nLake, x, z, 2, 1 / 420))
+    if (lake > 0) {
+      const lowland = smoothstep(11, 4.5, h)
+      const carve = lake * lowland
+      h = h * (1 - carve) + -3.8 * carve
+    }
+    return h
+  }
+
+  /** Meermasker in [0, 1]: 1 midden in een meertje (voor plaatsing/structuren). */
+  lakeness(x: number, z: number): number {
+    return smoothstep(0.55, 0.66, fbm01(this.nLake, x, z, 2, 1 / 420))
   }
 
   /** Genormaliseerde terreinnormaal via central differences. */
@@ -80,8 +98,8 @@ export class World {
   /** Bosdichtheid in [0, 1]: aparte laag zodat bosranden organisch zijn. */
   forestness(x: number, z: number): number {
     const m = this.moisture(x, z)
-    const f = fbm01(this.nForest, x, z, 3, 1 / 260)
-    return smoothstep(0.38, 0.56, m * 0.5 + f * 0.5)
+    const f = fbm01(this.nForest, x, z, 3, 1 / 420)
+    return smoothstep(0.32, 0.5, m * 0.5 + f * 0.5)
   }
 
   /** Sterkte van het heuvellandschap (0 = vlak, 1 = vol heuvelgebied). */
@@ -105,8 +123,8 @@ export class World {
     const n = fbm(this.nPath, x, z, 2, 1 / 230)
     const band = 1 - smoothstep(0.012, 0.05, Math.abs(n))
     if (band <= 0) return 0
-    // Alleen op begaanbaar land: niet op het strand of tegen steile hellingen.
+    // Alleen op land: paden lopen door het gras én de bergen op.
     const h = knownHeight ?? this.height(x, z)
-    return band * smoothstep(1.6, 2.6, h) * smoothstep(26, 18, h)
+    return band * smoothstep(1.6, 2.6, h) * smoothstep(52, 42, h)
   }
 }

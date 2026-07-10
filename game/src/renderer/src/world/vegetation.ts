@@ -8,7 +8,7 @@ import { CHUNK_SIZE, type World } from './terrain'
 const swayTime = { value: 0 }
 
 /** Lambert-materiaal met een vertex-sway in de shader (top wuift, voet niet). */
-function swayMaterial(params: THREE.MeshLambertMaterialParameters, amount: number): THREE.MeshLambertMaterial {
+export function swayMaterial(params: THREE.MeshLambertMaterialParameters, amount: number): THREE.MeshLambertMaterial {
   const mat = new THREE.MeshLambertMaterial(params)
   mat.onBeforeCompile = (shader) => {
     shader.uniforms.uSwayTime = swayTime
@@ -31,42 +31,124 @@ function swayMaterial(params: THREE.MeshLambertMaterialParameters, amount: numbe
 
 // ---- Prototypes op ware grootte (één keer gebouwd, gedeeld door alle chunks) ----
 
-/** Hoge, kale dennenstam: de kroon begint pas op ~5 m. */
-function pineTrunkGeometry(): THREE.BufferGeometry {
-  const geo = new THREE.CylinderGeometry(0.24, 0.4, 5.6, 6)
-  geo.translate(0, 2.8, 0)
+
+/**
+ * Gebogen grasspriet als taps toelopende strip van 3 segmenten, met een
+ * kleurverloop van donkere voet naar lichte top (vertex-kleuren).
+ */
+export function bladeGeometry(w: number, h: number, bend: number, baseShade: number): THREE.BufferGeometry {
+  const segs = 3
+  const pos: number[] = []
+  const col: number[] = []
+  const idx: number[] = []
+  for (let s = 0; s <= segs; s++) {
+    const t = s / segs
+    const half = (w / 2) * (1 - t * 0.85)
+    const y = h * t
+    const z = bend * t * t
+    pos.push(-half, y, z, half, y, z)
+    const shade = baseShade + (1.18 - baseShade) * t
+    col.push(shade, shade, shade, shade, shade, shade)
+  }
+  for (let s = 0; s < segs; s++) {
+    const a = s * 2
+    idx.push(a, a + 1, a + 2, a + 1, a + 3, a + 2)
+  }
+  const geo = new THREE.BufferGeometry()
+  geo.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3))
+  geo.setAttribute('color', new THREE.Float32BufferAttribute(col, 3))
+  geo.setIndex(idx)
+  geo.computeVertexNormals()
   return geo
 }
 
+/** Organische verstoring: maakt van gladde bollen knoestige low-poly vormen. */
+function jitterVertices(geo: THREE.BufferGeometry, amount: number, seed = 7): THREE.BufferGeometry {
+  const pos = geo.getAttribute('position') as THREE.BufferAttribute
+  // Zelfde verplaatsing voor identieke hoekpunten zodat faces gesloten blijven.
+  const seen = new Map<string, [number, number, number]>()
+  let state = seed
+  const rand = (): number => {
+    state = (state * 1664525 + 1013904223) >>> 0
+    return state / 4294967296 - 0.5
+  }
+  for (let i = 0; i < pos.count; i++) {
+    const key = pos.getX(i).toFixed(3) + '|' + pos.getY(i).toFixed(3) + '|' + pos.getZ(i).toFixed(3)
+    let d = seen.get(key)
+    if (!d) {
+      d = [rand() * amount, rand() * amount, rand() * amount]
+      seen.set(key, d)
+    }
+    pos.setXYZ(i, pos.getX(i) + d[0], pos.getY(i) + d[1], pos.getZ(i) + d[2])
+  }
+  geo.computeVertexNormals()
+  return geo
+}
+
+// Takken van de den: [hoogte, richting (rad), taklengte, plaatstraal].
+const PINE_BRANCHES: [number, number, number, number][] = [
+  [4.6, 0.4, 2.3, 1.5],
+  [5.5, 2.6, 2.1, 1.4],
+  [6.4, 4.4, 1.9, 1.3],
+  [7.3, 1.5, 1.7, 1.15],
+  [8.2, 3.5, 1.5, 1.05],
+  [9.1, 5.5, 1.3, 0.9],
+  [10.0, 0.9, 1.05, 0.78]
+]
+
+/** Dennenstam mét uitstekende takken waar de bladplaten op rusten. */
+function pineTrunkGeometry(): THREE.BufferGeometry {
+  const parts: THREE.BufferGeometry[] = []
+  const trunk = new THREE.CylinderGeometry(0.16, 0.44, 11.2, 8)
+  trunk.translate(0, 5.6, 0)
+  parts.push(trunk)
+  for (const [y, dir, len] of PINE_BRANCHES) {
+    const branch = new THREE.CylinderGeometry(0.045, 0.095, len, 5)
+    branch.translate(0, len / 2, 0)
+    branch.rotateX(Math.PI / 2 + 0.22) // iets afhangend naar buiten
+    branch.rotateY(dir)
+    branch.translate(0, y, 0)
+    parts.push(branch)
+  }
+  return mergeGeometries(parts)
+}
+
 /**
- * Dennenkroon in de stijl van de referentie: brede, platgedrukte lagen
- * die naar boven toe smaller worden, met kleine verspringingen.
+ * Dennenkroon: per tak een knoestige bladplaat op het uiteinde, plus een
+ * spits van kleinere platen bovenin — zoals de referentie-dennen.
  */
 function pineCanopyGeometry(): THREE.BufferGeometry {
   const parts: THREE.BufferGeometry[] = []
-  const lobes: [number, number, number, number, number][] = [
-    // [x-offset, hoogte, z-offset, straal, y-schaal]
-    [0.3, 5.6, 0.1, 2.9, 0.42],
-    [-0.25, 7.0, -0.2, 2.5, 0.4],
-    [0.15, 8.3, 0.2, 2.1, 0.38],
-    [-0.1, 9.5, -0.1, 1.7, 0.36],
-    [0.05, 10.6, 0.05, 1.3, 0.34],
-    [0, 11.6, 0, 0.8, 0.5]
-  ]
-  for (const [x, y, z, r, ys] of lobes) {
-    const lobe = new THREE.IcosahedronGeometry(r, 0)
-    lobe.scale(1, ys, 1)
-    lobe.translate(x, y, z)
-    parts.push(lobe)
+  let seed = 11
+  for (const [y, dir, len, r] of PINE_BRANCHES) {
+    const plate = jitterVertices(new THREE.IcosahedronGeometry(r, 1), r * 0.26, seed++)
+    plate.scale(1, 0.32, 1.45)
+    plate.rotateX(0.12) // plaat hangt licht af
+    plate.translate(0, y + 0.28, len * 0.75) // zelfde richting als de tak (+z)
+    plate.rotateY(dir)
+    parts.push(plate)
   }
+  for (const [y, r] of [
+    [10.75, 0.85],
+    [11.45, 0.55]
+  ] as [number, number][]) {
+    const plate = jitterVertices(new THREE.IcosahedronGeometry(r, 1), r * 0.24, seed++)
+    plate.scale(1.2, 0.42, 1.2)
+    plate.translate(0, y, 0)
+    parts.push(plate)
+  }
+  const tip = new THREE.ConeGeometry(0.3, 0.9, 6)
+  tip.translate(0, 12.0, 0)
+  // Icosahedrons zijn niet-geïndexeerd; alles gelijktrekken voor de merge.
+  parts.push(tip.toNonIndexed())
   return mergeGeometries(parts)
 }
 
 /** Loofboomstam met een lichte vertakking. */
 function leafyTrunkGeometry(): THREE.BufferGeometry {
-  const main = new THREE.CylinderGeometry(0.32, 0.5, 5.2, 6)
+  const main = new THREE.CylinderGeometry(0.32, 0.52, 5.2, 8)
   main.translate(0, 2.6, 0)
-  const branch = new THREE.CylinderGeometry(0.16, 0.22, 2.6, 5)
+  const branch = new THREE.CylinderGeometry(0.16, 0.22, 2.6, 6)
   branch.rotateZ(0.65)
   branch.translate(1.2, 5.0, 0.2)
   return mergeGeometries([main, branch])
@@ -85,7 +167,7 @@ function leafyCanopyGeometry(): THREE.BufferGeometry {
     [-1.3, 9.0, -0.9, 1.8]
   ]
   for (const [x, y, z, r] of blobs) {
-    const blob = new THREE.IcosahedronGeometry(r, 0)
+    const blob = jitterVertices(new THREE.IcosahedronGeometry(r, 1), r * 0.2, 23)
     blob.translate(x, y, z)
     parts.push(blob)
   }
@@ -94,30 +176,26 @@ function leafyCanopyGeometry(): THREE.BufferGeometry {
 
 /** Struik: paar lage bladbollen, ~1,2 m hoog. */
 function bushGeometry(): THREE.BufferGeometry {
-  const a = new THREE.IcosahedronGeometry(0.85, 0)
+  const a = jitterVertices(new THREE.IcosahedronGeometry(0.85, 1), 0.16, 31)
   a.translate(0, 0.65, 0)
-  const b = new THREE.IcosahedronGeometry(0.6, 0)
+  const b = jitterVertices(new THREE.IcosahedronGeometry(0.6, 1), 0.12, 37)
   b.translate(0.7, 0.45, 0.3)
-  const c = new THREE.IcosahedronGeometry(0.5, 0)
+  const c = jitterVertices(new THREE.IcosahedronGeometry(0.5, 1), 0.1, 41)
   c.translate(-0.6, 0.4, -0.25)
   return mergeGeometries([a, b, c])
 }
 
-/** Weelderig grasplukje: zes uitwaaierende bladen, kniehoog. */
+/** Weelderige graspol: acht gebogen sprieten met kleurverloop. */
 function grassGeometry(): THREE.BufferGeometry {
   const parts: THREE.BufferGeometry[] = []
-  for (let i = 0; i < 6; i++) {
-    const angle = (i / 6) * Math.PI * 2
-    const h = 0.3 + (i % 3) * 0.09
-    const blade = new THREE.ConeGeometry(0.075, h, 4, 1, true)
-    blade.translate(0, h / 2, 0)
-    blade.rotateX(0.5) // naar buiten hellen
+  for (let i = 0; i < 8; i++) {
+    const angle = (i / 8) * Math.PI * 2 + (i % 3) * 0.35
+    const h = 0.34 + ((i * 37) % 23) / 100
+    const blade = bladeGeometry(0.075, h, 0.16 + (i % 4) * 0.05, 0.5)
+    blade.rotateX(0.32)
     blade.rotateY(angle)
     parts.push(blade)
   }
-  const center = new THREE.ConeGeometry(0.08, 0.5, 4, 1, true)
-  center.translate(0, 0.25, 0)
-  parts.push(center)
   return mergeGeometries(parts)
 }
 
@@ -160,7 +238,64 @@ function reedTopGeometry(): THREE.BufferGeometry {
 }
 
 function rockGeometry(): THREE.BufferGeometry {
-  return new THREE.IcosahedronGeometry(0.55, 0)
+  const geo = jitterVertices(new THREE.IcosahedronGeometry(0.55, 1), 0.13, 43)
+  geo.scale(1.15, 0.85, 1)
+  return geo
+}
+
+/** Varen: zes afhangende, gebogen bladen — typisch bosbodemgroen. */
+function fernGeometry(): THREE.BufferGeometry {
+  const parts: THREE.BufferGeometry[] = []
+  for (let i = 0; i < 6; i++) {
+    const angle = (i / 6) * Math.PI * 2 + 0.3
+    const frond = bladeGeometry(0.17, 0.7 + (i % 3) * 0.1, 0.5, 0.45)
+    frond.rotateX(0.75)
+    frond.rotateY(angle)
+    parts.push(frond)
+  }
+  return mergeGeometries(parts)
+}
+
+/** Lupine-achtige bloemspies: stengel met een toren van bloemetjes. */
+function lupineStemGeometry(): THREE.BufferGeometry {
+  const geo = new THREE.CylinderGeometry(0.02, 0.03, 0.55, 4)
+  geo.translate(0, 0.275, 0)
+  return geo
+}
+
+function lupineHeadGeometry(): THREE.BufferGeometry {
+  const parts: THREE.BufferGeometry[] = []
+  const rs = [0.075, 0.07, 0.06, 0.05, 0.035]
+  rs.forEach((r, i) => {
+    const bud = new THREE.IcosahedronGeometry(r, 0)
+    bud.translate((i % 2) * 0.02 - 0.01, 0.52 + i * 0.09, 0)
+    parts.push(bud)
+  })
+  return mergeGeometries(parts)
+}
+
+/** Boomstronk met jaarring-bovenkant. */
+function stumpGeometry(): THREE.BufferGeometry {
+  const geo = jitterVertices(new THREE.CylinderGeometry(0.34, 0.44, 0.55, 8), 0.05, 47)
+  geo.translate(0, 0.24, 0)
+  return geo
+}
+
+/** Lantaarnpaal langs het pad (het lichtkastje krijgt een eigen materiaal). */
+function lanternPostGeometry(): THREE.BufferGeometry {
+  const post = new THREE.CylinderGeometry(0.05, 0.07, 2.1, 6)
+  post.translate(0, 1.05, 0)
+  const arm = new THREE.BoxGeometry(0.5, 0.06, 0.06)
+  arm.translate(0.2, 2.06, 0)
+  const cap = new THREE.ConeGeometry(0.16, 0.12, 4)
+  cap.translate(0.4, 1.98, 0)
+  return mergeGeometries([post, arm, cap])
+}
+
+function lanternGlowGeometry(): THREE.BufferGeometry {
+  const geo = new THREE.BoxGeometry(0.14, 0.18, 0.14)
+  geo.translate(0.4, 1.83, 0)
+  return geo
 }
 
 /** Clustertje platte kiezels, zoals langs de paadjes in de referentie. */
@@ -192,6 +327,8 @@ function logGeometry(): THREE.BufferGeometry {
 }
 
 const FLOWER_COLORS = [0xffffff, 0xffd54a, 0xff6d75, 0xb987ff, 0xff9a3d, 0x7fb2ff]
+const LUPINE_COLORS = [0x9b6dd6, 0xc77fd9, 0x7d6de0, 0xe08bb8]
+const FERN_COLORS = [0x3e7c33, 0x4a8c3b, 0x35702d]
 const PINE_COLORS = [0x2c6e26, 0x35802c, 0x256022, 0x3f8f33, 0x4da03a]
 const LEAFY_COLORS = [0x4f9c38, 0x5fae3f, 0x74c24a, 0x88cc55]
 const GRASS_COLORS = [0x4e9a3a, 0x5fae3f, 0x74c24a, 0x458c33, 0x86c957]
@@ -225,8 +362,11 @@ export class Vegetation {
   private colliders = new Map<string, TreeCollider[]>()
   private colliderScratch: TreeCollider[] = []
   private denseGrass = new Map<string, { cx: number; cz: number; mesh: THREE.InstancedMesh }>()
+  private farGrass = new Map<string, { cx: number; cz: number; mesh: THREE.InstancedMesh }>()
   /** Chebyshev-afstand (in chunks) waarbinnen het dichte gras zichtbaar is. */
   detailRadius = 4
+  /** Daarbuiten: dunne verte-laag tot deze afstand; verder alleen terreinkleur. */
+  farRadius = 8
 
   private pineTrunkGeo = pineTrunkGeometry()
   private pineCanopyGeo = pineCanopyGeometry()
@@ -243,20 +383,35 @@ export class Vegetation {
   private rockGeo = rockGeometry()
   private pebblesGeo = pebblesGeometry()
   private logGeo = logGeometry()
+  private fernGeo = fernGeometry()
+  private lupineStemGeo = lupineStemGeometry()
+  private lupineHeadGeo = lupineHeadGeometry()
+  private stumpGeo = stumpGeometry()
+  private lanternPostGeo = lanternPostGeometry()
+  private lanternGlowGeo = lanternGlowGeometry()
 
   private trunkMat = new THREE.MeshLambertMaterial({ color: 0x7d4a30, flatShading: true })
   private leafyTrunkMat = new THREE.MeshLambertMaterial({ color: 0x7a5b38, flatShading: true })
   private pineCanopyMat = swayMaterial({ flatShading: true }, 0.004)
   private leafyCanopyMat = swayMaterial({ flatShading: true }, 0.006)
   private bushMat = swayMaterial({ flatShading: true }, 0.02)
-  private grassMat = swayMaterial({ flatShading: true }, 0.14)
+  // Vertex-kleuren geven elke spriet een verloop van donkere voet naar
+  // lichte top — samen met de instantiekleur per pol.
+  private grassMat = swayMaterial({ vertexColors: true, side: THREE.DoubleSide }, 0.14)
+  private fernMat = swayMaterial({ vertexColors: true, side: THREE.DoubleSide }, 0.05)
+  private lupineStemMat = swayMaterial({ color: 0x4c8f36 }, 0.08)
+  private lupineHeadMat = swayMaterial({ flatShading: true }, 0.08)
+  private stumpMat = new THREE.MeshLambertMaterial({ color: 0x74563a, flatShading: true })
+  private lanternPostMat = new THREE.MeshLambertMaterial({ color: 0x4a3826, flatShading: true })
+  // Warm gloeiend glas: pakt de bloom-pass, ook overdag zichtbaar amber.
+  private lanternGlowMat = new THREE.MeshBasicMaterial({ color: 0xffc46b })
   private stemMat = swayMaterial({ color: 0x4c8f36 }, 0.1)
   private headMat = swayMaterial({ flatShading: true }, 0.1)
   private mushStemMat = new THREE.MeshLambertMaterial({ color: 0xe8e0cf, flatShading: true })
   private mushCapMat = new THREE.MeshLambertMaterial({ flatShading: true })
   private reedStemMat = swayMaterial({ color: 0x5e7c3a }, 0.06)
   private reedTopMat = swayMaterial({ color: 0x6d4a2e, flatShading: true }, 0.06)
-  private rockMat = new THREE.MeshLambertMaterial({ color: 0x8d8a83, flatShading: true })
+  private rockMat = new THREE.MeshLambertMaterial({ color: 0x8b8496, flatShading: true })
   private pebbleMat = new THREE.MeshLambertMaterial({ color: 0x9d968c, flatShading: true })
   private logMat = new THREE.MeshLambertMaterial({ color: 0x6b4a2c, flatShading: true })
 
@@ -265,17 +420,35 @@ export class Vegetation {
     this.scene = scene
   }
 
+  private clearing: { x: number; z: number; radius: number } | null = null
+
+  /** Open plek (bijv. het erf van het meerhuisje): daar groeit vrijwel niets. */
+  setClearing(clearing: { x: number; z: number; radius: number } | null): void {
+    this.clearing = clearing
+  }
+
+  private inClearing(x: number, z: number): boolean {
+    const c = this.clearing
+    if (!c) return false
+    const dx = x - c.x
+    const dz = z - c.z
+    return dx * dx + dz * dz < c.radius * c.radius
+  }
+
   /** Elke frame aanroepen zodat het groen wuift. */
   tick(dt: number): void {
     swayTime.value += dt
   }
 
-  /** Dichte grasring rond de speler bijwerken (goedkoop: visibility-toggle). */
+  /** Grasringen rond de speler bijwerken (goedkoop: visibility-toggle). */
   updateDetail(playerX: number, playerZ: number): void {
     const pcx = Math.floor(playerX / CHUNK_SIZE)
     const pcz = Math.floor(playerZ / CHUNK_SIZE)
     for (const d of this.denseGrass.values()) {
       d.mesh.visible = Math.max(Math.abs(d.cx - pcx), Math.abs(d.cz - pcz)) <= this.detailRadius
+    }
+    for (const d of this.farGrass.values()) {
+      d.mesh.visible = Math.max(Math.abs(d.cx - pcx), Math.abs(d.cz - pcz)) <= this.farRadius
     }
   }
 
@@ -309,10 +482,14 @@ export class Vegetation {
     const rocks: Placement[] = []
     const pebbles: Placement[] = []
     const logs: Placement[] = []
+    const ferns: Placement[] = []
+    const lupines: Placement[] = []
+    const stumps: Placement[] = []
+    const lanterns: Placement[] = []
     const treeColliders: TreeCollider[] = []
 
     // Bomen: dichte bossen tot aan de boomgrens, losse bomen in het veld.
-    for (let i = 0; i < 170; i++) {
+    for (let i = 0; i < 230; i++) {
       const x = ox + rng() * CHUNK_SIZE
       const z = oz + rng() * CHUNK_SIZE
       const p = rng()
@@ -321,6 +498,7 @@ export class Vegetation {
       if (h < 2 || h > 38) continue
       if (this.world.normal(x, z).y < 0.76) continue
       if (this.world.path(x, z, h) > 0.3) continue // paden blijven open
+      if (this.inClearing(x, z)) continue
       const forest = this.world.forestness(x, z)
       if (p > forest * 0.95 + 0.03) continue
       const isPine = this.world.hilliness(x, z) > 0.45 ? typeRoll < 0.85 : typeRoll < 0.55
@@ -345,6 +523,7 @@ export class Vegetation {
       if (h < 1.8 || h > 28) continue
       if (this.world.normal(x, z).y < 0.78) continue
       if (this.world.path(x, z, h) > 0.35) continue
+      if (this.inClearing(x, z)) continue
       const forest = this.world.forestness(x, z)
       const edge = forest > 0.15 && forest < 0.6
       if (rng() > (edge ? 0.45 : 0.16)) continue
@@ -418,6 +597,68 @@ export class Vegetation {
       })
     }
 
+    // Varens: bosbodem en schaduwrijke randen.
+    for (let i = 0; i < 60; i++) {
+      const x = ox + rng() * CHUNK_SIZE
+      const z = oz + rng() * CHUNK_SIZE
+      const h = this.world.height(x, z)
+      if (h < 2 || h > 26) continue
+      if (this.world.normal(x, z).y < 0.78) continue
+      if (this.inClearing(x, z)) continue
+      const forest = this.world.forestness(x, z)
+      if (rng() > forest * 0.7 + 0.03) continue
+      ferns.push({
+        x,
+        y: h - 0.03,
+        z,
+        yaw: rng() * Math.PI * 2,
+        scale: 0.7 + rng() * 0.7,
+        color: FERN_COLORS[Math.floor(rng() * FERN_COLORS.length)]
+      })
+    }
+
+    // Lupines: hoge bloemspiesen in het open veld (fantasy-accent).
+    for (let i = 0; i < 40; i++) {
+      const x = ox + rng() * CHUNK_SIZE
+      const z = oz + rng() * CHUNK_SIZE
+      const h = this.world.height(x, z)
+      if (h < 1.8 || h > 24) continue
+      if (this.world.normal(x, z).y < 0.8) continue
+      if (this.world.forestness(x, z) > 0.5) continue
+      if (this.world.path(x, z, h) > 0.35 || rng() > 0.45) continue
+      lupines.push({
+        x,
+        y: h,
+        z,
+        yaw: rng() * Math.PI * 2,
+        scale: 0.8 + rng() * 0.6,
+        color: LUPINE_COLORS[Math.floor(rng() * LUPINE_COLORS.length)]
+      })
+    }
+
+    // Boomstronken: overblijfselen op de bosbodem.
+    for (let i = 0; i < 8; i++) {
+      const x = ox + rng() * CHUNK_SIZE
+      const z = oz + rng() * CHUNK_SIZE
+      const h = this.world.height(x, z)
+      if (h < 2 || h > 26) continue
+      if (this.world.forestness(x, z) < 0.35 || rng() > 0.3) continue
+      if (this.inClearing(x, z)) continue
+      stumps.push({ x, y: h - 0.06, z, yaw: rng() * Math.PI * 2, scale: 0.7 + rng() * 0.7 })
+    }
+
+    // Lantaarnpaaltjes langs de paden: sprookjesachtige orientatiepunten.
+    for (let i = 0; i < 8; i++) {
+      const x = ox + rng() * CHUNK_SIZE
+      const z = oz + rng() * CHUNK_SIZE
+      const h = this.world.height(x, z)
+      if (h < 2 || h > 40) continue
+      const p = this.world.path(x, z, h)
+      if (p < 0.45 || p > 0.9 || rng() > 0.3) continue
+      lanterns.push({ x, y: h - 0.05, z, yaw: rng() * Math.PI * 2, scale: 1 })
+      if (lanterns.length >= 2) break
+    }
+
     // Paddenstoelen: groepjes op de bosbodem.
     for (let i = 0; i < 14; i++) {
       const x = ox + rng() * CHUNK_SIZE
@@ -425,6 +666,7 @@ export class Vegetation {
       const h = this.world.height(x, z)
       if (h < 2 || h > 26) continue
       if (this.world.forestness(x, z) < 0.5 || rng() > 0.5) continue
+      if (this.inClearing(x, z)) continue
       const capColor = CAP_COLORS[Math.floor(rng() * CAP_COLORS.length)]
       const n = 1 + Math.floor(rng() * 3)
       for (let j = 0; j < n; j++) {
@@ -461,6 +703,7 @@ export class Vegetation {
       if (h < 2 || h > 28) continue
       if (this.world.forestness(x, z) < 0.45 || rng() > 0.3) continue
       if (this.world.path(x, z, h) > 0.3) continue
+      if (this.inClearing(x, z)) continue
       logs.push({ x, y: h - 0.05, z, yaw: rng() * Math.PI * 2, scale: 0.7 + rng() * 0.8 })
     }
 
@@ -482,6 +725,7 @@ export class Vegetation {
       if (h < 1) continue
       const hilly = this.world.hilliness(x, z)
       if (rng() > hilly * 1.1 + 0.08) continue
+      if (this.inClearing(x, z)) continue
       rocks.push({ x, y: h - 0.2, z, yaw: rng() * Math.PI * 2, scale: 0.4 + rng() * rng() * 3.4 })
     }
 
@@ -493,7 +737,11 @@ export class Vegetation {
     this.addInstances(chunk, this.leafyTrunkGeo, this.leafyTrunkMat, leafies, true, false, 'loofstam')
     this.addInstances(chunk, this.leafyCanopyGeo, this.leafyCanopyMat, leafies, true, true, 'loofkroon')
     this.addInstances(chunk, this.bushGeo, this.bushMat, bushes, true, true, 'struik')
-    this.addInstances(chunk, this.grassGeo, this.grassMat, farGrass, false, true, 'gras-ver')
+    const far = this.addInstances(chunk, this.grassGeo, this.grassMat, farGrass, false, true, 'gras-ver')
+    if (far) {
+      this.farGrass.set(chunk.key, { cx: chunk.cx, cz: chunk.cz, mesh: far })
+      chunk.disposables.push({ dispose: () => this.farGrass.delete(chunk.key) })
+    }
     const dense = this.addInstances(chunk, this.grassGeo, this.grassMat, nearGrass, false, true, 'gras-dicht')
     if (dense) {
       this.denseGrass.set(chunk.key, { cx: chunk.cx, cz: chunk.cz, mesh: dense })
@@ -505,6 +753,12 @@ export class Vegetation {
     this.addInstances(chunk, this.mushCapGeo, this.mushCapMat, mushrooms, false, true, 'padhoed')
     this.addInstances(chunk, this.pebblesGeo, this.pebbleMat, pebbles, false, false, 'kiezels')
     this.addInstances(chunk, this.logGeo, this.logMat, logs, true, false, 'boomstam')
+    this.addInstances(chunk, this.fernGeo, this.fernMat, ferns, false, true, 'varen')
+    this.addInstances(chunk, this.lupineStemGeo, this.lupineStemMat, lupines, false, false, 'lupinesteel')
+    this.addInstances(chunk, this.lupineHeadGeo, this.lupineHeadMat, lupines, false, true, 'lupine')
+    this.addInstances(chunk, this.stumpGeo, this.stumpMat, stumps, true, false, 'stronk')
+    this.addInstances(chunk, this.lanternPostGeo, this.lanternPostMat, lanterns, true, false, 'lantaarnpaal')
+    this.addInstances(chunk, this.lanternGlowGeo, this.lanternGlowMat, lanterns, false, false, 'lantaarnglas')
     this.addInstances(chunk, this.reedStemGeo, this.reedStemMat, reeds, false, false, 'rietstengel')
     this.addInstances(chunk, this.reedTopGeo, this.reedTopMat, reeds, false, false, 'riettop')
     this.addInstances(chunk, this.rockGeo, this.rockMat, rocks, true, false, 'rots')

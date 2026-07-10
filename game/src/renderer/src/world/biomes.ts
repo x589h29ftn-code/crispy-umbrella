@@ -43,7 +43,10 @@ export function terrainColor(
   out[2] = COLORS.sandWet[2]
 
   mix(out, COLORS.sand, smoothstep(-1.5, 0.4, height))
-  mix(out, COLORS.grass, smoothstep(1.2, 2.6, height))
+  // Bij meertjes groeit het gras tot vlak aan de waterlijn; aan zee is
+  // er een breder strand.
+  const lakeShore = world.lakeness(x, z)
+  mix(out, COLORS.grass, lakeShore > 0.3 ? smoothstep(0.15, 0.8, height) : smoothstep(1.2, 2.6, height))
 
   // Weidepatronen: vlekken fris en kruidenrijk groen door elkaar,
   // zodat het grasland niet één egale kleur is.

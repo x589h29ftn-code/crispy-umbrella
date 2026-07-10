@@ -2,7 +2,7 @@ import * as THREE from 'three'
 import { buildChunkGeometry, createTerrainMaterial } from './chunk'
 import { CHUNK_SIZE, type World } from './terrain'
 
-export const VIEW_DISTANCE = 10 // Chebyshev-radius in chunks (~640 m zicht)
+export const VIEW_DISTANCE = 14 // Chebyshev-radius in chunks (~900 m zicht)
 
 export interface Chunk {
   cx: number

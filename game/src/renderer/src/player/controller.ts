@@ -14,7 +14,7 @@ const GROUND_ACCEL = 45
 const AIR_ACCEL = 10
 const GRAVITY = 26
 const JUMP_VELOCITY = 8.5
-const STEEP_NORMAL_Y = 0.55 // steiler dan dit: wegglijden, niet beklimbaar
+const STEEP_NORMAL_Y = 0.4 // steiler dan dit: wegglijden — bergtoppen zijn beklimbaar
 
 export interface BlockAabb {
   minX: number

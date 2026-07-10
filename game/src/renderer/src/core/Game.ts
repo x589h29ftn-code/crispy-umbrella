@@ -9,12 +9,14 @@ import { BuildSystem } from '../build/placement'
 import { Animals } from '../fauna/animals'
 import { Birds } from '../fauna/birds'
 import { Butterflies } from '../fauna/butterflies'
+import { Fireflies } from '../fauna/fireflies'
 import { PlayerController } from '../player/controller'
 import { biomeName } from '../world/biomes'
 import { ChunkManager } from '../world/chunkManager'
 import { clamp } from '../world/noise'
 import { Sky } from '../world/sky'
 import { SEA_LEVEL, World } from '../world/terrain'
+import { Structures } from '../world/structures'
 import { Vegetation } from '../world/vegetation'
 import { Water } from '../world/water'
 import type { Hud } from '../ui/hud'
@@ -24,7 +26,7 @@ import { Input } from './input'
 const FIXED_DT = 1 / 120
 // Sfeervolle exponentiële mist (referentiestijl): dichtbij al zachtjes
 // aanwezig tussen de bomen, veraf lost het landschap erin op.
-const FOG_DENSITY = 0.003
+const FOG_DENSITY = 0.0016
 const FOG_DENSITY_UNDERWATER = 0.09
 
 /** Verbindt alle systemen en draait de game-lus. */
@@ -70,7 +72,7 @@ export class Game {
     this.water = new Water(this.world)
     this.scene.add(this.water.mesh)
     this.sky = new Sky(this.scene)
-    this.sky.dome.scale.setScalar(920)
+    this.sky.dome.scale.setScalar(1300)
 
     this.blocks = new BlockStore()
     this.mesher = new BlockMesher(this.scene, this.blocks)
@@ -80,10 +82,22 @@ export class Game {
     )
     this.build.onSelectionChanged = (slot) => hud.setSelectedSlot(slot)
 
+    // Hutjes en het meerhuisje-tafereel; hun muren en vloeren botsen mee
+    // met de geplaatste bouwblokken.
+    const structures = new Structures(this.world, this.scene)
+    this.structures = structures
+    this.player.setBlockQuery((minX, minY, minZ, maxX, maxY, maxZ) => {
+      const blocks = this.blocks.blocksInAABB(minX, minY, minZ, maxX, maxY, maxZ)
+      const walls = structures.collidersInAABB(minX, minY, minZ, maxX, maxY, maxZ)
+      return walls.length > 0 ? blocks.concat(walls) : blocks
+    })
+
     // Vegetatie en fauna leven mee met de chunks.
     const vegetation = new Vegetation(this.world, this.scene)
     this.vegetation = vegetation
+    vegetation.setClearing(structures.clearing())
     this.chunks.onLoad((c) => vegetation.populate(c))
+    this.chunks.onLoad((c) => structures.populate(c))
     this.addUpdater((dt) => vegetation.tick(dt))
 
     const animals = new Animals(this.world, this.scene)
@@ -97,6 +111,9 @@ export class Game {
 
     const butterflies = new Butterflies(this.world, this.scene)
     this.addUpdater((dt) => butterflies.update(dt, this.player.position, this.sky.nightness))
+
+    const fireflies = new Fireflies(this.world, this.scene)
+    this.addUpdater((dt) => fireflies.update(dt, this.player.position, this.sky.nightness))
 
     // Niet door boomstammen heen kunnen lopen.
     this.player.setTreeQuery((x, z) => vegetation.collidersNear(x, z))
@@ -117,6 +134,7 @@ export class Game {
   }
 
   private animals: Animals
+  private structures: Structures
   private audio: AudioEngine
   private ambient: Ambient
   private creatures: Creatures
@@ -154,8 +172,14 @@ export class Game {
     this.updaters.push(fn)
   }
 
-  /** Zoek spiraalsgewijs een spawn op land, het liefst in het gras. */
+  /** Spawn bij het meerhuisje als dat bestaat, anders op een grazige plek. */
   private spawnPlayer(): void {
+    const lakeSpawn = this.structures.lakeSpawnPoint()
+    if (lakeSpawn) {
+      this.player.spawn(lakeSpawn.x, lakeSpawn.z)
+      this.player.yaw = Math.atan2(-(lakeSpawn.lookX - lakeSpawn.x), -(lakeSpawn.lookZ - lakeSpawn.z))
+      return
+    }
     let best: { x: number; z: number } | null = null
     for (let r = 0; r < 40 && !best; r++) {
       for (let a = 0; a < 16; a++) {

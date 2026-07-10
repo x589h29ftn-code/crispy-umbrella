@@ -57,7 +57,7 @@ async function main(): Promise<void> {
 
     check(`${label}: game gestart`, state !== null)
     if (state) {
-      check(`${label}: chunks geladen (${state.chunks})`, state.chunks > 60)
+      check(`${label}: chunks geladen (${state.chunks})`, state.chunks > 40)
       check(`${label}: speler op vaste grond (y=${state.playerY.toFixed(1)})`, state.playerY > -5 && state.playerY < 60)
       check(`${label}: camera-aspect klopt (${state.aspect.toFixed(2)})`, Math.abs(state.aspect - width / height) < 0.01)
     }

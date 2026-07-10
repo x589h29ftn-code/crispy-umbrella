@@ -25,12 +25,16 @@ artifact via GitHub Actions (workflow "Bouw Verdant (Windows)").
 | Pauze | Esc |
 | Volledig scherm | F11 |
 
-De wereld heeft een dag/nachtcyclus, dieren (konijnen, herten, vogels),
-wuivend gras en bloemen, golvend water met schuimranden, en volledig
-gesynthetiseerde audio: kabbelend water, wind, krekels, vogelzang en
-rustgevende generatieve muziek. Er zijn geen asset-bestanden — alles is
-procedureel. Ultrawide-schermen krijgen automatisch een breder blikveld
-(Hor+ FOV).
+De wereld heeft een dag/nachtcyclus, dieren (konijnen, herten, vogels,
+vlinders en 's nachts vuurvliegjes), wuivend sprietengras, varens, lupines
+en bloemenweides, meertjes met gras tot aan de waterlijn, beklimbare bergen
+tot ~85 m, kronkelpaden met lantaarnpaaltjes, verspreide hutjes waar je in
+kunt, en één bijzonder plekje: een huisje aan een meer met steiger, moestuin
+en graanveld (daar start je). Volledig gesynthetiseerde audio: kabbelend
+water, wind, krekels, vogelzang en rustgevende generatieve muziek. Er zijn
+geen asset-bestanden — alles is procedureel. Ultrawide-schermen krijgen
+automatisch een breder blikveld (Hor+ FOV) en de rendering gebruikt MSAA
+anti-aliasing met ACES tone mapping en bloom.
 
 ## Zelf bouwen
 

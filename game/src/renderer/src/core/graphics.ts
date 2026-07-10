@@ -68,14 +68,19 @@ export class Graphics {
     this.renderer = new THREE.WebGLRenderer({ antialias: true, powerPreference: 'high-performance' })
     this.renderer.outputColorSpace = THREE.SRGBColorSpace
     this.renderer.toneMapping = THREE.ACESFilmicToneMapping
-    this.renderer.toneMappingExposure = 1.05
+    this.renderer.toneMappingExposure = 1.1
     this.renderer.shadowMap.enabled = true
     this.renderer.shadowMap.type = THREE.PCFSoftShadowMap
     container.appendChild(this.renderer.domElement)
 
-    this.camera = new THREE.PerspectiveCamera(VFOV, 1, 0.1, 1000)
+    this.camera = new THREE.PerspectiveCamera(VFOV, 1, 0.1, 1450)
 
-    this.composer = new EffectComposer(this.renderer)
+    // MSAA op de composer-rendertarget: gladde randen, ook mét postprocessing.
+    const msaaTarget = new THREE.WebGLRenderTarget(1, 1, {
+      samples: 4,
+      type: THREE.HalfFloatType
+    })
+    this.composer = new EffectComposer(this.renderer, msaaTarget)
     this.composer.addPass(new RenderPass(scene, this.camera))
     this.bloomPass = new UnrealBloomPass(new THREE.Vector2(1, 1), 0.32, 0.65, 0.88)
     this.composer.addPass(this.bloomPass)
