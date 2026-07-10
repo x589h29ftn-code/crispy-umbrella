@@ -56,6 +56,12 @@ const api = {
   saveFile: (defaultName: string, data: Uint8Array, extension: string): Promise<SaveResult> =>
     ipcRenderer.invoke('dialog:saveFile', defaultName, data, extension),
   templatesList: (): Promise<unknown[]> => ipcRenderer.invoke('templates:list'),
+  templatesGetDir: (): Promise<{ dir: string; isDefault: boolean }> => ipcRenderer.invoke('templates:getDir'),
+  templatesChooseDir: (): Promise<{ ok: boolean; dir?: string; error?: string }> =>
+    ipcRenderer.invoke('templates:chooseDir'),
+  templatesReadAux: (name: string): Promise<string | null> => ipcRenderer.invoke('templates:readAux', name),
+  templatesWriteAux: (name: string, json: string): Promise<{ ok: boolean }> =>
+    ipcRenderer.invoke('templates:writeAux', name, json),
   templatesSave: (metaJson: string, docx: Uint8Array | null): Promise<{ ok: boolean; error?: string }> =>
     ipcRenderer.invoke('templates:save', metaJson, docx),
   templatesDelete: (id: string): Promise<{ ok: boolean }> => ipcRenderer.invoke('templates:delete', id),

@@ -22,7 +22,13 @@ export const APP_CHANGELOG: { version: string; items: string[] }[] = [
       'Sjablonen: bulk genereren vanuit Excel/CSV (kolomkoppen = veldsleutels of labels; één document per rij, samen in één zip, met doorlopende volgnummers en geschiedenis per rij)',
       'Sjablonen: klantkaarten — bewaar een ingevulde set klantgegevens en pas die met één klik toe op elk sjabloon (vaste gegevens nooit meer dubbel typen)',
       'Sjablonen: nieuwe veldtypen — Bedrag (€, nette notatie zoals € 50.000,00 én automatisch "in woorden": vijftigduizend euro), Keuzelijst (vaste opties) en instelbare datumnotatie (10-07-2026 of "10 juli 2026" — datums komen niet meer als 2026-07-10 in het document)',
-      'Sjablonen: invoercontrole per veld (e-mail, IBAN met controle­getal, postcode, KVK-nummer) met foutmelding en blokkade tot het klopt; geschiedenis van gegenereerde documenten (datum, klant, volgnummer, bestandsnaam); velden herordenen met pijltjes; Word-bestand vervangen met behoud van veldinstellingen (versie telt automatisch op); sjablonen dupliceren en als bestand exporteren/importeren om te delen; en een PDF-voorbeeld vóór het genereren'
+      'Sjablonen: invoercontrole per veld (e-mail, IBAN met controle­getal, postcode, KVK-nummer) met foutmelding en blokkade tot het klopt; geschiedenis van gegenereerde documenten (datum, klant, volgnummer, bestandsnaam); velden herordenen met pijltjes; Word-bestand vervangen met behoud van veldinstellingen (versie telt automatisch op); sjablonen dupliceren en als bestand exporteren/importeren om te delen; en een PDF-voorbeeld vóór het genereren',
+      'Documentpakketten: bundel meerdere sjablonen (bv. AVA-notulen + uitkeringstoets + besluit) — je vult de gedeelde velden maar één keer in en genereert alles tegelijk als Word-zip of als één samengevoegde PDF',
+      'Berekende velden: bijvoorbeeld dividendbelasting als percentage van het brutobedrag, of netto = bruto − belasting — automatisch uitgerekend, netjes als € en ook in woorden beschikbaar; berekeningen mogen op elkaar voortbouwen',
+      'Kantoorgegevens: vaste variabelen zoals {Kantoornaam} en {Ondertekenaar} één keer instellen — in elk sjabloon beschikbaar en automatisch vooraf ingevuld',
+      'Gedeelde bibliotheekmap: kies als beheerder één (netwerk-)map voor de sjablonen zodat het hele kantoor uit dezelfde bibliotheek werkt; bij het openen wordt de map telkens vers ingelezen en er is een Vernieuwen-knop; de bestaande bibliotheek verhuist automatisch mee',
+      'Sjablonenbibliotheek georganiseerd: gegroepeerd op categorie, met een zoekbalk en favorieten (ster) bovenaan',
+      'Klantkaarten importeren uit Excel/CSV — met een "ⓘ Kolomhulp" die per sjabloon laat zien welke kolomkoppen de import verwacht (bv. Klantnaam, Klantnummer, Adres, Telefoon, E-mail, Bedrijfsnaam)'
     ]
   },
   {

@@ -340,13 +340,85 @@ app.whenReady().then(() => {
     return true
   })
 
-  // ---- Documentsjablonen (userData/templates): index.json + {id}.docx ----
-  const templatesDir = (): string => join(app.getPath('userData'), 'templates')
-  const templatesIndexPath = (): string => join(templatesDir(), 'index.json')
+  // ---- Documentsjablonen: index.json + {id}.docx in de bibliotheekmap ----
+  // Standaard userData/templates; de beheerder kan een (gedeelde netwerk-)map
+  // kiezen — die keuze staat in userData/templates-config.json.
+  const templatesConfigPath = (): string => join(app.getPath('userData'), 'templates-config.json')
+  const defaultTemplatesDir = (): string => join(app.getPath('userData'), 'templates')
 
+  async function templatesDirAsync(): Promise<string> {
+    try {
+      const cfg = JSON.parse(await readFile(templatesConfigPath(), 'utf-8')) as { dir?: string }
+      if (cfg.dir) return cfg.dir
+    } catch {
+      /* geen config → standaardmap */
+    }
+    return defaultTemplatesDir()
+  }
+
+  const templatesIndexPathIn = (dir: string): string => join(dir, 'index.json')
+
+  ipcMain.handle('templates:getDir', async () => {
+    const dir = await templatesDirAsync()
+    return { dir, isDefault: dir === defaultTemplatesDir() }
+  })
+
+  ipcMain.handle('templates:chooseDir', async () => {
+    const result = await dialog.showOpenDialog({
+      title: 'Kies de map voor de sjablonenbibliotheek',
+      properties: ['openDirectory', 'createDirectory']
+    })
+    if (result.canceled || !result.filePaths[0]) return { ok: false }
+    const newDir = result.filePaths[0]
+    const oldDir = await templatesDirAsync()
+    try {
+      await mkdir(newDir, { recursive: true })
+      // Bestaande bibliotheek meenemen wanneer de nieuwe map nog leeg is.
+      const targetHasIndex = await readFile(templatesIndexPathIn(newDir), 'utf-8').then(() => true).catch(() => false)
+      if (!targetHasIndex && oldDir !== newDir) {
+        const names = await readdir(oldDir).catch(() => [] as string[])
+        for (const name of names) {
+          if (name === 'index.json' || name.endsWith('.docx') || name.endsWith('.json')) {
+            const data = await readFile(join(oldDir, name)).catch(() => null)
+            if (data) await writeFile(join(newDir, name), data)
+          }
+        }
+      }
+      await writeFile(templatesConfigPath(), JSON.stringify({ dir: newDir }), 'utf-8')
+      return { ok: true, dir: newDir }
+    } catch (error) {
+      return { ok: false, error: String(error) }
+    }
+  })
+
+  // Kleine JSON-bijlagen in de bibliotheekmap (pakketten, kantoorgegevens) —
+  // zo deelt het hele kantoor dezelfde gegevens via de gedeelde map.
+  ipcMain.handle('templates:readAux', async (_evt, name: string) => {
+    if (!/^[\w-]+\.json$/.test(name)) return null
+    try {
+      return await readFile(join(await templatesDirAsync(), name), 'utf-8')
+    } catch {
+      return null
+    }
+  })
+
+  ipcMain.handle('templates:writeAux', async (_evt, name: string, json: string) => {
+    if (!/^[\w-]+\.json$/.test(name)) return { ok: false }
+    try {
+      const dir = await templatesDirAsync()
+      await mkdir(dir, { recursive: true })
+      await writeFile(join(dir, name), json, 'utf-8')
+      return { ok: true }
+    } catch {
+      return { ok: false }
+    }
+  })
+
+  // De lijst wordt bij elke aanroep vers van schijf gelezen — nieuwe sjablonen
+  // die een collega in de gedeelde map zette verschijnen dus automatisch.
   ipcMain.handle('templates:list', async () => {
     try {
-      return JSON.parse(await readFile(templatesIndexPath(), 'utf-8'))
+      return JSON.parse(await readFile(templatesIndexPathIn(await templatesDirAsync()), 'utf-8'))
     } catch {
       return []
     }
@@ -354,19 +426,20 @@ app.whenReady().then(() => {
 
   ipcMain.handle('templates:save', async (_evt, metaJson: string, docx: Uint8Array | null) => {
     try {
-      await mkdir(templatesDir(), { recursive: true })
+      const dir = await templatesDirAsync()
+      await mkdir(dir, { recursive: true })
       const meta = JSON.parse(metaJson) as { id: string }
       let list: { id: string }[] = []
       try {
-        list = JSON.parse(await readFile(templatesIndexPath(), 'utf-8'))
+        list = JSON.parse(await readFile(templatesIndexPathIn(dir), 'utf-8'))
       } catch {
         /* nog geen index */
       }
       const idx = list.findIndex((t) => t.id === meta.id)
       if (idx >= 0) list[idx] = meta
       else list.push(meta)
-      await writeFile(templatesIndexPath(), JSON.stringify(list, null, 1), 'utf-8')
-      if (docx) await writeFile(join(templatesDir(), `${meta.id}.docx`), Buffer.from(docx))
+      await writeFile(templatesIndexPathIn(dir), JSON.stringify(list, null, 1), 'utf-8')
+      if (docx) await writeFile(join(dir, `${meta.id}.docx`), Buffer.from(docx))
       return { ok: true }
     } catch (error) {
       return { ok: false, error: String(error) }
@@ -375,14 +448,15 @@ app.whenReady().then(() => {
 
   ipcMain.handle('templates:delete', async (_evt, id: string) => {
     try {
+      const dir = await templatesDirAsync()
       let list: { id: string }[] = []
       try {
-        list = JSON.parse(await readFile(templatesIndexPath(), 'utf-8'))
+        list = JSON.parse(await readFile(templatesIndexPathIn(dir), 'utf-8'))
       } catch {
         /* geen index */
       }
-      await writeFile(templatesIndexPath(), JSON.stringify(list.filter((t) => t.id !== id), null, 1), 'utf-8')
-      await unlink(join(templatesDir(), `${id}.docx`)).catch(() => undefined)
+      await writeFile(templatesIndexPathIn(dir), JSON.stringify(list.filter((t) => t.id !== id), null, 1), 'utf-8')
+      await unlink(join(dir, `${id}.docx`)).catch(() => undefined)
       return { ok: true }
     } catch {
       return { ok: false }
@@ -391,7 +465,7 @@ app.whenReady().then(() => {
 
   ipcMain.handle('templates:loadDocx', async (_evt, id: string) => {
     try {
-      return await readFile(join(templatesDir(), `${id}.docx`))
+      return await readFile(join(await templatesDirAsync(), `${id}.docx`))
     } catch {
       return null
     }

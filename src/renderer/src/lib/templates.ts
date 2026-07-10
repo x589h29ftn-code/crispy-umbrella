@@ -4,8 +4,10 @@ import { unzipSync, strFromU8 } from 'fflate'
 export interface TemplateField {
   key: string
   label: string
-  type: 'text' | 'multiline' | 'date' | 'amount' | 'select'
+  type: 'text' | 'multiline' | 'date' | 'amount' | 'select' | 'computed'
   required: boolean
+  /** Berekend veld: percentage van een ander veld, of som/verschil van twee velden. */
+  formula?: { op: 'pct' | 'sub' | 'add'; a: string; b?: string; pct?: number }
   /** Voorbeeldtekst in het lege invulveld. */
   placeholder?: string
   /** Extra uitleg onder het veld. */
@@ -300,18 +302,44 @@ export function amountToWordsNL(raw: string): string {
   return cents ? `${base} en ${numberToWordsNL(cents)} cent` : base
 }
 
+/** "50.000,50" / "€ 50.000" / "50000.5" → getal, of null wanneer het geen bedrag is. */
+export function parseAmountNL(raw: string): number | null {
+  const cleaned = String(raw ?? '').replace(/[€\s]|EUR/gi, '')
+  if (!/^-?[\d.,]+$/.test(cleaned)) return null
+  const normalized = cleaned.includes(',')
+    ? cleaned.replace(/\./g, '').replace(',', '.')
+    : cleaned.replace(/\.(?=\d{3}(\D|$))/g, '')
+  const value = Number(normalized)
+  return Number.isFinite(value) ? value : null
+}
+
 /**
- * Zet de ruwe formulier-invoer om naar documentwaarden: datums volgens de
- * gekozen notatie, bedragen als nette euro-notatie, en per bedragveld ook een
- * extra variabele "<sleutel> in woorden".
+ * Zet de ruwe formulier-invoer om naar documentwaarden: berekende velden worden
+ * eerst uitgerekend (percentage/som/verschil van andere velden), datums volgen
+ * de gekozen notatie, en bedragen (ook berekende) krijgen een nette euro-notatie
+ * plus een extra variabele "<sleutel> in woorden".
  */
 export function transformValues(template: DocTemplate, values: Record<string, string>): Record<string, string> {
   const out: Record<string, string> = { ...values }
+  // Eerst berekenen (in veldvolgorde, zodat een berekend veld op een eerder
+  // berekend veld mag bouwen).
   for (const f of template.fields) {
-    const raw = (values[f.key] ?? '').trim()
+    if (f.type !== 'computed' || !f.formula?.a) continue
+    const a = parseAmountNL(out[f.formula.a] ?? '')
+    if (a === null) continue
+    let result: number | null = null
+    if (f.formula.op === 'pct') result = (a * (f.formula.pct ?? 0)) / 100
+    else {
+      const b = parseAmountNL(out[f.formula.b ?? ''] ?? '')
+      if (b !== null) result = f.formula.op === 'sub' ? a - b : a + b
+    }
+    if (result !== null) out[f.key] = result.toFixed(2).replace('.', ',')
+  }
+  for (const f of template.fields) {
+    const raw = (out[f.key] ?? '').trim()
     if (!raw) continue
     if (f.type === 'date') out[f.key] = formatDateNL(raw, f.dateFormat ?? 'kort')
-    if (f.type === 'amount') {
+    if (f.type === 'amount' || f.type === 'computed') {
       out[f.key] = formatAmountNL(raw)
       out[`${f.key} in woorden`] = amountToWordsNL(raw)
     }
@@ -418,4 +446,133 @@ export function clientLabel(template: DocTemplate, values: Record<string, string
   if (idField) return values[idField.key].trim()
   const first = template.fields.find((f) => (values[f.key] ?? '').trim())
   return first ? values[first.key].trim() : ''
+}
+
+// ---- Bibliotheekmap (gedeelde map voor het hele kantoor) ----
+
+export async function getLibraryInfo(): Promise<{ dir: string; isDefault: boolean } | null> {
+  if (typeof window.api?.templatesGetDir !== 'function') return null
+  try {
+    return await window.api.templatesGetDir()
+  } catch {
+    return null
+  }
+}
+
+export async function chooseLibraryDir(): Promise<{ ok: boolean; dir?: string }> {
+  if (typeof window.api?.templatesChooseDir !== 'function') return { ok: false }
+  return window.api.templatesChooseDir()
+}
+
+// ---- Kleine JSON-bestanden in de bibliotheekmap (gedeeld met het kantoor);
+// ---- in de browser/test een localStorage-fallback.
+
+async function readAux<T>(name: string, lsKey: string): Promise<T | null> {
+  if (typeof window.api?.templatesReadAux === 'function') {
+    try {
+      const raw = await window.api.templatesReadAux(name)
+      return raw ? (JSON.parse(raw) as T) : null
+    } catch {
+      return null
+    }
+  }
+  try {
+    const raw = window.localStorage.getItem(lsKey)
+    return raw ? (JSON.parse(raw) as T) : null
+  } catch {
+    return null
+  }
+}
+
+async function writeAux(name: string, lsKey: string, value: unknown): Promise<void> {
+  const json = JSON.stringify(value, null, 1)
+  if (typeof window.api?.templatesWriteAux === 'function') {
+    await window.api.templatesWriteAux(name, json)
+    return
+  }
+  window.localStorage.setItem(lsKey, json)
+}
+
+// ---- Kantoorgegevens: vaste variabelen voor alle sjablonen ----
+
+export type OfficeValues = Record<string, string>
+
+export async function loadOfficeValues(): Promise<OfficeValues> {
+  return (await readAux<OfficeValues>('kantoor.json', 'pdf-studio-office-values')) ?? {}
+}
+
+export async function saveOfficeValues(values: OfficeValues): Promise<void> {
+  await writeAux('kantoor.json', 'pdf-studio-office-values', values)
+}
+
+// ---- Documentpakketten: meerdere sjablonen, één invulbeurt ----
+
+export interface DocPack {
+  id: string
+  name: string
+  description?: string
+  templateIds: string[]
+}
+
+export async function listPacks(): Promise<DocPack[]> {
+  return (await readAux<DocPack[]>('pakketten.json', 'pdf-studio-template-packs')) ?? []
+}
+
+export async function savePack(pack: DocPack): Promise<void> {
+  const list = await listPacks()
+  const idx = list.findIndex((p) => p.id === pack.id)
+  if (idx >= 0) list[idx] = pack
+  else list.push(pack)
+  await writeAux('pakketten.json', 'pdf-studio-template-packs', list)
+}
+
+export async function deletePack(id: string): Promise<void> {
+  await writeAux('pakketten.json', 'pdf-studio-template-packs', (await listPacks()).filter((p) => p.id !== id))
+}
+
+/** Gecombineerde invoervelden van een pakket: gedeelde sleutels maar één keer. */
+export function packFields(templates: DocTemplate[]): TemplateField[] {
+  const seen = new Set<string>()
+  const fields: TemplateField[] = []
+  for (const t of templates) {
+    for (const f of t.fields) {
+      if (seen.has(f.key)) continue
+      seen.add(f.key)
+      fields.push(f)
+    }
+  }
+  return fields
+}
+
+// ---- Klantkaarten importeren uit Excel/CSV ----
+
+/**
+ * Maakt klantkaarten van een werkblad: eerste rij = kolomkoppen (veldsleutels
+ * of labels van je sjablonen, bv. Klantnaam / Klantnummer / Adres klant /
+ * Telefoon / E-mail / Bedrijfsnaam), daarna één klant per rij. De kaartnaam
+ * komt uit de kolom "Klantnaam"/"Naam"/"Bedrijfsnaam", anders de eerste kolom.
+ */
+export function clientsFromSheet(rows: string[][]): ClientCard[] {
+  if (rows.length < 2) return []
+  const header = rows[0].map((h) => String(h ?? '').trim())
+  const nameIdx = (() => {
+    const lower = header.map((h) => h.toLowerCase())
+    for (const candidate of ['klantnaam', 'naam', 'bedrijfsnaam']) {
+      const i = lower.indexOf(candidate)
+      if (i >= 0) return i
+    }
+    return 0
+  })()
+  const cards: ClientCard[] = []
+  for (const row of rows.slice(1)) {
+    if (!row.some((c) => String(c ?? '').trim())) continue
+    const values: Record<string, string> = {}
+    header.forEach((h, i) => {
+      const v = String(row[i] ?? '').trim()
+      if (h && v) values[h] = v
+    })
+    const name = String(row[nameIdx] ?? '').trim() || Object.values(values)[0] || 'Klant'
+    cards.push({ id: `${Date.now()}-${cards.length}-${Math.random().toString(36).slice(2, 8)}`, name, values })
+  }
+  return cards
 }
