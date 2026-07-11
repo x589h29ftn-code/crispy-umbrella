@@ -443,9 +443,16 @@ export class Structures {
   canoeMoorings(): { x: number; z: number }[] {
     const result: { x: number; z: number }[] = []
     if (this.lakeHouse) {
+      // Volg de steigerrichting tot het water diep genoeg is, zodat de kano
+      // echt drijft (de steigerlengte verschilt per wereld).
       const anchor = new Kit(this.lakeHouse.x, 0, this.lakeHouse.z, this.lakeHouse.quarter)
-      const m = anchor.toWorld(2.2, 9)
-      result.push({ x: m.x, z: m.z })
+      for (let d = 7; d <= 46; d += 1.5) {
+        const m = anchor.toWorld(2.2, d)
+        if (this.world.height(m.x, m.z) < -0.8) {
+          result.push({ x: m.x, z: m.z })
+          break
+        }
+      }
     }
     // Twee plekken in ondiep zeewater, verspreid over de wereld.
     let found = 0

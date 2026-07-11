@@ -209,14 +209,14 @@ async function main(): Promise<void> {
   await fresh()
   await page.evaluate(() => {
     const g = (window as unknown as Record<string, any>).__game
-    const canoe = g.boats.canoes[0]
+    // Kies een kano die echt drijft.
+    const canoe =
+      g.boats.canoes.find((c: { x: number; z: number }) => g.world.height(c.x, c.z) < -0.5) ?? g.boats.canoes[0]
     if (!canoe) return
     g.boats.enter(canoe)
-    const lh = g.structures.lakeHouse
-    if (lh) {
-      g.player.yaw = Math.atan2(-(lh.x - canoe.x), -(lh.z - canoe.z))
-    }
-    g.player.pitch = -0.3
+    // Kijk over de boeg, iets omlaag: romp en peddel in beeld.
+    g.player.yaw = canoe.heading
+    g.player.pitch = -0.42
   })
   await shoot('kano', 20)
 
