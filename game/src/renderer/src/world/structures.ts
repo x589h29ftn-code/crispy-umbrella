@@ -21,7 +21,8 @@ const MATS = {
   }),
   soil: new THREE.MeshLambertMaterial({ color: 0x5d452c, flatShading: true }),
   crop: new THREE.MeshLambertMaterial({ color: 0x4f9c38, flatShading: true }),
-  carrot: new THREE.MeshLambertMaterial({ color: 0xe67e22, flatShading: true })
+  carrot: new THREE.MeshLambertMaterial({ color: 0xe67e22, flatShading: true }),
+  stone: new THREE.MeshLambertMaterial({ color: 0x9b968e, flatShading: true })
 }
 type MatKey = keyof typeof MATS
 
@@ -154,22 +155,36 @@ function buildCabin(kit: Kit, width = 5, depth = 4): void {
   const T = 0.16 // wanddikte
   const H = 2.4 // wandhoogte
 
-  // Vloer met opstap en korte poten in het terrein.
+  // Vloer met opstap; stenen plint rondom (vakwerk-cottage stijl).
   kit.box('beam', 0, -0.11, 0, width + 0.4, 0.22, depth + 0.4, true)
-  kit.box('beam', 1.15, -0.35, D + 0.55, 1.3, 0.2, 0.9, true) // traptrede bij de deur
+  kit.box('stone', 1.15, -0.35, D + 0.55, 1.3, 0.2, 0.9, true) // stoep bij de deur
   for (const [px, pz] of [
     [-W + 0.25, -D + 0.25],
     [W - 0.25, -D + 0.25],
     [-W + 0.25, D - 0.25],
     [W - 0.25, D - 0.25]
   ]) {
-    kit.box('beam', px, -1.4, pz, 0.3, 2.6, 0.3, false)
+    kit.box('stone', px, -1.4, pz, 0.34, 2.6, 0.34, false)
   }
-  // Lage plint rondom zodat je op een helling niet onder de vloer kijkt.
-  kit.box('beam', 0, -0.55, -D, width + 0.3, 0.7, 0.12, false)
-  kit.box('beam', 0, -0.55, D, width + 0.3, 0.7, 0.12, false)
-  kit.box('beam', -W, -0.55, 0, 0.12, 0.7, depth + 0.3, false)
-  kit.box('beam', W, -0.55, 0, 0.12, 0.7, depth + 0.3, false)
+  // Lage stenen plint zodat je op een helling niet onder de vloer kijkt.
+  kit.box('stone', 0, -0.55, -D, width + 0.34, 0.94, 0.16, false)
+  kit.box('stone', 0, -0.55, D, width + 0.34, 0.94, 0.16, false)
+  kit.box('stone', -W, -0.55, 0, 0.16, 0.94, depth + 0.34, false)
+  kit.box('stone', W, -0.55, 0, 0.16, 0.94, depth + 0.34, false)
+
+  // Vakwerk: hoekstijlen en een horizontale regel rondom.
+  for (const [px, pz] of [
+    [-W, -D],
+    [W, -D],
+    [-W, D],
+    [W, D]
+  ]) {
+    kit.box('beam', px, 1.2, pz, 0.2, 2.4, 0.2, false)
+  }
+  kit.box('beam', 0, 2.02, D + 0.04, width + 0.24, 0.12, 0.08, false)
+  kit.box('beam', 0, 2.02, -D - 0.04, width + 0.24, 0.12, 0.08, false)
+  kit.box('beam', -W - 0.04, 2.02, 0, 0.08, 0.12, depth + 0.24, false)
+  kit.box('beam', W + 0.04, 2.02, 0, 0.08, 0.12, depth + 0.24, false)
 
   // Voorwand (+z) met deuropening x 0.6..1.7.
   kit.box('wall', (-W + 0.6) / 2, H / 2, D, W + 0.6, H, T, true)
@@ -193,7 +208,31 @@ function buildCabin(kit: Kit, width = 5, depth = 4): void {
     kit.box('glass', x, 1.5, 0, 0.05, 0.9, 1.4, true)
   }
 
-  // Balklaag + schilddak (vierzijdige piramide met overstek).
+  // Kozijnen om deur en ramen (donker hout).
+  kit.box('beam', 0.55, 1.05, D + 0.03, 0.1, 2.1, 0.12, false)
+  kit.box('beam', 1.75, 1.05, D + 0.03, 0.1, 2.1, 0.12, false)
+  kit.box('beam', 1.15, 2.06, D + 0.03, 1.3, 0.12, 0.12, false)
+  kit.box('beam', 0, 1.0, -D - 0.03, 1.8, 0.1, 0.12, false) // achterraam
+  kit.box('beam', 0, 2.0, -D - 0.03, 1.8, 0.1, 0.12, false)
+  kit.box('beam', -0.85, 1.5, -D - 0.03, 0.1, 1.1, 0.12, false)
+  kit.box('beam', 0.85, 1.5, -D - 0.03, 0.1, 1.1, 0.12, false)
+  for (const side of [-1, 1]) {
+    const x = side * (W + 0.03)
+    kit.box('beam', x, 1.0, 0, 0.12, 0.1, 1.6, false)
+    kit.box('beam', x, 2.0, 0, 0.12, 0.1, 1.6, false)
+    kit.box('beam', x, 1.5, -0.75, 0.12, 1.1, 0.1, false)
+    kit.box('beam', x, 1.5, 0.75, 0.12, 1.1, 0.1, false)
+  }
+
+  // Deurblad, opengeslagen tegen de binnenwand (je kunt gewoon naar binnen).
+  kit.box('beam', 0.62, 1.0, D - 0.55, 0.07, 1.95, 0.95, true)
+
+  // Luifel op paaltjes boven de deur.
+  kit.box('roof', 1.15, 2.35, D + 0.6, 1.7, 0.09, 1.1, false)
+  kit.box('beam', 0.45, 1.15, D + 1.0, 0.09, 2.4, 0.09, false)
+  kit.box('beam', 1.85, 1.15, D + 1.0, 0.09, 2.4, 0.09, false)
+
+  // Balklaag + schilddak (vierzijdige piramide met overstek) + nok en schoorsteen.
   kit.box('beam', 0, H + 0.08, 0, width + 0.5, 0.16, depth + 0.5, true)
   const roof = new THREE.ConeGeometry(1, 1, 4, 1)
   roof.rotateY(Math.PI / 4) // randen evenwijdig aan de muren
@@ -203,6 +242,9 @@ function buildCabin(kit: Kit, width = 5, depth = 4): void {
   roof.scale(overhangX, 1.5, overhangZ)
   roof.translate(0, H + 0.16 + 0.75, 0)
   kit.pushGeo('roof', roof)
+  kit.box('beam', 0, H + 1.72, 0, 0.26, 0.24, 0.26, false) // nokornament
+  kit.box('stone', -W + 0.85, H + 0.9, -D + 0.9, 0.55, 2.4, 0.55, false) // schoorsteen
+  kit.box('stone', -W + 0.85, H + 2.16, -D + 0.9, 0.7, 0.14, 0.7, false)
 
   // Meubels: tafel, bankje en bed.
   kit.box('beam', -1.5, 0.4, -1.1, 0.95, 0.8, 0.65, true)
@@ -329,6 +371,65 @@ export class Structures {
     return { x: c.x, z: c.z, radius: 27 }
   }
 
+  private villageCache = new Map<string, { x: number; z: number } | null>()
+
+  /**
+   * Deterministische dorpsplek voor een chunk (of null): pure functie met
+   * cache, zodat vegetatie en bouwlogica dezelfde plekken kennen.
+   */
+  villageSpotFor(cx: number, cz: number): { x: number; z: number } | null {
+    const key = cx + ',' + cz
+    const cached = this.villageCache.get(key)
+    if (cached !== undefined) return cached
+    let spot: { x: number; z: number } | null = null
+    const rng = chunkRng(this.world.seed, cx, cz, 'dorp')
+    if (rng() < 0.16) {
+      for (let attempt = 0; attempt < 34; attempt++) {
+        const x = cx * CHUNK_SIZE + 16 + rng() * (CHUNK_SIZE - 32)
+        const z = cz * CHUNK_SIZE + 16 + rng() * (CHUNK_SIZE - 32)
+        const h = this.world.height(x, z)
+        if (h < 2.2 || h > 38) continue
+        if (this.world.normal(x, z).y < 0.9) continue
+        if (this.world.forestness(x, z) > 0.5) continue
+        if (this.world.lakeness(x, z) > 0.45) continue
+        if (this.lakeHouse && (x - this.lakeHouse.x) ** 2 + (z - this.lakeHouse.z) ** 2 < 90 * 90) continue
+        // Het hele dorpsvoetstuk moet vlak liggen, niet alleen het midden.
+        let flat = true
+        for (const [ox, oz] of [
+          [0, -9],
+          [1, 9],
+          [-9, 0.8],
+          [9, -0.8]
+        ]) {
+          const hh = this.world.height(x + ox, z + oz)
+          if (Math.abs(hh - h) > 3 || this.world.normal(x + ox, z + oz).y < 0.85) {
+            flat = false
+            break
+          }
+        }
+        if (!flat) continue
+        spot = { x, z }
+        break
+      }
+    }
+    this.villageCache.set(key, spot)
+    return spot
+  }
+
+  /** Alle open plekken die chunk (cx,cz) raken: meerhuisje + dorpen in de buurt. */
+  clearingsNear(cx: number, cz: number): { x: number; z: number; radius: number }[] {
+    const result: { x: number; z: number; radius: number }[] = []
+    const lake = this.clearing()
+    if (lake) result.push(lake)
+    for (let dz = -1; dz <= 1; dz++) {
+      for (let dx = -1; dx <= 1; dx++) {
+        const v = this.villageSpotFor(cx + dx, cz + dz)
+        if (v) result.push({ x: v.x, z: v.z, radius: 19 })
+      }
+    }
+    return result
+  }
+
   /** Mooie startplek bij het meerhuisje: zijaanzicht op huis, steiger en meer. */
   lakeSpawnPoint(): { x: number; z: number; lookX: number; lookZ: number } | null {
     if (!this.lakeHouse) return null
@@ -373,9 +474,13 @@ export class Structures {
       this.buildLakeHouseScene(chunk, lh, chunkColliders)
     }
 
+    // Dorpje: 3-5 vakwerk-huisjes rond een waterput, met stenen paadjes.
+    const village = this.villageSpotFor(chunk.cx, chunk.cz)
+    if (village) this.buildVillage(chunk, village, chunkColliders)
+
     // Verspreide hutjes: kleine kans per chunk, op een vlakke open plek.
     const rng = chunkRng(this.world.seed, chunk.cx, chunk.cz, 'hut')
-    if (rng() < 0.05) {
+    if (!village && rng() < 0.075) {
       for (let attempt = 0; attempt < 12; attempt++) {
         const x = chunk.cx * CHUNK_SIZE + 8 + rng() * (CHUNK_SIZE - 16)
         const z = chunk.cz * CHUNK_SIZE + 8 + rng() * (CHUNK_SIZE - 16)
@@ -398,6 +503,64 @@ export class Structures {
       this.colliders.set(chunk.key, chunkColliders)
       chunk.disposables.push({ dispose: () => this.colliders.delete(chunk.key) })
     }
+  }
+
+  /** Dorpje: huisjes rond een stenen waterput, verbonden met steenslabpaadjes. */
+  private buildVillage(chunk: Chunk, village: { x: number; z: number }, out: BlockAabb[]): void {
+    const rng = chunkRng(this.world.seed, Math.round(village.x), Math.round(village.z), 'dorpbouw')
+
+    // Waterput in het midden.
+    const wellH = this.world.height(village.x, village.z)
+    const well = new Kit(village.x, wellH + 0.05, village.z, 0)
+    const ring = new THREE.CylinderGeometry(0.85, 0.95, 0.9, 8)
+    ring.translate(0, 0.45, 0)
+    well.pushGeo('stone', ring)
+    well.colliders.push({
+      minX: village.x - 0.95,
+      minY: wellH,
+      minZ: village.z - 0.95,
+      maxX: village.x + 0.95,
+      maxY: wellH + 1.0,
+      maxZ: village.z + 0.95
+    })
+    well.box('beam', -0.75, 1.05, 0, 0.12, 1.5, 0.12, false)
+    well.box('beam', 0.75, 1.05, 0, 0.12, 1.5, 0.12, false)
+    const wellRoof = new THREE.ConeGeometry(1, 1, 4, 1)
+    wellRoof.rotateY(Math.PI / 4)
+    wellRoof.scale(1.5, 0.7, 1.5)
+    wellRoof.translate(0, 1.85, 0)
+    well.pushGeo('roof', wellRoof)
+    well.finish(chunk, this.scene)
+    out.push(...well.colliders)
+
+    // Huisjes rondom, met de deur naar de put gericht.
+    const spots: [number, number, number][] = [
+      [0, -9, 0],
+      [1, 9, 2],
+      [-9, 0.8, 3],
+      [9, -0.8, 1]
+    ].map((s, i) => [village.x + s[0], village.z + (i < 2 ? s[1] : s[1]), s[2]]) as [number, number, number][]
+
+    const worldKit = new Kit(0, 0, 0, 0) // absolute coördinaten voor paadjes
+    for (const [hx, hz, quarter] of spots) {
+      if (rng() < 0.22 && spots.length > 3) continue // variatie: soms een huis minder
+      const hh = this.world.height(hx, hz)
+      if (hh < 2 || this.world.normal(hx, hz).y < 0.86) continue
+      const size = rng() < 0.5 ? [5, 4] : [4.4, 3.6]
+      const houseKit = new Kit(hx, hh + 0.45, hz, quarter)
+      buildCabin(houseKit, size[0], size[1])
+      houseKit.finish(chunk, this.scene)
+      out.push(...houseKit.colliders)
+
+      // Steenslabpaadje van de put naar het huis.
+      for (let t = 0.22; t < 0.85; t += 0.11) {
+        const sx = village.x + (hx - village.x) * t + (rng() - 0.5) * 0.5
+        const sz = village.z + (hz - village.z) * t + (rng() - 0.5) * 0.5
+        const sh = this.world.height(sx, sz)
+        worldKit.box('stone', sx, sh + 0.015, sz, 0.55 + rng() * 0.25, 0.07, 0.45 + rng() * 0.2, false)
+      }
+    }
+    worldKit.finish(chunk, this.scene)
   }
 
   private buildLakeHouseScene(chunk: Chunk, lh: LakeHouseSpot, out: BlockAabb[]): void {
@@ -448,9 +611,10 @@ export class Structures {
     const q = new THREE.Quaternion()
     const up = new THREE.Vector3(0, 1, 0)
     const rng = chunkRng(this.world.seed, chunk.cx, chunk.cz, 'graan')
-    for (let ix = -14; ix <= 14; ix++) {
-      for (let iz = -9; iz <= 9; iz++) {
-        const local = anchor.toWorld(ix * 0.55 + (rng() - 0.5) * 0.25, -22 + iz * 0.55 + (rng() - 0.5) * 0.25)
+    // Dicht beplant: rijen op ~35 cm, kleine halmen — leest als een echt veld.
+    for (let ix = -22; ix <= 22; ix++) {
+      for (let iz = -13; iz <= 13; iz++) {
+        const local = anchor.toWorld(ix * 0.35 + (rng() - 0.5) * 0.16, -22 + iz * 0.35 + (rng() - 0.5) * 0.16)
         const dx = local.x - fieldCenter.x
         const dz = local.z - fieldCenter.z
         const wx = fieldCenter.x + dx
@@ -458,7 +622,8 @@ export class Structures {
         const h = this.world.height(wx, wz)
         if (h < 1 || this.world.normal(wx, wz).y < 0.86) continue
         q.setFromAxisAngle(up, rng() * Math.PI * 2)
-        m.compose(new THREE.Vector3(wx, h - 0.03, wz), q, new THREE.Vector3(1, 0.85 + rng() * 0.35, 1))
+        const s = 0.55 + rng() * 0.22
+        m.compose(new THREE.Vector3(wx, h - 0.03, wz), q, new THREE.Vector3(s, s, s))
         placements.push(m.clone())
       }
     }

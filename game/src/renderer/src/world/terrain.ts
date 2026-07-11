@@ -42,9 +42,9 @@ export class World {
     const base = continent * 30 - 2
 
     // Berggebieden: alleen waar het bergmasker actief is. Ridged ruis geeft
-    // scherpe graten en echte toppen tot zo'n 85 m.
+    // scherpe graten en echte toppen tot zo'n 110 m.
     const mask = smoothstep(0.15, 0.65, fbm01(this.nHillMask, x, z, 2, 1 / 900))
-    const hills = ridged(this.nHills, x, z, 4, 1 / 220) * 62 * mask
+    const hills = ridged(this.nHills, x, z, 4, 1 / 260) * 86 * mask
 
     // Klein reliëf voor een levendig, glooiend oppervlak.
     const detail = fbm(this.nDetail, x, z, 4, 1 / 30) * 1.6

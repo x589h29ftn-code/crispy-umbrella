@@ -77,6 +77,47 @@ async function main(): Promise<void> {
   await page.screenshot({ path: resolve(__dirname, 'v13-steiger.png') })
   console.log('Screenshot: v13-steiger.png')
 
+
+  // 2b. Een dorpje opzoeken — met een verse game-state.
+  await page.goto('http://localhost:5199/')
+  await page.fill('#seed', chosenSeed)
+  await page.click('#play')
+  await page.waitForTimeout(2500)
+  await page.evaluate(() => {
+    const g = (window as unknown as Record<string, any>).__game
+    g.sky.timeOfDay = 0.38
+  })
+  const village = await page.evaluate(() => {
+    const g = (window as unknown as Record<string, any>).__game
+    const pcx = Math.floor(g.player.position.x / 64)
+    const pcz = Math.floor(g.player.position.z / 64)
+    for (let r = 0; r < 16; r++) {
+      for (let dz = -r; dz <= r; dz++) {
+        for (let dx = -r; dx <= r; dx++) {
+          if (Math.max(Math.abs(dx), Math.abs(dz)) !== r) continue
+          const v = g.structures.villageSpotFor(pcx + dx, pcz + dz)
+          if (v) return v
+        }
+      }
+    }
+    return null
+  })
+  console.log('Dorp:', JSON.stringify(village))
+  if (village) {
+    await page.evaluate((v) => {
+      const g = (window as unknown as Record<string, any>).__game
+      // Naast de waterput, kijkend naar het zuidelijke huisje.
+      g.player.spawn(v.x + 4.5, v.z + 5)
+      const tx = v.x
+      const tz = v.z - 11.5
+      g.player.yaw = Math.atan2(-(tx - (v.x + 4.5)), -(tz - (v.z + 5)))
+      g.player.pitch = -0.03
+    }, village)
+    await page.waitForTimeout(12000)
+    await page.screenshot({ path: resolve(__dirname, 'v13-dorp.png') })
+    console.log('Screenshot: v13-dorp.png')
+  }
+
   // 3. De bergen in: hoog uitzichtpunt met verre bergketens.
   await page.evaluate(() => {
     const g = (window as unknown as Record<string, any>).__game

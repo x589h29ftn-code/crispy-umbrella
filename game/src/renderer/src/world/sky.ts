@@ -37,9 +37,9 @@ const KEYS: SkyKey[] = [
   key(0.0, 0x0a1030, 0x141b38, 0x223355, 0.05, 0.16, 0x0d1226), // diepe nacht
   key(0.22, 0x1a2246, 0x4a3555, 0x774466, 0.1, 0.2, 0x241f33), // vroege ochtend
   key(0.28, 0x3f6ea8, 0xffb27a, 0xffc490, 0.55, 0.42, 0xd9a37a), // zonsopkomst
-  key(0.38, 0x5aa0dd, 0xbfe0ef, 0xfff0d0, 1.1, 0.62, 0xd8e7d6), // ochtend, groenige nevel
-  key(0.5, 0x4f9ae2, 0xcfeaf5, 0xfff6e4, 1.25, 0.7, 0xdcead9), // middag
-  key(0.62, 0x5aa0dd, 0xc4e2ee, 0xffedca, 1.1, 0.62, 0xd6e4d4), // middag laat
+  key(0.38, 0x5aa0dd, 0xc4e2e2, 0xffeec2, 1.2, 0.62, 0xdde8d2), // ochtend, warme nevel
+  key(0.5, 0x4f9ae2, 0xd4ecf0, 0xfff2cc, 1.4, 0.7, 0xe0ecd8), // middag, gouden zon
+  key(0.62, 0x5aa0dd, 0xc9e4e6, 0xffe9b8, 1.2, 0.62, 0xdbe6d0), // middag laat
   key(0.72, 0x3f6ea8, 0xff9a5e, 0xffb070, 0.55, 0.42, 0xe09a6c), // zonsondergang
   key(0.78, 0x1a2246, 0x54395c, 0x774466, 0.12, 0.22, 0x241f33), // schemer
   key(1.0, 0x0a1030, 0x141b38, 0x223355, 0.05, 0.16, 0x0d1226) // nacht
@@ -109,8 +109,9 @@ export class Sky {
           // Zonneschijf met warme gloed eromheen.
           float sunDot = dot(dir, uSunDir);
           float disc = smoothstep(0.9993, 0.9997, sunDot);
-          float glow = pow(clamp(sunDot, 0.0, 1.0), 90.0) * 0.5;
-          col += uSunColor * (disc * 2.2 + glow);
+          float glow = pow(clamp(sunDot, 0.0, 1.0), 90.0) * 0.8;
+          float halo = pow(clamp(sunDot, 0.0, 1.0), 8.0) * 0.12;
+          col += uSunColor * (disc * 2.2 + glow + halo);
 
           // Maan tegenover de zon.
           float moonDot = dot(dir, -uSunDir);

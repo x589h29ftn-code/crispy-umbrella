@@ -243,6 +243,13 @@ function rockGeometry(): THREE.BufferGeometry {
   return geo
 }
 
+/** Grote afgeronde rotspartij voor berghellingen (pastel, zoals de referentie). */
+function cragGeometry(): THREE.BufferGeometry {
+  const geo = jitterVertices(new THREE.IcosahedronGeometry(1, 1), 0.16, 53)
+  geo.scale(1.35, 1.05, 1.1)
+  return geo
+}
+
 /** Varen: zes afhangende, gebogen bladen — typisch bosbodemgroen. */
 function fernGeometry(): THREE.BufferGeometry {
   const parts: THREE.BufferGeometry[] = []
@@ -329,9 +336,10 @@ function logGeometry(): THREE.BufferGeometry {
 const FLOWER_COLORS = [0xffffff, 0xffd54a, 0xff6d75, 0xb987ff, 0xff9a3d, 0x7fb2ff]
 const LUPINE_COLORS = [0x9b6dd6, 0xc77fd9, 0x7d6de0, 0xe08bb8]
 const FERN_COLORS = [0x3e7c33, 0x4a8c3b, 0x35702d]
-const PINE_COLORS = [0x2c6e26, 0x35802c, 0x256022, 0x3f8f33, 0x4da03a]
-const LEAFY_COLORS = [0x4f9c38, 0x5fae3f, 0x74c24a, 0x88cc55]
-const GRASS_COLORS = [0x4e9a3a, 0x5fae3f, 0x74c24a, 0x458c33, 0x86c957]
+// Warmer saliegroen en limoen, zoals de referentie-artstijl.
+const PINE_COLORS = [0x3f7c33, 0x4a8a3c, 0x55984a, 0x62a854, 0x357029]
+const LEAFY_COLORS = [0x5ea844, 0x6cb44d, 0x7cc058, 0x8cc95f]
+const GRASS_COLORS = [0x7fb54a, 0x93c258, 0x6da842, 0xa3c95c, 0x9aad4e]
 const CAP_COLORS = [0xc0392b, 0xd35400, 0x9a6b3f, 0xe07b54]
 
 interface Placement {
@@ -412,6 +420,8 @@ export class Vegetation {
   private reedStemMat = swayMaterial({ color: 0x5e7c3a }, 0.06)
   private reedTopMat = swayMaterial({ color: 0x6d4a2e, flatShading: true }, 0.06)
   private rockMat = new THREE.MeshLambertMaterial({ color: 0x8b8496, flatShading: true })
+  private cragGeo = cragGeometry()
+  private cragMat = new THREE.MeshLambertMaterial({ color: 0xaba79c, flatShading: true })
   private pebbleMat = new THREE.MeshLambertMaterial({ color: 0x9d968c, flatShading: true })
   private logMat = new THREE.MeshLambertMaterial({ color: 0x6b4a2c, flatShading: true })
 
@@ -420,19 +430,21 @@ export class Vegetation {
     this.scene = scene
   }
 
-  private clearing: { x: number; z: number; radius: number } | null = null
+  private clearingProvider: ((cx: number, cz: number) => { x: number; z: number; radius: number }[]) | null = null
+  private activeClearings: { x: number; z: number; radius: number }[] = []
 
-  /** Open plek (bijv. het erf van het meerhuisje): daar groeit vrijwel niets. */
-  setClearing(clearing: { x: number; z: number; radius: number } | null): void {
-    this.clearing = clearing
+  /** Levert per chunk de open plekken (erven, dorpjes) waar niets groeit. */
+  setClearingProvider(provider: (cx: number, cz: number) => { x: number; z: number; radius: number }[]): void {
+    this.clearingProvider = provider
   }
 
   private inClearing(x: number, z: number): boolean {
-    const c = this.clearing
-    if (!c) return false
-    const dx = x - c.x
-    const dz = z - c.z
-    return dx * dx + dz * dz < c.radius * c.radius
+    for (const c of this.activeClearings) {
+      const dx = x - c.x
+      const dz = z - c.z
+      if (dx * dx + dz * dz < c.radius * c.radius) return true
+    }
+    return false
   }
 
   /** Elke frame aanroepen zodat het groen wuift. */
@@ -467,6 +479,7 @@ export class Vegetation {
   }
 
   populate(chunk: Chunk): void {
+    this.activeClearings = this.clearingProvider ? this.clearingProvider(chunk.cx, chunk.cz) : []
     const rng = chunkRng(this.world.seed, chunk.cx, chunk.cz, 'veg')
     const ox = chunk.cx * CHUNK_SIZE
     const oz = chunk.cz * CHUNK_SIZE
@@ -501,6 +514,8 @@ export class Vegetation {
       if (this.inClearing(x, z)) continue
       const forest = this.world.forestness(x, z)
       if (p > forest * 0.95 + 0.03) continue
+      // Losse veldbomen groeien in groepjes (boomgaardjes), niet als strooisel.
+      if (forest < 0.2 && this.world.meadow(x, z) > 0.35) continue
       const isPine = this.world.hilliness(x, z) > 0.45 ? typeRoll < 0.85 : typeRoll < 0.55
       const scale = 0.8 + rng() * 0.6
       const target = isPine ? pines : leafies
@@ -729,6 +744,18 @@ export class Vegetation {
       rocks.push({ x, y: h - 0.2, z, yaw: rng() * Math.PI * 2, scale: 0.4 + rng() * rng() * 3.4 })
     }
 
+    // Grote rotspartijen op de berghellingen.
+    const crags: Placement[] = []
+    for (let i = 0; i < 6; i++) {
+      const x = ox + rng() * CHUNK_SIZE
+      const z = oz + rng() * CHUNK_SIZE
+      const h = this.world.height(x, z)
+      if (h < 22 || this.world.hilliness(x, z) < 0.5) continue
+      if (rng() > 0.45) continue
+      if (this.inClearing(x, z)) continue
+      crags.push({ x, y: h - 1.2, z, yaw: rng() * Math.PI * 2, scale: 3 + rng() * 5 })
+    }
+
     if (treeColliders.length > 0) this.colliders.set(chunk.key, treeColliders)
     chunk.disposables.push({ dispose: () => this.colliders.delete(chunk.key) })
 
@@ -762,6 +789,7 @@ export class Vegetation {
     this.addInstances(chunk, this.reedStemGeo, this.reedStemMat, reeds, false, false, 'rietstengel')
     this.addInstances(chunk, this.reedTopGeo, this.reedTopMat, reeds, false, false, 'riettop')
     this.addInstances(chunk, this.rockGeo, this.rockMat, rocks, true, false, 'rots')
+    this.addInstances(chunk, this.cragGeo, this.cragMat, crags, true, false, 'rotspartij')
   }
 
   private addInstances(

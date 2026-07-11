@@ -68,7 +68,7 @@ export class Graphics {
     this.renderer = new THREE.WebGLRenderer({ antialias: true, powerPreference: 'high-performance' })
     this.renderer.outputColorSpace = THREE.SRGBColorSpace
     this.renderer.toneMapping = THREE.ACESFilmicToneMapping
-    this.renderer.toneMappingExposure = 1.1
+    this.renderer.toneMappingExposure = 1.15
     this.renderer.shadowMap.enabled = true
     this.renderer.shadowMap.type = THREE.PCFSoftShadowMap
     container.appendChild(this.renderer.domElement)
@@ -82,7 +82,7 @@ export class Graphics {
     })
     this.composer = new EffectComposer(this.renderer, msaaTarget)
     this.composer.addPass(new RenderPass(scene, this.camera))
-    this.bloomPass = new UnrealBloomPass(new THREE.Vector2(1, 1), 0.32, 0.65, 0.88)
+    this.bloomPass = new UnrealBloomPass(new THREE.Vector2(1, 1), 0.38, 0.7, 0.86)
     this.composer.addPass(this.bloomPass)
     this.gradePass = new ShaderPass(GradeShader)
     this.composer.addPass(this.gradePass)

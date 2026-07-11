@@ -26,7 +26,7 @@ import { Input } from './input'
 const FIXED_DT = 1 / 120
 // Sfeervolle exponentiële mist (referentiestijl): dichtbij al zachtjes
 // aanwezig tussen de bomen, veraf lost het landschap erin op.
-const FOG_DENSITY = 0.0016
+const FOG_DENSITY = 0.0021
 const FOG_DENSITY_UNDERWATER = 0.09
 
 /** Verbindt alle systemen en draait de game-lus. */
@@ -95,7 +95,7 @@ export class Game {
     // Vegetatie en fauna leven mee met de chunks.
     const vegetation = new Vegetation(this.world, this.scene)
     this.vegetation = vegetation
-    vegetation.setClearing(structures.clearing())
+    vegetation.setClearingProvider((cx, cz) => structures.clearingsNear(cx, cz))
     this.chunks.onLoad((c) => vegetation.populate(c))
     this.chunks.onLoad((c) => structures.populate(c))
     this.addUpdater((dt) => vegetation.tick(dt))
