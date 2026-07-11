@@ -125,11 +125,11 @@ async function main(): Promise<void> {
     // het verval — vrij van stammen en oevers.
     g.player.spawn(best.x, best.z)
     g.photoMode = true
-    const camX = best.x + best.dirX * 16
-    const camZ = best.z + best.dirZ * 16
-    g.photoPos.set(camX, best.h + 7, camZ)
+    const camX = best.x + best.dirX * 20
+    const camZ = best.z + best.dirZ * 20
+    g.photoPos.set(camX, best.h + 11, camZ)
     g.player.yaw = Math.atan2(-(best.x - camX), -(best.z - camZ))
-    g.player.pitch = -0.3
+    g.player.pitch = -0.34
     return best
   })
   console.log('Rivierplek:', JSON.stringify(rivierInfo))
@@ -204,10 +204,14 @@ async function main(): Promise<void> {
         bestA = ang
       }
     }
+    // Camera boven de kruinen én naar achteren getrokken, zodat hij niet
+    // per ongeluk ín een herfstkroon hangt.
     g.photoMode = true
-    g.photoPos.set(px, h + 13, pz)
+    const backX = Math.sin(bestA) * 14
+    const backZ = Math.cos(bestA) * 14
+    g.photoPos.set(px + backX, h + 18, pz + backZ)
     g.player.yaw = bestA
-    g.player.pitch = -0.24
+    g.player.pitch = -0.3
     return { x: px, z: pz, score: bestScore }
   })
   console.log('Bosplek:', JSON.stringify(bosInfo))
