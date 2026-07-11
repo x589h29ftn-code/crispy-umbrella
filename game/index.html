@@ -1,0 +1,220 @@
+<!DOCTYPE html>
+<html lang="nl">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Blokkenwereld — rustgevende voxelwereld</title>
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'><rect width='16' height='9' fill='%2379b851'/><rect y='9' width='16' height='7' fill='%23866043'/></svg>">
+<style>
+  :root{
+    --ui-bg: rgba(18,22,30,.82);
+    --ui-bg2: rgba(28,34,46,.9);
+    --ui-fg: #e8ecf2;
+    --ui-dim: #9aa7b8;
+    --ui-accent: #8fd3a7;
+  }
+  *{box-sizing:border-box; margin:0; padding:0;}
+  html,body{width:100%;height:100%;overflow:hidden;background:#0b0e14;
+    font-family:"Segoe UI", system-ui, -apple-system, sans-serif; color:var(--ui-fg);
+    -webkit-user-select:none; user-select:none;}
+  #app{position:fixed;inset:0;}
+  canvas{display:block;}
+
+  /* ---------- HUD ---------- */
+  #hud{position:fixed;inset:0;pointer-events:none;display:none;}
+  #crosshair{position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);
+    width:18px;height:18px;opacity:.85;}
+  #crosshair::before,#crosshair::after{content:"";position:absolute;background:#fff;
+    mix-blend-mode:difference;}
+  #crosshair::before{left:8px;top:0;width:2px;height:18px;}
+  #crosshair::after{left:0;top:8px;width:18px;height:2px;}
+  #hotbar{position:absolute;left:50%;bottom:14px;transform:translateX(-50%);
+    display:flex;gap:6px;padding:6px;background:rgba(10,12,18,.55);
+    border:1px solid rgba(255,255,255,.12);border-radius:10px;backdrop-filter:blur(4px);}
+  .slot{width:52px;height:52px;border-radius:8px;border:2px solid rgba(255,255,255,.14);
+    background:rgba(255,255,255,.05);position:relative;display:flex;align-items:center;justify-content:center;}
+  .slot.sel{border-color:var(--ui-accent);box-shadow:0 0 12px rgba(143,211,167,.45);}
+  .slot canvas{width:38px;height:38px;image-rendering:pixelated;}
+  .slot .key{position:absolute;left:4px;top:2px;font-size:10px;color:var(--ui-dim);}
+  #clockwrap{position:absolute;right:16px;top:14px;display:flex;align-items:center;gap:10px;
+    background:rgba(10,12,18,.5);border:1px solid rgba(255,255,255,.12);
+    padding:8px 12px;border-radius:10px;backdrop-filter:blur(4px);font-size:13px;}
+  #clockicon{font-size:18px;}
+  #weathericon{font-size:16px;}
+  #hint{position:absolute;left:50%;bottom:84px;transform:translateX(-50%);
+    font-size:13px;color:#fff;text-shadow:0 1px 3px rgba(0,0,0,.8);opacity:0;
+    transition:opacity .4s;}
+  #helphint{position:absolute;left:16px;top:14px;font-size:12px;color:var(--ui-dim);
+    background:rgba(10,12,18,.5);border:1px solid rgba(255,255,255,.1);
+    padding:6px 10px;border-radius:8px;}
+  #toast{position:absolute;left:50%;top:18%;transform:translateX(-50%);
+    background:var(--ui-bg2);border:1px solid rgba(255,255,255,.15);
+    padding:10px 18px;border-radius:10px;font-size:14px;opacity:0;transition:opacity .35s;}
+
+  /* ---------- Menus ---------- */
+  .overlay{position:fixed;inset:0;display:none;align-items:center;justify-content:center;
+    background:rgba(6,8,12,.55);backdrop-filter:blur(6px);z-index:20;}
+  .overlay.visible{display:flex;}
+  .panel{background:var(--ui-bg);border:1px solid rgba(255,255,255,.14);border-radius:16px;
+    padding:28px 32px;min-width:380px;max-width:520px;max-height:86vh;overflow-y:auto;
+    box-shadow:0 20px 60px rgba(0,0,0,.55);}
+  .panel h1{font-size:26px;font-weight:600;letter-spacing:.5px;margin-bottom:4px;}
+  .panel h2{font-size:19px;margin-bottom:14px;}
+  .panel .sub{color:var(--ui-dim);font-size:13px;margin-bottom:20px;}
+  .btn{display:block;width:100%;padding:12px 16px;margin:8px 0;border-radius:10px;
+    border:1px solid rgba(255,255,255,.16);background:rgba(255,255,255,.06);
+    color:var(--ui-fg);font-size:15px;cursor:pointer;text-align:left;transition:all .15s;}
+  .btn:hover{background:rgba(143,211,167,.15);border-color:var(--ui-accent);}
+  .btn.primary{background:rgba(143,211,167,.2);border-color:var(--ui-accent);}
+  .btn.small{padding:8px 12px;font-size:13px;width:auto;display:inline-block;margin:4px 6px 4px 0;}
+  .btn.danger:hover{background:rgba(220,90,90,.2);border-color:#d96;}
+  .row{display:flex;align-items:center;justify-content:space-between;gap:14px;margin:14px 0;}
+  .row label{font-size:14px;}
+  .row .val{color:var(--ui-accent);font-size:13px;min-width:52px;text-align:right;}
+  input[type=range]{flex:1;accent-color:var(--ui-accent);}
+  input[type=text],input[type=number]{background:rgba(0,0,0,.35);color:var(--ui-fg);
+    border:1px solid rgba(255,255,255,.18);border-radius:8px;padding:9px 12px;font-size:14px;width:100%;}
+  input[type=checkbox]{accent-color:var(--ui-accent);width:18px;height:18px;}
+  .slotrow{display:flex;align-items:center;gap:8px;margin:8px 0;}
+  .slotrow .info{flex:1;font-size:13px;}
+  .slotrow .info .meta{color:var(--ui-dim);font-size:11px;}
+  .divider{height:1px;background:rgba(255,255,255,.1);margin:18px 0;}
+  kbd{background:rgba(255,255,255,.1);border:1px solid rgba(255,255,255,.2);
+    border-radius:5px;padding:1px 7px;font-size:12px;font-family:inherit;}
+  .helpgrid{display:grid;grid-template-columns:auto 1fr;gap:7px 16px;font-size:13.5px;color:#cfd8e4;}
+  #loading{position:fixed;inset:0;display:none;align-items:center;justify-content:center;
+    flex-direction:column;gap:18px;background:#0b0e14;z-index:40;}
+  #loading .bar{width:280px;height:8px;border-radius:4px;background:rgba(255,255,255,.1);overflow:hidden;}
+  #loading .fill{height:100%;width:0%;background:var(--ui-accent);transition:width .2s;}
+  #loading .txt{color:var(--ui-dim);font-size:13px;}
+  #title-art{font-size:44px;letter-spacing:2px;font-weight:700;
+    background:linear-gradient(180deg,#bfe3c9,#7fb98f);
+    -webkit-background-clip:text;background-clip:text;-webkit-text-fill-color:transparent;}
+</style>
+</head>
+<body>
+<div id="app"></div>
+
+<!-- HUD -->
+<div id="hud">
+  <div id="crosshair"></div>
+  <div id="hotbar"></div>
+  <div id="clockwrap"><span id="clockicon">☀️</span><span id="clocktxt">Dag 1 — 08:00</span><span id="weathericon"></span></div>
+  <div id="helphint"><kbd>H</kbd> hulp &nbsp; <kbd>Esc</kbd> menu</div>
+  <div id="hint"></div>
+  <div id="toast"></div>
+</div>
+
+<!-- Hoofdmenu -->
+<div id="mainmenu" class="overlay visible">
+  <div class="panel">
+    <div id="title-art">Blokkenwereld</div>
+    <div class="sub">Een rustgevende, oneindige voxelwereld — bouw, dwaal en kom tot rust.</div>
+    <button class="btn primary" id="btn-new">🌱 Nieuwe wereld</button>
+    <button class="btn" id="btn-continue" style="display:none">▶️ Verdergaan (autosave)</button>
+    <button class="btn" id="btn-load-menu">📂 Wereld laden</button>
+    <button class="btn" id="btn-settings-main">⚙️ Instellingen</button>
+    <div class="divider"></div>
+    <div class="row"><label>Seed (optioneel)</label></div>
+    <input type="text" id="seed-input" placeholder="Laat leeg voor willekeurige seed">
+  </div>
+</div>
+
+<!-- Pauzemenu -->
+<div id="pausemenu" class="overlay">
+  <div class="panel">
+    <h2>Gepauzeerd</h2>
+    <button class="btn primary" id="btn-resume">▶️ Verdergaan</button>
+    <button class="btn" id="btn-save-menu">💾 Spel opslaan</button>
+    <button class="btn" id="btn-load-menu2">📂 Spel laden</button>
+    <button class="btn" id="btn-settings-pause">⚙️ Instellingen</button>
+    <button class="btn danger" id="btn-quit">🚪 Naar hoofdmenu</button>
+  </div>
+</div>
+
+<!-- Opslaan -->
+<div id="savemenu" class="overlay">
+  <div class="panel">
+    <h2>Spel opslaan</h2>
+    <div id="save-slots"></div>
+    <div class="divider"></div>
+    <button class="btn" id="btn-save-back">← Terug</button>
+  </div>
+</div>
+
+<!-- Laden -->
+<div id="loadmenu" class="overlay">
+  <div class="panel">
+    <h2>Spel laden</h2>
+    <div id="load-slots"></div>
+    <div class="divider"></div>
+    <button class="btn" id="btn-load-back">← Terug</button>
+  </div>
+</div>
+
+<!-- Instellingen -->
+<div id="settingsmenu" class="overlay">
+  <div class="panel">
+    <h2>Instellingen</h2>
+    <div class="row"><label>Daglengte (minuten)</label>
+      <input type="range" id="set-daymin" min="1" max="60" step="1"><span class="val" id="val-daymin"></span></div>
+    <div class="row"><label>Kijkafstand (chunks)</label>
+      <input type="range" id="set-dist" min="4" max="14" step="1"><span class="val" id="val-dist"></span></div>
+    <div class="row"><label>Mist-dichtheid</label>
+      <input type="range" id="set-fog" min="0.5" max="1.6" step="0.05"><span class="val" id="val-fog"></span></div>
+    <div class="row"><label>Beeldhoek (FOV)</label>
+      <input type="range" id="set-fov" min="60" max="100" step="1"><span class="val" id="val-fov"></span></div>
+    <div class="row"><label>Muziekvolume</label>
+      <input type="range" id="set-music" min="0" max="1" step="0.05"><span class="val" id="val-music"></span></div>
+    <div class="row"><label>Geluidsvolume</label>
+      <input type="range" id="set-sfx" min="0" max="1" step="0.05"><span class="val" id="val-sfx"></span></div>
+    <div class="row"><label>Schaduwen</label><input type="checkbox" id="set-shadows"></div>
+    <div class="row"><label>Wolken</label><input type="checkbox" id="set-clouds"></div>
+    <div class="divider"></div>
+    <button class="btn" id="btn-settings-back">← Terug</button>
+  </div>
+</div>
+
+<!-- Help -->
+<div id="helpmenu" class="overlay">
+  <div class="panel">
+    <h2>Besturing</h2>
+    <div class="helpgrid">
+      <span><kbd>W A S D</kbd></span><span>Lopen</span>
+      <span><kbd>Muis</kbd></span><span>Rondkijken</span>
+      <span><kbd>Spatie</kbd></span><span>Springen / zwemmen</span>
+      <span><kbd>Shift</kbd></span><span>Rennen</span>
+      <span><kbd>Linkermuisknop</kbd></span><span>Blok weghalen</span>
+      <span><kbd>Rechtermuisknop</kbd></span><span>Blok plaatsen</span>
+      <span><kbd>1–9</kbd> / <kbd>scroll</kbd></span><span>Blok kiezen</span>
+      <span><kbd>F</kbd></span><span>Fakkel vasthouden</span>
+      <span><kbd>H</kbd></span><span>Deze hulp</span>
+      <span><kbd>Esc</kbd></span><span>Pauzemenu</span>
+    </div>
+    <div class="divider"></div>
+    <button class="btn" id="btn-help-back">← Terug</button>
+  </div>
+</div>
+
+<!-- Laadscherm -->
+<div id="loading">
+  <div id="title-art" style="font-size:30px">Blokkenwereld</div>
+  <div class="bar"><div class="fill" id="load-fill"></div></div>
+  <div class="txt" id="load-txt">Wereld wordt opgebouwd…</div>
+</div>
+
+<script src="lib/three.min.js"></script>
+<script src="src/config.js"></script>
+<script src="src/noise.js"></script>
+<script src="src/textures.js"></script>
+<script src="src/world.js"></script>
+<script src="src/chunks.js"></script>
+<script src="src/sky.js"></script>
+<script src="src/weather.js"></script>
+<script src="src/entities.js"></script>
+<script src="src/audio.js"></script>
+<script src="src/player.js"></script>
+<script src="src/ui.js"></script>
+<script src="src/main.js"></script>
+</body>
+</html>
