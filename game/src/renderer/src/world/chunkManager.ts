@@ -1,5 +1,5 @@
 import * as THREE from 'three'
-import { buildChunkGeometry, createTerrainMaterial } from './chunk'
+import { buildChunkGeometry, buildRiverMesh, createTerrainMaterial } from './chunk'
 import { CHUNK_SIZE, type World } from './terrain'
 
 export const VIEW_DISTANCE = 14 // Chebyshev-radius in chunks (~900 m zicht)
@@ -30,6 +30,8 @@ export class ChunkManager {
   private queued = new Set<string>()
   private onLoadHooks: ChunkHook[] = []
   private onUnloadHooks: ChunkHook[] = []
+  /** Zichtafstand in chunks (instelbaar in het pauzemenu). */
+  viewDistance = VIEW_DISTANCE
 
   constructor(world: World, scene: THREE.Scene) {
     this.world = world
@@ -64,8 +66,8 @@ export class ChunkManager {
     const pcz = Math.floor(playerZ / CHUNK_SIZE)
 
     // Ontbrekende chunks in de queue zetten.
-    for (let dz = -VIEW_DISTANCE; dz <= VIEW_DISTANCE; dz++) {
-      for (let dx = -VIEW_DISTANCE; dx <= VIEW_DISTANCE; dx++) {
+    for (let dz = -this.viewDistance; dz <= this.viewDistance; dz++) {
+      for (let dx = -this.viewDistance; dx <= this.viewDistance; dx++) {
         const cx = pcx + dx
         const cz = pcz + dz
         const key = cx + ',' + cz
@@ -91,13 +93,13 @@ export class ChunkManager {
       const key = cx + ',' + cz
       this.queued.delete(key)
       // Buiten bereik geraakt terwijl hij in de wachtrij stond? Overslaan.
-      if (Math.max(Math.abs(cx - pcx), Math.abs(cz - pcz)) > VIEW_DISTANCE) continue
+      if (Math.max(Math.abs(cx - pcx), Math.abs(cz - pcz)) > this.viewDistance) continue
       if (this.chunks.has(key)) continue
       this.loadChunk(cx, cz, key)
     }
 
     // Chunks buiten radius+1 opruimen.
-    const unloadRadius = VIEW_DISTANCE + 1
+    const unloadRadius = this.viewDistance + 1
     for (const chunk of Array.from(this.chunks.values())) {
       if (Math.max(Math.abs(chunk.cx - pcx), Math.abs(chunk.cz - pcz)) > unloadRadius) {
         this.unloadChunk(chunk)
@@ -113,6 +115,15 @@ export class ChunkManager {
     this.scene.add(mesh)
 
     const chunk: Chunk = { cx, cz, key, mesh, attachments: [], disposables: [] }
+
+    // Beken en watervalletjes die door deze chunk stromen.
+    const river = buildRiverMesh(this.world, cx, cz)
+    if (river) {
+      this.scene.add(river)
+      chunk.attachments.push(river)
+      chunk.disposables.push({ dispose: () => river.geometry.dispose() })
+    }
+
     this.chunks.set(key, chunk)
     for (const hook of this.onLoadHooks) hook(chunk)
   }

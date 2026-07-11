@@ -21,6 +21,8 @@ export class World {
   private nMeadow: NoiseFunction2D
   private nPath: NoiseFunction2D
   private nLake: NoiseFunction2D
+  private nRiver: NoiseFunction2D
+  private nRegion: NoiseFunction2D
 
   constructor(seedText: string) {
     this.seed = hashString(seedText)
@@ -33,6 +35,8 @@ export class World {
     this.nMeadow = seededNoise2D(this.seed, 7)
     this.nPath = seededNoise2D(this.seed, 8)
     this.nLake = seededNoise2D(this.seed, 9)
+    this.nRiver = seededNoise2D(this.seed, 10)
+    this.nRegion = seededNoise2D(this.seed, 11)
   }
 
   /** Terreinhoogte in meters (zeeniveau = 0). */
@@ -62,7 +66,37 @@ export class World {
       const carve = lake * lowland
       h = h * (1 - carve) + -3.8 * carve
     }
+
+    // Beken: smalle kanalen die het landschap doorsnijden; het bruggetje
+    // tussen bergflank en zee. Alleen boven het strand uitslijten.
+    const riverBand = this.riverBand(x, z)
+    if (riverBand > 0) {
+      h -= 1.8 * riverBand * smoothstep(2, 4.5, h)
+    }
     return h
+  }
+
+  /** Ruwe rivierband in [0,1] zonder hoogte-afhankelijkheid (intern). */
+  private riverBand(x: number, z: number): number {
+    const n = fbm(this.nRiver, x, z, 2, 1 / 340)
+    return 1 - smoothstep(0.008, 0.035, Math.abs(n))
+  }
+
+  /** Riviermasker in [0,1]: 1 midden in de bedding, 0 ernaast. */
+  river(x: number, z: number, knownHeight?: number): number {
+    const band = this.riverBand(x, z)
+    if (band <= 0) return 0
+    const h = knownHeight ?? this.height(x, z)
+    // Alleen waar het kanaal echt is uitgesleten (boven strand, onder rotsgrens).
+    return band * smoothstep(1.6, 3, h + 1.8 * band) * smoothstep(58, 46, h)
+  }
+
+  /**
+   * Regiokarakter in [0,1]: heel traag ruisveld dat bepaalt of een streek
+   * standaard, berkenbos, herfstbos, bloemenvallei of moeras is.
+   */
+  region(x: number, z: number): number {
+    return fbm01(this.nRegion, x, z, 2, 1 / 1100)
   }
 
   /** Meermasker in [0, 1]: 1 midden in een meertje (voor plaatsing/structuren). */

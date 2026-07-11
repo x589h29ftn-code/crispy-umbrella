@@ -1,17 +1,37 @@
 import * as THREE from 'three'
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js'
 import { chunkRng } from '../core/rng'
+import { regionWeights } from './biomes'
+import { seasonAutumn, seasonWinter } from './season'
 import type { Chunk } from './chunkManager'
 import { CHUNK_SIZE, type World } from './terrain'
+
+/** Vult een geometrie met één egale vertex-kleur (voor meerkleurige merges). */
+function withColor(geo: THREE.BufferGeometry, r: number, g: number, b: number): THREE.BufferGeometry {
+  const count = geo.getAttribute('position').count
+  const colors = new Float32Array(count * 3)
+  for (let i = 0; i < count; i++) {
+    colors[i * 3] = r
+    colors[i * 3 + 1] = g
+    colors[i * 3 + 2] = b
+  }
+  geo.setAttribute('color', new THREE.BufferAttribute(colors, 3))
+  return geo
+}
 
 // Gedeelde tijd-uniform voor het wuiven van gras, bloemen en boomkruinen.
 const swayTime = { value: 0 }
 
-/** Lambert-materiaal met een vertex-sway in de shader (top wuift, voet niet). */
+/**
+ * Lambert-materiaal met een vertex-sway in de shader (top wuift, voet niet)
+ * en seizoenskleuring (herfstgoud, wintervergrijzing) via gedeelde uniforms.
+ */
 export function swayMaterial(params: THREE.MeshLambertMaterialParameters, amount: number): THREE.MeshLambertMaterial {
   const mat = new THREE.MeshLambertMaterial(params)
   mat.onBeforeCompile = (shader) => {
     shader.uniforms.uSwayTime = swayTime
+    shader.uniforms.uAutumn = seasonAutumn
+    shader.uniforms.uWinter = seasonWinter
     shader.vertexShader =
       'uniform float uSwayTime;\n' +
       shader.vertexShader.replace(
@@ -23,6 +43,17 @@ export function swayMaterial(params: THREE.MeshLambertMaterialParameters, amount
           float swayAmp = max(transformed.y, 0.0) * ${amount.toFixed(4)};
           transformed.x += sin(swayPhase) * swayAmp;
           transformed.z += cos(swayPhase * 0.83) * swayAmp * 0.6;
+        }`
+      )
+    shader.fragmentShader =
+      'uniform float uAutumn;\nuniform float uWinter;\n' +
+      shader.fragmentShader.replace(
+        '#include <color_fragment>',
+        `#include <color_fragment>
+        {
+          diffuseColor.rgb = mix(diffuseColor.rgb, diffuseColor.rgb * vec3(1.3, 0.85, 0.45), uAutumn * 0.55);
+          float seasonGrey = dot(diffuseColor.rgb, vec3(0.333));
+          diffuseColor.rgb = mix(diffuseColor.rgb, vec3(seasonGrey) * vec3(0.9, 0.95, 1.02) + 0.1, uWinter * 0.55);
         }`
       )
   }
@@ -170,6 +201,61 @@ function leafyCanopyGeometry(): THREE.BufferGeometry {
     const blob = jitterVertices(new THREE.IcosahedronGeometry(r, 1), r * 0.2, 23)
     blob.translate(x, y, z)
     parts.push(blob)
+  }
+  return mergeGeometries(parts)
+}
+
+/** Berkenstam: wit met donkere bandjes, hoog en slank (~7 m). */
+function birchTrunkGeometry(): THREE.BufferGeometry {
+  const parts: THREE.BufferGeometry[] = []
+  const trunk = new THREE.CylinderGeometry(0.13, 0.2, 7, 8)
+  trunk.translate(0, 3.5, 0)
+  parts.push(withColor(trunk.toNonIndexed(), 0.93, 0.93, 0.89))
+  for (const y of [1.1, 2.3, 3.4, 4.6]) {
+    const band = new THREE.BoxGeometry(0.36, 0.14, 0.1)
+    band.translate(0.02, y, 0.14)
+    band.rotateY(y * 2.1)
+    parts.push(withColor(band.toNonIndexed(), 0.16, 0.15, 0.14))
+  }
+  return mergeGeometries(parts)
+}
+
+/** Berkenkroon: luchtige lichtgroene bollen, top ~9 m. */
+function birchCanopyGeometry(): THREE.BufferGeometry {
+  const parts: THREE.BufferGeometry[] = []
+  const blobs: [number, number, number, number][] = [
+    [0, 6.8, 0, 1.7],
+    [0.9, 5.9, 0.4, 1.2],
+    [-0.9, 6.1, -0.3, 1.15],
+    [0.2, 8.0, 0.1, 1.2]
+  ]
+  for (const [x, y, z, r] of blobs) {
+    const blob = jitterVertices(new THREE.IcosahedronGeometry(r, 1), r * 0.2, 61)
+    blob.translate(x, y, z)
+    parts.push(blob)
+  }
+  return mergeGeometries(parts)
+}
+
+/** Wilgenkroon: brede lage bollen met afhangende slierten (moeras). */
+function willowCanopyGeometry(): THREE.BufferGeometry {
+  const parts: THREE.BufferGeometry[] = []
+  const blobs: [number, number, number, number][] = [
+    [0, 5.4, 0, 2.9],
+    [1.9, 4.8, 0.8, 2.0],
+    [-1.8, 4.9, -0.7, 1.9]
+  ]
+  for (const [x, y, z, r] of blobs) {
+    const blob = jitterVertices(new THREE.IcosahedronGeometry(r, 1), r * 0.2, 67)
+    blob.scale(1, 0.75, 1)
+    blob.translate(x, y, z)
+    parts.push(blob)
+  }
+  for (let i = 0; i < 12; i++) {
+    const a = (i / 12) * Math.PI * 2
+    const strand = new THREE.BoxGeometry(0.13, 2.6 + (i % 3) * 0.5, 0.13)
+    strand.translate(Math.cos(a) * 2.6, 3.6 - (i % 3) * 0.25, Math.sin(a) * 2.6)
+    parts.push(strand.toNonIndexed())
   }
   return mergeGeometries(parts)
 }
@@ -340,6 +426,11 @@ const FERN_COLORS = [0x3e7c33, 0x4a8c3b, 0x35702d]
 const PINE_COLORS = [0x3f7c33, 0x4a8a3c, 0x55984a, 0x62a854, 0x357029]
 const LEAFY_COLORS = [0x5ea844, 0x6cb44d, 0x7cc058, 0x8cc95f]
 const GRASS_COLORS = [0x7fb54a, 0x93c258, 0x6da842, 0xa3c95c, 0x9aad4e]
+const BIRCH_COLORS = [0x8fd06a, 0x9ed877, 0x7cc45e, 0xa8de85]
+const AUTUMN_COLORS = [0xd97b2e, 0xc9542f, 0xe0a832, 0xb8452a, 0xcc8a3a]
+const WILLOW_COLORS = [0x6da653, 0x7bb35e, 0x5f9a49]
+const AUTUMN_GRASS = [0xb0a04c, 0xc2a94e, 0x9a8f42, 0x8fa04a]
+const SWAMP_GRASS = [0x4e7c3a, 0x5a8842, 0x466f34]
 const CAP_COLORS = [0xc0392b, 0xd35400, 0x9a6b3f, 0xe07b54]
 
 interface Placement {
@@ -380,6 +471,9 @@ export class Vegetation {
   private pineCanopyGeo = pineCanopyGeometry()
   private leafyTrunkGeo = leafyTrunkGeometry()
   private leafyCanopyGeo = leafyCanopyGeometry()
+  private birchTrunkGeo = birchTrunkGeometry()
+  private birchCanopyGeo = birchCanopyGeometry()
+  private willowCanopyGeo = willowCanopyGeometry()
   private bushGeo = bushGeometry()
   private grassGeo = grassGeometry()
   private stemGeo = stemGeometry()
@@ -402,6 +496,9 @@ export class Vegetation {
   private leafyTrunkMat = new THREE.MeshLambertMaterial({ color: 0x7a5b38, flatShading: true })
   private pineCanopyMat = swayMaterial({ flatShading: true }, 0.004)
   private leafyCanopyMat = swayMaterial({ flatShading: true }, 0.006)
+  private birchTrunkMat = new THREE.MeshLambertMaterial({ vertexColors: true, flatShading: true })
+  private birchCanopyMat = swayMaterial({ flatShading: true }, 0.008)
+  private willowCanopyMat = swayMaterial({ flatShading: true }, 0.014)
   private bushMat = swayMaterial({ flatShading: true }, 0.02)
   // Vertex-kleuren geven elke spriet een verloop van donkere voet naar
   // lichte top — samen met de instantiekleur per pol.
@@ -486,6 +583,9 @@ export class Vegetation {
 
     const pines: Placement[] = []
     const leafies: Placement[] = []
+    const birches: Placement[] = []
+    const autumns: Placement[] = []
+    const willows: Placement[] = []
     const bushes: Placement[] = []
     const farGrass: Placement[] = []
     const nearGrass: Placement[] = []
@@ -516,18 +616,38 @@ export class Vegetation {
       if (p > forest * 0.95 + 0.03) continue
       // Losse veldbomen groeien in groepjes (boomgaardjes), niet als strooisel.
       if (forest < 0.2 && this.world.meadow(x, z) > 0.35) continue
-      const isPine = this.world.hilliness(x, z) > 0.45 ? typeRoll < 0.85 : typeRoll < 0.55
       const scale = 0.8 + rng() * 0.6
-      const target = isPine ? pines : leafies
+      // Streekkarakter bepaalt de boomsoort.
+      const rw = regionWeights(this.world, x, z)
+      let target = leafies
+      let colors: readonly number[] = LEAFY_COLORS
+      let radius = 0.44
+      if (rw.swamp > 0.45 && h < 6 && typeRoll < 0.7) {
+        target = willows
+        colors = WILLOW_COLORS
+        radius = 0.46
+      } else if (rw.birch > 0.5 && typeRoll < 0.75) {
+        target = birches
+        colors = BIRCH_COLORS
+        radius = 0.26
+      } else if (rw.autumn > 0.5 && typeRoll < 0.8) {
+        target = autumns
+        colors = AUTUMN_COLORS
+        radius = 0.44
+      } else if (this.world.hilliness(x, z) > 0.45 ? typeRoll < 0.85 : typeRoll < 0.55) {
+        target = pines
+        colors = PINE_COLORS
+        radius = 0.34
+      }
       target.push({
         x,
         y: h - 0.2,
         z,
         yaw: rng() * Math.PI * 2,
         scale,
-        color: (isPine ? PINE_COLORS : LEAFY_COLORS)[Math.floor(rng() * 4)]
+        color: colors[Math.floor(rng() * colors.length)]
       })
-      treeColliders.push({ x, z, r: (isPine ? 0.34 : 0.44) * scale })
+      treeColliders.push({ x, z, r: radius * scale })
     }
 
     // Struiken: bosranden en kruidenrijke veldjes.
@@ -563,13 +683,15 @@ export class Vegetation {
       if (h < 1.6 || h > 34) continue
       if (this.world.normal(x, z).y < 0.76) continue
       if (this.world.path(x, z, h) > 0.4) continue
+      const rwGrass = regionWeights(this.world, x, z)
+      const palette = rwGrass.autumn > 0.5 ? AUTUMN_GRASS : rwGrass.swamp > 0.5 ? SWAMP_GRASS : GRASS_COLORS
       const placement = {
         x,
         y: h - 0.06,
         z,
         yaw: colorRoll * Math.PI * 2,
         scale: 0.8 + sizeRoll * 0.7,
-        color: GRASS_COLORS[Math.floor(colorRoll * GRASS_COLORS.length)]
+        color: palette[Math.floor(colorRoll * palette.length)]
       }
       // 1 op 6 in de altijd-zichtbare verte-laag, de rest in de detailring.
       if (i % 6 === 0) farGrass.push(placement)
@@ -581,7 +703,8 @@ export class Vegetation {
       const cxw = ox + rng() * CHUNK_SIZE
       const czw = oz + rng() * CHUNK_SIZE
       const clusterColor = FLOWER_COLORS[Math.floor(rng() * FLOWER_COLORS.length)]
-      if (this.world.meadow(cxw, czw) < 0.5) continue
+      const rwFlower = regionWeights(this.world, cxw, czw)
+      if (this.world.meadow(cxw, czw) < (rwFlower.flower > 0.4 ? 0.25 : 0.5)) continue
       if (this.world.forestness(cxw, czw) > 0.4) continue
       const n = 10 + Math.floor(rng() * 14)
       for (let i = 0; i < n; i++) {
@@ -601,7 +724,8 @@ export class Vegetation {
       const h = this.world.height(x, z)
       if (h < 1.8 || h > 26) continue
       if (this.world.normal(x, z).y < 0.8) continue
-      if (this.world.path(x, z, h) > 0.4 || rng() > 0.45) continue
+      const sprinkleBoost = 1 + regionWeights(this.world, x, z).flower * 3
+      if (this.world.path(x, z, h) > 0.4 || rng() > 0.45 * sprinkleBoost) continue
       flowers.push({
         x,
         y: h,
@@ -621,7 +745,7 @@ export class Vegetation {
       if (this.world.normal(x, z).y < 0.78) continue
       if (this.inClearing(x, z)) continue
       const forest = this.world.forestness(x, z)
-      if (rng() > forest * 0.7 + 0.03) continue
+      if (rng() > forest * 0.7 + 0.03 + regionWeights(this.world, x, z).swamp * 0.35) continue
       ferns.push({
         x,
         y: h - 0.03,
@@ -763,6 +887,12 @@ export class Vegetation {
     this.addInstances(chunk, this.pineCanopyGeo, this.pineCanopyMat, pines, true, true, 'pijnkroon')
     this.addInstances(chunk, this.leafyTrunkGeo, this.leafyTrunkMat, leafies, true, false, 'loofstam')
     this.addInstances(chunk, this.leafyCanopyGeo, this.leafyCanopyMat, leafies, true, true, 'loofkroon')
+    this.addInstances(chunk, this.birchTrunkGeo, this.birchTrunkMat, birches, true, false, 'berkstam')
+    this.addInstances(chunk, this.birchCanopyGeo, this.birchCanopyMat, birches, true, true, 'berkkroon')
+    this.addInstances(chunk, this.leafyTrunkGeo, this.leafyTrunkMat, autumns, true, false, 'herfststam')
+    this.addInstances(chunk, this.leafyCanopyGeo, this.leafyCanopyMat, autumns, true, true, 'herfstkroon')
+    this.addInstances(chunk, this.leafyTrunkGeo, this.leafyTrunkMat, willows, true, false, 'wilgstam')
+    this.addInstances(chunk, this.willowCanopyGeo, this.willowCanopyMat, willows, true, true, 'wilgkroon')
     this.addInstances(chunk, this.bushGeo, this.bushMat, bushes, true, true, 'struik')
     const far = this.addInstances(chunk, this.grassGeo, this.grassMat, farGrass, false, true, 'gras-ver')
     if (far) {

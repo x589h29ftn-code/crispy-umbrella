@@ -22,17 +22,28 @@ artifact via GitHub Actions (workflow "Bouw Verdant (Windows)").
 | Sprinten | Shift |
 | Blok kiezen | 1–6 of scrollwiel |
 | Blok plaatsen / weghalen | Linker- / rechtermuisknop |
-| Pauze | Esc |
+| Hengel (werpen & binnenhalen) | 7, dan linkermuisknop |
+| Kano in-/uitstappen | E (peddelen met WASD) |
+| Fotomodus | P (WASD + Q/E, Shift = snel) |
+| Pauze & instellingen | Esc |
 | Volledig scherm | F11 |
 
-De wereld heeft een dag/nachtcyclus, dieren (konijnen, herten, vogels,
-vlinders en 's nachts vuurvliegjes), wuivend sprietengras, varens, lupines
-en bloemenweides, meertjes met gras tot aan de waterlijn, beklimbare bergen
-tot ~85 m, kronkelpaden met lantaarnpaaltjes, verspreide hutjes waar je in
-kunt, en één bijzonder plekje: een huisje aan een meer met steiger, moestuin
-en graanveld (daar start je). Volledig gesynthetiseerde audio: kabbelend
-water, wind, krekels, vogelzang en rustgevende generatieve muziek. Er zijn
-geen asset-bestanden — alles is procedureel. Ultrawide-schermen krijgen
+De wereld heeft een dag/nachtcyclus én seizoenen (een jaar duurt vier dagen:
+frisse lente, zomer, oranje herfst en een besneeuwde winter), levend weer
+(wolkenvelden, regenbuien en onweer met bliksem en donder), rivieren met
+watervallen en klaterend beekgeluid, en duidelijk verschillende streken:
+berkenbossen, herfstbossen, bloemenvalleien en wilgenmoerassen. Er lopen
+dieren rond (konijnen, herten, vogels, vlinders en 's nachts vuurvliegjes),
+er is wuivend sprietengras, varens, lupines en bloemenweides, meertjes met
+gras tot aan de waterlijn, beklimbare bergen tot ~110 m, kronkelpaden met
+lantaarnpaaltjes, verspreide hutjes waar je in kunt, en dorpjes met een
+waterput en zwaaiende dorpelingen. Je start bij een huisje aan een meer met
+steiger, moestuin en graanveld; bij de steiger ligt een kano en met de
+hengel vang je per water andere vissoorten. Volledig gesynthetiseerde
+audio: kabbelend water, wind, krekels, vogelzang, regen, donder en
+rustgevende generatieve muziek. Er zijn geen asset-bestanden — alles is
+procedureel. In het pauzemenu stel je blikveld, muisgevoeligheid en
+zichtafstand in (bewaard tussen sessies). Ultrawide-schermen krijgen
 automatisch een breder blikveld (Hor+ FOV) en de rendering gebruikt MSAA
 anti-aliasing met ACES tone mapping en bloom.
 

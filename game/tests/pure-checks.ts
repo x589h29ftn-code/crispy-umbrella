@@ -79,5 +79,26 @@ function check(name: string, ok: boolean): void {
   check('verwijderen werkt', restored.get(-4, 0, 7) === undefined && restored.size === 1)
 }
 
+// 5. Rivieren en regio's: determinisme en bereik.
+{
+  const a = new World('rivier-test')
+  const b = new World('rivier-test')
+  let same = true
+  let inRange = true
+  let riverSeen = false
+  for (let i = 0; i < 400; i++) {
+    const x = (i * 53) % 3000 - 1500
+    const z = (i * 131) % 3000 - 1500
+    if (a.river(x, z) !== b.river(x, z) || a.region(x, z) !== b.region(x, z)) same = false
+    const r = a.river(x, z)
+    const g = a.region(x, z)
+    if (r < 0 || r > 1 || g < 0 || g > 1) inRange = false
+    if (r > 0.5) riverSeen = true
+  }
+  check('rivier/regio deterministisch', same)
+  check('rivier/regio binnen [0,1]', inRange)
+  check('er bestaan rivieren', riverSeen)
+}
+
 console.log(failures === 0 ? '\nAlle pure checks geslaagd.' : `\n${failures} check(s) gefaald!`)
 process.exit(failures === 0 ? 0 : 1)

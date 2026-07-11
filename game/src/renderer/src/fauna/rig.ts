@@ -105,6 +105,26 @@ export function buildDeer(): AnimalRig {
   return { root, body, head, legs, wings: [], rideHeight: 0.0 }
 }
 
+const SHIRT_COLORS = [0x9a4f3a, 0x3a6d9a, 0x6d9a3a, 0x8a5d9a, 0xb8843a]
+
+/** Dorpeling: lijf, hoofd met hoedje, armen (in `wings`) en benen. */
+export function buildVillager(variant: number): AnimalRig {
+  const root = new THREE.Group()
+  const shirt = SHIRT_COLORS[variant % SHIRT_COLORS.length]
+  const skin = 0xe8bd98
+  const pants = 0x4a3d2e
+
+  const body = part(root, box, shirt, 0, 1.0, 0, 0.42, 0.5, 0.26)
+  const head = new THREE.Group()
+  head.position.set(0, 1.42, 0)
+  part(head, box, skin, 0, 0, 0, 0.26, 0.26, 0.26)
+  part(head, cone, [0x7a5b38, 0x9a3a3a, 0x3a5d7a][variant % 3], 0, 0.22, 0, 0.42, 0.24, 0.42) // hoedje
+  root.add(head)
+  const arms = [limb(root, shirt, -0.28, 1.22, 0, 0.11, 0.52), limb(root, shirt, 0.28, 1.22, 0, 0.11, 0.52)]
+  const legs = [limb(root, pants, -0.11, 0.75, 0, 0.13, 0.72), limb(root, pants, 0.11, 0.75, 0, 0.13, 0.72)]
+  return { root, body, head, legs, wings: arms, rideHeight: 0 }
+}
+
 export function buildBird(color: number): AnimalRig {
   const root = new THREE.Group()
   const body = part(root, cone, color, 0, 0, 0, 0.22, 0.5, 0.22)

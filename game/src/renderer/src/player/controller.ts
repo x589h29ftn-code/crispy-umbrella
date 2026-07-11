@@ -43,6 +43,8 @@ export class PlayerController {
   readonly velocity = new THREE.Vector3()
   yaw = 0
   pitch = 0
+  /** Muisgevoeligheid (1 = standaard). */
+  sensitivity = 1
   grounded = false
   swimming = false
   private world: World
@@ -73,7 +75,7 @@ export class PlayerController {
 
   /** Muiskijken: één keer per frame met de opgebouwde delta. */
   applyLook(dx: number, dy: number): void {
-    const sensitivity = 0.0023
+    const sensitivity = 0.0023 * this.sensitivity
     this.yaw -= dx * sensitivity
     this.pitch -= dy * sensitivity
     const maxPitch = Math.PI / 2 - 0.01

@@ -18,7 +18,7 @@ async function main(): Promise<void> {
   const browser = await chromium.launch({
     headless: true,
     executablePath: '/opt/pw-browsers/chromium',
-    args: ['--use-angle=swiftshader', '--enable-unsafe-swiftshader', '--no-sandbox', '--mute-audio']
+    args: ['--use-angle=swiftshader', '--enable-unsafe-swiftshader', '--no-sandbox', '--mute-audio', '--disable-background-timer-throttling', '--disable-renderer-backgrounding', '--disable-backgrounding-occluded-windows']
   })
 
   const errors: string[] = []

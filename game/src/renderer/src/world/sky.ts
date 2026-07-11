@@ -56,6 +56,10 @@ export class Sky {
   readonly hemi: THREE.HemisphereLight
   readonly fogColor = new THREE.Color()
   timeOfDay = 0.4
+  /** Verstreken dagen (voor seizoenen); jaar = 4 dagen, start in de zomer. */
+  totalDays = 0
+  /** Bewolkingsfactor 0..1 (gezet door het weersysteem). */
+  cloudiness = 0
   private uniforms: {
     uTopColor: { value: THREE.Color }
     uHorizonColor: { value: THREE.Color }
@@ -183,12 +187,27 @@ export class Sky {
     return this.uniforms.uNight.value
   }
 
+  /** Jaarfractie 0..1 (0 = begin lente); start halverwege de zomer. */
+  get seasonT(): number {
+    return (0.35 + this.totalDays / 4) % 1
+  }
+
   update(dt: number, playerPos: THREE.Vector3): void {
     this.timeOfDay = (this.timeOfDay + dt / DAY_LENGTH) % 1
+    this.totalDays += dt / DAY_LENGTH
     const t = this.timeOfDay
 
     this.sample(t, this.scratch)
     const s = this.scratch
+
+    // Bewolking dimt de zon en vergrijst lucht en mist.
+    const grey = new THREE.Color(0x9aa3ab)
+    const cl = this.cloudiness * 0.75
+    s.top.lerp(grey, cl)
+    s.horizon.lerp(grey, cl)
+    s.fog.lerp(grey, cl * 0.9)
+    s.sunIntensity *= 1 - 0.65 * this.cloudiness
+    s.ambient *= 1 - 0.25 * this.cloudiness
 
     // Zonnestand: op t=0.5 recht boven, draait om de oost-west-as.
     const angle = (t - 0.25) * Math.PI * 2

@@ -25,6 +25,21 @@ function mix(out: Rgb, target: readonly number[], t: number): void {
   out[2] = lerp(out[2], target[2], t)
 }
 
+/** Regiogewichten: welke streek-flavour geldt hier (sommen niet tot 1). */
+export function regionWeights(
+  world: World,
+  x: number,
+  z: number
+): { swamp: number; birch: number; flower: number; autumn: number } {
+  const r = world.region(x, z)
+  return {
+    swamp: smoothstep(0.22, 0.12, r),
+    birch: smoothstep(0.36, 0.43, r) * smoothstep(0.56, 0.49, r),
+    flower: smoothstep(0.59, 0.64, r) * smoothstep(0.73, 0.68, r),
+    autumn: smoothstep(0.78, 0.88, r)
+  }
+}
+
 /**
  * Vertex-kleur voor een terreinpunt: vloeiende blend tussen biomen op basis
  * van hoogte, bosdichtheid en helling. `jitter` (0..1) geeft per vertex een
@@ -63,8 +78,18 @@ export function terrainColor(
   mix(out, COLORS.forest, forest * 0.85)
   mix(out, COLORS.forestFloor, smoothstep(0.75, 1, world.forestness(x, z)) * 0.5 * grassy)
 
+  // Streekkarakter: herfstgoud, fris berkengroen, donker moeras, bloemenvallei.
+  const region = regionWeights(world, x, z)
+  mix(out, [0.62, 0.53, 0.24], region.autumn * grassy * 0.8)
+  mix(out, [0.55, 0.74, 0.3], region.birch * grassy * 0.5)
+  mix(out, [0.3, 0.4, 0.21], region.swamp * grassy * 0.75)
+  mix(out, [0.61, 0.75, 0.34], region.flower * grassy * 0.5)
+
   // Kronkelende zandpaadjes door gras en bos.
   mix(out, COLORS.path, smoothstep(0.25, 0.75, world.path(x, z, height)))
+
+  // Natte kiezelbedding van beken.
+  mix(out, [0.52, 0.49, 0.42], smoothstep(0.35, 0.8, world.river(x, z, height)))
 
   // Rots op steile hellingen en hoog in de bergen.
   const steep = smoothstep(0.82, 0.62, normalY)

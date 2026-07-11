@@ -15,6 +15,9 @@ export class Hud {
   onQuit: (() => void) | null = null
   onQuality: ((q: Quality) => void) | null = null
   onVolume: ((bus: 'music' | 'ambient' | 'effects', value: number) => void) | null = null
+  onFov: ((hFov: number) => void) | null = null
+  onSensitivity: ((factor: number) => void) | null = null
+  onViewDistance: ((chunks: number) => void) | null = null
 
   private menu = el<HTMLDivElement>('menu')
   private pause = el<HTMLDivElement>('pause')
@@ -41,14 +44,64 @@ export class Hud {
         this.onVolume?.(bus, Number((e.target as HTMLInputElement).value) / 100)
       })
     }
+
+    // Instellingen: opslaan in localStorage en doorgeven aan de game.
+    const saved = this.loadSettings()
+    el<HTMLInputElement>('set-fov').value = String(saved.fov)
+    el<HTMLInputElement>('set-sens').value = String(saved.sens)
+    el<HTMLSelectElement>('set-view').value = String(saved.view)
+    el<HTMLInputElement>('set-fov').addEventListener('input', (e) => {
+      const v = Number((e.target as HTMLInputElement).value)
+      this.saveSetting('fov', v)
+      this.onFov?.(v)
+    })
+    el<HTMLInputElement>('set-sens').addEventListener('input', (e) => {
+      const v = Number((e.target as HTMLInputElement).value)
+      this.saveSetting('sens', v)
+      this.onSensitivity?.(v / 100)
+    })
+    el<HTMLSelectElement>('set-view').addEventListener('change', (e) => {
+      const v = Number((e.target as HTMLSelectElement).value)
+      this.saveSetting('view', v)
+      this.onViewDistance?.(v)
+    })
+
     this.buildHotbar()
+  }
+
+  /** Bewaarde instellingen (met standaardwaarden). */
+  loadSettings(): { fov: number; sens: number; view: number } {
+    try {
+      const raw = localStorage.getItem('verdant-instellingen')
+      if (raw) return { fov: 100, sens: 100, view: 14, ...JSON.parse(raw) }
+    } catch {
+      // localStorage kan geblokkeerd zijn; gebruik standaardwaarden.
+    }
+    return { fov: 100, sens: 100, view: 14 }
+  }
+
+  private saveSetting(key: string, value: number): void {
+    try {
+      const current = this.loadSettings() as unknown as Record<string, number>
+      current[key] = value
+      localStorage.setItem('verdant-instellingen', JSON.stringify(current))
+    } catch {
+      // best effort
+    }
+  }
+
+  /** Fotomodus: alle overlays verbergen. */
+  setPhotoMode(on: boolean): void {
+    this.hud.classList.toggle('hidden', on)
   }
 
   private buildHotbar(): void {
     this.hotbar.innerHTML = ''
-    const slots = [{ name: 'Hand', color: '' }].concat(
-      BLOCK_TYPES.map((b) => ({ name: b.name, color: '#' + b.color.toString(16).padStart(6, '0') }))
-    )
+    const slots = [{ name: 'Hand', color: '', icon: '\u270b' }]
+      .concat(
+        BLOCK_TYPES.map((b) => ({ name: b.name, color: '#' + b.color.toString(16).padStart(6, '0'), icon: '' }))
+      )
+      .concat([{ name: 'Hengel', color: '', icon: '\ud83c\udfa3' }])
     slots.forEach((slot, i) => {
       const div = document.createElement('div')
       div.className = 'slot' + (i === 0 ? ' selected' : '')
@@ -62,10 +115,10 @@ export class Hud {
         swatch.style.background = slot.color
         div.appendChild(swatch)
       } else {
-        const hand = document.createElement('span')
-        hand.textContent = '✋'
-        hand.style.fontSize = '20px'
-        div.appendChild(hand)
+        const iconEl = document.createElement('span')
+        iconEl.textContent = slot.icon
+        iconEl.style.fontSize = '20px'
+        div.appendChild(iconEl)
       }
       const name = document.createElement('span')
       name.className = 'name'

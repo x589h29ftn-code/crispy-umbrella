@@ -439,6 +439,33 @@ export class Structures {
     return { x: p.x, z: p.z, lookX: look.x, lookZ: look.z }
   }
 
+  /** Aanlegplekken voor kano's: bij de steiger en op een paar zeeoevers. */
+  canoeMoorings(): { x: number; z: number }[] {
+    const result: { x: number; z: number }[] = []
+    if (this.lakeHouse) {
+      const anchor = new Kit(this.lakeHouse.x, 0, this.lakeHouse.z, this.lakeHouse.quarter)
+      const m = anchor.toWorld(2.2, 9)
+      result.push({ x: m.x, z: m.z })
+    }
+    // Twee plekken in ondiep zeewater, verspreid over de wereld.
+    let found = 0
+    for (let r = 60; r < 1200 && found < 2; r += 18) {
+      const steps = Math.max(8, Math.floor((r * Math.PI * 2) / 30))
+      for (let i = 0; i < steps && found < 2; i++) {
+        const a = (i / steps) * Math.PI * 2
+        const x = Math.cos(a) * r
+        const z = Math.sin(a) * r
+        const h = this.world.height(x, z)
+        if (h > -0.8 || h < -1.6) continue
+        if (this.world.lakeness(x, z) > 0.2) continue
+        if (result.some((m) => (m.x - x) ** 2 + (m.z - z) ** 2 < 300 * 300)) continue
+        result.push({ x, z })
+        found++
+      }
+    }
+    return result
+  }
+
   /** Botsingsboxen in de buurt van een punt (eigen chunk + 8 buren). */
   collidersInAABB(minX: number, minY: number, minZ: number, maxX: number, maxY: number, maxZ: number): BlockAabb[] {
     const cx = Math.floor((minX + maxX) / 2 / CHUNK_SIZE)

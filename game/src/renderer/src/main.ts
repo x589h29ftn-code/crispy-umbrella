@@ -44,6 +44,19 @@ function wireGame(g: Game): void {
   g.graphics.setQuality(hud.initialQuality)
   hud.onQuality = (q) => g.graphics.setQuality(q)
 
+  // Bewaarde instellingen toepassen en live doorverbinden.
+  const settings = hud.loadSettings()
+  g.graphics.setHFov(settings.fov)
+  g.player.sensitivity = settings.sens / 100
+  g.chunks.viewDistance = settings.view
+  hud.onFov = (fov) => g.graphics.setHFov(fov)
+  hud.onSensitivity = (s) => {
+    g.player.sensitivity = s
+  }
+  hud.onViewDistance = (v) => {
+    g.chunks.viewDistance = v
+  }
+
   // Esc (pointer lock kwijt) → pauzemenu.
   g.input.onLockChange = (locked) => {
     if (!locked && !g.paused) {

@@ -301,7 +301,8 @@
         <button id="play" class="btn">Klik om te spelen</button>
         <div class="hint">
           Bewegen: WASD &nbsp;·&nbsp; Springen: Spatie &nbsp;·&nbsp; Sprinten: Shift<br />
-          Bouwen: 1–5 + muisklik &nbsp;·&nbsp; Pauze: Esc &nbsp;·&nbsp; Volledig scherm: F11
+          Bouwen: 1–6 &nbsp;·&nbsp; Vissen: 7 &nbsp;·&nbsp; Kano: E &nbsp;·&nbsp; Fotomodus: P<br />
+          Pauze: Esc &nbsp;·&nbsp; Volledig scherm: F11
         </div>
       </div>
     </div>
@@ -316,6 +317,22 @@
             <option value="low">Laag</option>
             <option value="medium">Normaal</option>
             <option value="high" selected>Hoog</option>
+          </select>
+        </div>
+        <div class="setting-row">
+          <label for="set-fov">Blikveld (FOV)</label>
+          <input id="set-fov" type="range" min="80" max="115" value="100" />
+        </div>
+        <div class="setting-row">
+          <label for="set-sens">Muisgevoeligheid</label>
+          <input id="set-sens" type="range" min="30" max="200" value="100" />
+        </div>
+        <div class="setting-row">
+          <label for="set-view">Zichtafstand</label>
+          <select id="set-view">
+            <option value="8">Dichtbij</option>
+            <option value="11">Normaal</option>
+            <option value="14" selected>Ver</option>
           </select>
         </div>
         <div class="setting-row">

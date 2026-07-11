@@ -1,6 +1,7 @@
 import * as THREE from 'three'
 import { combineSeed, mulberry32 } from '../core/rng'
 import { terrainColor } from './biomes'
+import { seasonAutumn, seasonWinter } from './season'
 import { CHUNK_SIZE, type World } from './terrain'
 
 const VERTS = CHUNK_SIZE + 1
@@ -98,6 +99,123 @@ export function buildChunkGeometry(world: World, cx: number, cz: number): THREE.
   return geometry
 }
 
+// Gedeelde tijd-uniform voor het stromen van beken.
+export const riverTime = { value: 0 }
+
+/** Gedeeld beekmateriaal: transparant blauwgroen met stromende glinstering. */
+let riverMaterial: THREE.MeshLambertMaterial | null = null
+
+function getRiverMaterial(): THREE.MeshLambertMaterial {
+  if (riverMaterial) return riverMaterial
+  riverMaterial = new THREE.MeshLambertMaterial({
+    vertexColors: true,
+    transparent: true,
+    opacity: 0.78,
+    depthWrite: false,
+    side: THREE.DoubleSide
+  })
+  riverMaterial.onBeforeCompile = (shader) => {
+    shader.uniforms.uRiverTime = riverTime
+    shader.vertexShader =
+      'varying vec3 vRiverWorld;\n' +
+      shader.vertexShader.replace(
+        '#include <begin_vertex>',
+        `#include <begin_vertex>
+        vRiverWorld = (modelMatrix * vec4(transformed, 1.0)).xyz;`
+      )
+    shader.fragmentShader =
+      'uniform float uRiverTime;\nvarying vec3 vRiverWorld;\n' +
+      shader.fragmentShader.replace(
+        '#include <color_fragment>',
+        `#include <color_fragment>
+        {
+          float flow = sin(vRiverWorld.x * 2.1 + vRiverWorld.z * 1.7 - uRiverTime * 3.2)
+                     + sin((vRiverWorld.x - vRiverWorld.z) * 3.3 - uRiverTime * 2.1);
+          diffuseColor.rgb += flow * 0.045;
+        }`
+      )
+  }
+  return riverMaterial
+}
+
+/**
+ * Beek-watermesh voor een chunk: quads boven de uitgesleten bedding, met
+ * witte schuimvlakken waar het water >1,2 m per cel valt (watervalletjes).
+ * Retourneert null als er geen beek door de chunk loopt.
+ */
+export function buildRiverMesh(world: World, cx: number, cz: number): THREE.Mesh | null {
+  const ox = cx * CHUNK_SIZE
+  const oz = cz * CHUNK_SIZE
+  const positions: number[] = []
+  const colors: number[] = []
+  const indices: number[] = []
+
+  // Waterhoogte per rivier-cel (lazy, gedeeld tussen buurchecks).
+  const levels = new Map<number, number>()
+  const levelAt = (x: number, z: number): number | null => {
+    const key = x * 128 + z
+    const cached = levels.get(key)
+    if (cached !== undefined) return cached === -9999 ? null : cached
+    const wx = ox + x + 0.5
+    const wz = oz + z + 0.5
+    const h = world.height(wx, wz)
+    const mask = world.river(wx, wz, h)
+    const level = mask > 0.45 && h > 0.2 ? h + 0.25 : null
+    levels.set(key, level ?? -9999)
+    return level
+  }
+
+  const quad = (a: number[], b: number[], c: number[], d: number[], col: number[]): void => {
+    const base = positions.length / 3
+    positions.push(...a, ...b, ...c, ...d)
+    for (let i = 0; i < 4; i++) colors.push(...col)
+    indices.push(base, base + 2, base + 1, base + 1, base + 2, base + 3)
+  }
+
+  const WATER: number[] = [0.36, 0.58, 0.62]
+  const FOAM: number[] = [0.95, 0.97, 0.98]
+
+  for (let z = 0; z < CHUNK_SIZE; z++) {
+    for (let x = 0; x < CHUNK_SIZE; x++) {
+      const level = levelAt(x, z)
+      if (level === null) continue
+      // Wateroppervlak van deze cel (lokaal aan de chunk).
+      quad([x, level, z], [x + 1, level, z], [x, level, z + 1], [x + 1, level, z + 1], WATER)
+      // Watervalletjes: verticaal schuimvlak naar een veel lagere buurcel.
+      for (const [dx, dz] of [
+        [1, 0],
+        [-1, 0],
+        [0, 1],
+        [0, -1]
+      ]) {
+        const nx = x + dx
+        const nz = z + dz
+        if (nx < 0 || nz < 0 || nx >= CHUNK_SIZE || nz >= CHUNK_SIZE) continue
+        const nLevel = levelAt(nx, nz)
+        if (nLevel === null || level - nLevel < 1.2) continue
+        const ex = dx > 0 ? x + 1 : x
+        const ez = dz > 0 ? z + 1 : z
+        if (dx !== 0) {
+          quad([ex, level, z], [ex, level, z + 1], [ex, nLevel - 0.15, z], [ex, nLevel - 0.15, z + 1], FOAM)
+        } else {
+          quad([x, level, ez], [x + 1, level, ez], [x, nLevel - 0.15, ez], [x + 1, nLevel - 0.15, ez], FOAM)
+        }
+      }
+    }
+  }
+
+  if (positions.length === 0) return null
+  const geometry = new THREE.BufferGeometry()
+  geometry.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3))
+  geometry.setAttribute('color', new THREE.Float32BufferAttribute(colors, 3))
+  geometry.setIndex(indices)
+  geometry.computeVertexNormals()
+  const mesh = new THREE.Mesh(geometry, getRiverMaterial())
+  mesh.position.set(ox, 0, oz)
+  mesh.renderOrder = 1
+  return mesh
+}
+
 /**
  * Tegelbare grijswaarden-ruistextuur (valuenoise, 3 octaven) voor
  * oppervlaktedetail op het terrein — proceduraal, dus geen assetbestanden.
@@ -165,6 +283,8 @@ export function createTerrainMaterial(): THREE.MeshLambertMaterial {
   const detail = generateDetailTexture()
   material.onBeforeCompile = (shader) => {
     shader.uniforms.uDetail = { value: detail }
+    shader.uniforms.uAutumn = seasonAutumn
+    shader.uniforms.uWinter = seasonWinter
     shader.vertexShader =
       'varying vec3 vDetailWorld;\n' +
       shader.vertexShader.replace(
@@ -173,7 +293,7 @@ export function createTerrainMaterial(): THREE.MeshLambertMaterial {
         vDetailWorld = (modelMatrix * vec4(transformed, 1.0)).xyz;`
       )
     shader.fragmentShader =
-      'uniform sampler2D uDetail;\nvarying vec3 vDetailWorld;\n' +
+      'uniform sampler2D uDetail;\nuniform float uAutumn;\nuniform float uWinter;\nvarying vec3 vDetailWorld;\n' +
       shader.fragmentShader.replace(
         '#include <color_fragment>',
         `#include <color_fragment>
@@ -182,6 +302,13 @@ export function createTerrainMaterial(): THREE.MeshLambertMaterial {
           float mid = texture2D(uDetail, vDetailWorld.xz * 0.085).r;
           float fine = texture2D(uDetail, vDetailWorld.xz * 0.21).r;
           diffuseColor.rgb *= 0.72 + coarse * 0.32 + (mid - 0.5) * 0.18 + (fine - 0.5) * 0.2;
+          // Seizoenen: herfsttint op het groen; in de winter zakt de
+          // sneeuwgrens tot vlak boven het strand.
+          float greenness = smoothstep(0.08, 0.2, diffuseColor.g - diffuseColor.r);
+          diffuseColor.rgb = mix(diffuseColor.rgb, diffuseColor.rgb * vec3(1.25, 0.9, 0.55), uAutumn * 0.4 * greenness);
+          float snowLine = mix(76.0, 2.5, uWinter);
+          float snow = smoothstep(snowLine, snowLine + 8.0, vDetailWorld.y) * step(0.05, uWinter);
+          diffuseColor.rgb = mix(diffuseColor.rgb, vec3(0.92, 0.93, 0.96) * (0.9 + fine * 0.2), snow * 0.92);
         }`
       )
   }

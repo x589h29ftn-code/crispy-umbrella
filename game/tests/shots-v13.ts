@@ -17,7 +17,7 @@ async function main(): Promise<void> {
   const browser = await chromium.launch({
     headless: true,
     executablePath: '/opt/pw-browsers/chromium',
-    args: ['--use-angle=swiftshader', '--enable-unsafe-swiftshader', '--no-sandbox', '--mute-audio']
+    args: ['--use-angle=swiftshader', '--enable-unsafe-swiftshader', '--no-sandbox', '--mute-audio', '--disable-background-timer-throttling', '--disable-renderer-backgrounding', '--disable-backgrounding-occluded-windows']
   })
   const page = await browser.newPage({ viewport: { width: 1920, height: 1080 } })
   page.on('pageerror', (err) => console.log('PAGE ERROR:', err.message))

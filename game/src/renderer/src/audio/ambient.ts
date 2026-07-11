@@ -12,6 +12,10 @@ export class Ambient {
   private windFilter: BiquadFilterNode
   private rumbleGain: GainNode
   private cricketGain: GainNode
+  private babbleFilter: BiquadFilterNode
+  private babbleGain: GainNode
+  private rainFilter: BiquadFilterNode
+  private rainGain: GainNode
   private started = false
 
   constructor(engine: AudioEngine) {
@@ -35,6 +39,23 @@ export class Ambient {
     this.windGain = ctx.createGain()
     this.windGain.gain.value = 0
     this.windFilter.connect(this.windGain).connect(bus)
+
+    // Beekje: helder klaterende, hoger gefilterde ruis.
+    this.babbleFilter = ctx.createBiquadFilter()
+    this.babbleFilter.type = 'bandpass'
+    this.babbleFilter.frequency.value = 1500
+    this.babbleFilter.Q.value = 0.9
+    this.babbleGain = ctx.createGain()
+    this.babbleGain.gain.value = 0
+    this.babbleFilter.connect(this.babbleGain).connect(bus)
+
+    // Regen: brede ruis, gedempt.
+    this.rainFilter = ctx.createBiquadFilter()
+    this.rainFilter.type = 'lowpass'
+    this.rainFilter.frequency.value = 2600
+    this.rainGain = ctx.createGain()
+    this.rainGain.gain.value = 0
+    this.rainFilter.connect(this.rainGain).connect(bus)
 
     // Onderwater-gerommel: zwaar gefilterde ruis.
     const rumbleFilter = ctx.createBiquadFilter()
@@ -63,7 +84,7 @@ export class Ambient {
     chirpLfo.start()
 
     // Ruisbronnen delen dezelfde loopbuffer.
-    for (const dest of [this.waterFilter, this.windFilter, rumbleFilter]) {
+    for (const dest of [this.waterFilter, this.windFilter, rumbleFilter, this.babbleFilter, this.rainFilter]) {
       const src = engine.createNoiseSource()
       src.connect(dest)
       src.start()
@@ -87,7 +108,9 @@ export class Ambient {
     shoreCloseness: number,
     altitude: number,
     underwater: boolean,
-    nightness: number
+    nightness: number,
+    riverCloseness = 0,
+    rainIntensity = 0
   ): void {
     if (!this.started) return
     const t = this.engine.ctx.currentTime
@@ -103,7 +126,55 @@ export class Ambient {
     this.waterFilter.frequency.setTargetAtTime(500 + waves * 300, t, 0.3)
 
     this.rumbleGain.gain.setTargetAtTime(underwater ? 0.5 : 0, t, 0.15)
+    const babble = 0.85 + 0.15 * Math.sin(this.windPhase * 3.1)
+    this.babbleGain.gain.setTargetAtTime(underwater ? 0 : riverCloseness * 0.4 * babble, t, 0.3)
+    this.babbleFilter.frequency.setTargetAtTime(1300 + babble * 500, t, 0.3)
+    this.rainGain.gain.setTargetAtTime(underwater ? 0 : rainIntensity * 0.35, t, 0.8)
     this.cricketGain.gain.setTargetAtTime(underwater ? 0 : nightness * 0.06, t, 0.8)
+  }
+
+  /** Kort plinkje: de dobber gaat onder. */
+  plink(): void {
+    const ctx = this.engine.ctx
+    const t = ctx.currentTime
+    const osc = ctx.createOscillator()
+    osc.type = 'sine'
+    osc.frequency.setValueAtTime(1350, t)
+    osc.frequency.exponentialRampToValueAtTime(650, t + 0.12)
+    const gain = ctx.createGain()
+    gain.gain.setValueAtTime(0.35, t)
+    gain.gain.exponentialRampToValueAtTime(0.001, t + 0.22)
+    osc.connect(gain).connect(this.engine.bus('effects'))
+    osc.start(t)
+    osc.stop(t + 0.25)
+  }
+
+  /** Donderklap: lage dreun met een ruisstaart. */
+  thunder(): void {
+    const ctx = this.engine.ctx
+    const t = ctx.currentTime
+    const boom = ctx.createOscillator()
+    boom.type = 'sine'
+    boom.frequency.setValueAtTime(60, t)
+    boom.frequency.exponentialRampToValueAtTime(34, t + 1.2)
+    const boomGain = ctx.createGain()
+    boomGain.gain.setValueAtTime(0.7, t)
+    boomGain.gain.exponentialRampToValueAtTime(0.001, t + 1.6)
+    boom.connect(boomGain).connect(this.engine.bus('effects'))
+    boom.start(t)
+    boom.stop(t + 1.8)
+
+    const tail = this.engine.createNoiseSource()
+    const tailFilter = ctx.createBiquadFilter()
+    tailFilter.type = 'lowpass'
+    tailFilter.frequency.setValueAtTime(900, t)
+    tailFilter.frequency.exponentialRampToValueAtTime(120, t + 2.4)
+    const tailGain = ctx.createGain()
+    tailGain.gain.setValueAtTime(0.4, t)
+    tailGain.gain.exponentialRampToValueAtTime(0.001, t + 2.6)
+    tail.connect(tailFilter).connect(tailGain).connect(this.engine.bus('effects'))
+    tail.start(t)
+    tail.stop(t + 2.8)
   }
 
   /** Plons bij het duiken: korte ruisuitbarsting met dalende filtersweep. */

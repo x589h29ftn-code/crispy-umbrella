@@ -55,12 +55,20 @@ export class BuildSystem {
   }
 
   get slotCount(): number {
-    return BLOCK_TYPES.length + 1
+    return BLOCK_TYPES.length + 2 // hand + blokken + hengel
   }
 
-  update(): void {
+  /** Index van het hengel-slot (laatste). */
+  get rodSlot(): number {
+    return this.slotCount - 1
+  }
+
+  /** Klik terwijl de hengel vast wordt gehouden (0 = links, 2 = rechts). */
+  onRodClick: ((button: number) => void) | null = null
+
+  update(presses: string[]): void {
     // Hotbar: cijfertoetsen en scrollwiel.
-    for (const code of this.input.consumePresses()) {
+    for (const code of presses) {
       if (code.startsWith('Digit')) {
         const n = Number(code.slice(5))
         if (n >= 1 && n <= this.slotCount) this.select(n - 1)
@@ -80,7 +88,7 @@ export class BuildSystem {
     if (terrainHit && (!hit || terrainHit.distance < hit.distance)) hit = terrainHit
 
     // Ghost-preview van de plaatsingspositie.
-    const placing = this.selectedSlot > 0 && hit !== null
+    const placing = this.selectedSlot > 0 && this.selectedSlot !== this.rodSlot && hit !== null
     if (placing && hit) {
       const target = this.placementCell(hit)
       if (target) {
@@ -95,9 +103,11 @@ export class BuildSystem {
       this.ghost.visible = false
     }
 
-    // Klikken: links = plaatsen, rechts = weghalen.
+    // Klikken: links = plaatsen, rechts = weghalen; hengel = werpen.
     for (const click of this.input.consumeClicks()) {
-      if (click.button === 0 && this.selectedSlot > 0 && hit) {
+      if (this.selectedSlot === this.rodSlot) {
+        this.onRodClick?.(click.button)
+      } else if (click.button === 0 && this.selectedSlot > 0 && hit) {
         const target = this.placementCell(hit)
         if (target && this.isValidPlacement(target.gx, target.gy, target.gz)) {
           this.store.set(target.gx, target.gy, target.gz, this.selectedSlot - 1)

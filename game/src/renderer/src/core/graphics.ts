@@ -9,11 +9,11 @@ export type Quality = 'low' | 'medium' | 'high'
 
 // Vaste verticale FOV afgeleid van 100° horizontaal op 16:9 ("Hor+"):
 // op ultrawide groeit het horizontale blikveld mee in plaats van uit te rekken.
-const BASE_HFOV = 100
 const BASE_ASPECT = 16 / 9
-const VFOV = THREE.MathUtils.radToDeg(
-  2 * Math.atan(Math.tan(THREE.MathUtils.degToRad(BASE_HFOV / 2)) / BASE_ASPECT)
-)
+
+function verticalFov(hFov: number): number {
+  return THREE.MathUtils.radToDeg(2 * Math.atan(Math.tan(THREE.MathUtils.degToRad(hFov / 2)) / BASE_ASPECT))
+}
 
 // Vignette + onderwater-kleurgrading als laatste pass.
 const GradeShader = {
@@ -62,6 +62,14 @@ export class Graphics {
   private gradePass: ShaderPass
   private scene: THREE.Scene
   quality: Quality = 'high'
+  private hFov = 100
+
+  /** Basis horizontale FOV (op 16:9); ultrawide krijgt automatisch meer. */
+  setHFov(deg: number): void {
+    this.hFov = deg
+    this.camera.fov = verticalFov(deg)
+    this.camera.updateProjectionMatrix()
+  }
 
   constructor(container: HTMLElement, scene: THREE.Scene) {
     this.scene = scene
@@ -73,7 +81,7 @@ export class Graphics {
     this.renderer.shadowMap.type = THREE.PCFSoftShadowMap
     container.appendChild(this.renderer.domElement)
 
-    this.camera = new THREE.PerspectiveCamera(VFOV, 1, 0.1, 1450)
+    this.camera = new THREE.PerspectiveCamera(verticalFov(this.hFov), 1, 0.1, 1450)
 
     // MSAA op de composer-rendertarget: gladde randen, ook mét postprocessing.
     const msaaTarget = new THREE.WebGLRenderTarget(1, 1, {
