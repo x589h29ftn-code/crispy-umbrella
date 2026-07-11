@@ -34,7 +34,8 @@ frisse lente, zomer, oranje herfst en een besneeuwde winter), levend weer
 watervallen en klaterend beekgeluid, en duidelijk verschillende streken:
 berkenbossen, herfstbossen, bloemenvalleien en wilgenmoerassen. Er lopen
 dieren rond (konijnen, herten, vogels, vlinders en 's nachts vuurvliegjes),
-er is wuivend sprietengras, varens, lupines en bloemenweides, meertjes met
+er is wuivend sprietengras, varens, lupines en bloemenweides, solitaire
+reuzeneiken als herkenningspunten op de weides, meertjes met
 gras tot aan de waterlijn, beklimbare bergen tot ~110 m, kronkelpaden met
 lantaarnpaaltjes, verspreide hutjes waar je in kunt, en dorpjes met een
 waterput en zwaaiende dorpelingen. Je start bij een huisje aan een meer met

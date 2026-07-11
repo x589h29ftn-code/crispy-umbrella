@@ -118,11 +118,13 @@ function jitterVertices(geo: THREE.BufferGeometry, amount: number, seed = 7): TH
 
 // Takken van de den: [hoogte, richting (rad), taklengte, plaatstraal].
 const PINE_BRANCHES: [number, number, number, number][] = [
+  [3.7, 3.1, 2.5, 1.62],
   [4.6, 0.4, 2.3, 1.5],
   [5.5, 2.6, 2.1, 1.4],
   [6.4, 4.4, 1.9, 1.3],
   [7.3, 1.5, 1.7, 1.15],
   [8.2, 3.5, 1.5, 1.05],
+  [8.65, 5.0, 1.4, 0.97],
   [9.1, 5.5, 1.3, 0.9],
   [10.0, 0.9, 1.05, 0.78]
 ]
@@ -175,14 +177,26 @@ function pineCanopyGeometry(): THREE.BufferGeometry {
   return mergeGeometries(parts)
 }
 
-/** Loofboomstam met een lichte vertakking. */
+/** Loofboomstam met een paar vertakkingen richting de kroon. */
 function leafyTrunkGeometry(): THREE.BufferGeometry {
   const main = new THREE.CylinderGeometry(0.32, 0.52, 5.2, 8)
   main.translate(0, 2.6, 0)
-  const branch = new THREE.CylinderGeometry(0.16, 0.22, 2.6, 6)
-  branch.rotateZ(0.65)
-  branch.translate(1.2, 5.0, 0.2)
-  return mergeGeometries([main, branch])
+  const parts: THREE.BufferGeometry[] = [main]
+  const branches: [number, number, number, number][] = [
+    // [draai om y, kanteling, lengte, hoogte]
+    [0.2, 0.65, 2.6, 5.0],
+    [2.4, 0.55, 2.2, 4.6],
+    [4.3, 0.7, 2.0, 4.8]
+  ]
+  for (const [dir, tilt, len, y] of branches) {
+    const branch = new THREE.CylinderGeometry(0.13, 0.22, len, 6)
+    branch.translate(0, len / 2, 0)
+    branch.rotateZ(tilt)
+    branch.rotateY(dir)
+    branch.translate(0, y, 0)
+    parts.push(branch)
+  }
+  return mergeGeometries(parts)
 }
 
 /** Grote bolle bladerkroon zoals in de referentie, top op ~11 m. */
@@ -195,13 +209,87 @@ function leafyCanopyGeometry(): THREE.BufferGeometry {
     [0.6, 6.2, -2.1, 2.0],
     [-0.8, 6.4, 2.0, 1.9],
     [1.2, 9.2, 0.8, 1.9],
-    [-1.3, 9.0, -0.9, 1.8]
+    [-1.3, 9.0, -0.9, 1.8],
+    // extra plukken voor een vollere, minder bolvormige kroon
+    [2.6, 8.2, -1.4, 1.5],
+    [-2.5, 7.9, 1.3, 1.4],
+    [0.2, 10.3, -0.2, 1.35]
   ]
+  let seed = 23
   for (const [x, y, z, r] of blobs) {
-    const blob = jitterVertices(new THREE.IcosahedronGeometry(r, 1), r * 0.2, 23)
+    const blob = jitterVertices(new THREE.IcosahedronGeometry(r, 1), r * 0.22, seed++)
     blob.translate(x, y, z)
     parts.push(blob)
   }
+  return mergeGeometries(parts)
+}
+
+// Takken van de reuzeneik: [hoogte, richting (rad), lengte, kanteling (rad)].
+const OAK_BRANCHES: [number, number, number, number][] = [
+  [4.0, 0.3, 3.6, 1.05],
+  [4.6, 1.9, 4.0, 1.15],
+  [5.2, 3.6, 3.4, 1.0],
+  [5.7, 5.2, 3.7, 1.2],
+  [6.3, 2.7, 3.0, 0.8],
+  [6.8, 4.5, 2.6, 0.7]
+]
+
+/**
+ * Reuzeneik-stam: dikke knoestige voet met wortelaanzetten en zware, schuin
+ * omhoog stekende takken — de solitaire landmark-boom op open weides.
+ */
+function oakTrunkGeometry(): THREE.BufferGeometry {
+  const parts: THREE.BufferGeometry[] = []
+  const trunk = jitterVertices(new THREE.CylinderGeometry(0.5, 1.0, 7.2, 9, 3), 0.14, 41)
+  trunk.translate(0, 3.6, 0)
+  parts.push(trunk)
+  for (let i = 0; i < 5; i++) {
+    const a = (i / 5) * Math.PI * 2 + 0.4
+    const root = new THREE.CylinderGeometry(0.14, 0.42, 1.7, 5)
+    root.translate(0, 0.7, 0)
+    root.rotateZ(1.05)
+    root.rotateY(a)
+    root.translate(Math.cos(a) * 0.55, 0.12, -Math.sin(a) * 0.55)
+    parts.push(root.toNonIndexed())
+  }
+  for (const [y, dir, len, tilt] of OAK_BRANCHES) {
+    const branch = new THREE.CylinderGeometry(0.14, 0.34, len, 6)
+    branch.translate(0, len / 2, 0)
+    branch.rotateZ(tilt)
+    branch.rotateY(dir)
+    branch.translate(0, y, 0)
+    parts.push(branch.toNonIndexed())
+  }
+  return mergeGeometries(parts)
+}
+
+/**
+ * Reuzeneik-kroon: breed, meerlagig bladerdek met plukken op de takeinden
+ * en twee groentinten via vertexkleuren (top ~14 m, breedte ~13 m).
+ */
+function oakCanopyGeometry(): THREE.BufferGeometry {
+  const parts: THREE.BufferGeometry[] = []
+  let seed = 83
+  const blob = (x: number, y: number, z: number, r: number, tint: 0 | 1): void => {
+    const g = jitterVertices(new THREE.IcosahedronGeometry(r, 1), r * 0.24, seed++)
+    g.translate(x, y, z)
+    const [cr, cg, cb] = tint ? [0.56, 0.74, 0.34] : [0.4, 0.58, 0.24]
+    parts.push(withColor(g, cr, cg, cb))
+  }
+  // Plukken op de takeinden, laag en breed.
+  for (const [y, dir, len, tilt] of OAK_BRANCHES) {
+    const bx = Math.cos(dir) * Math.sin(tilt) * len * 0.92
+    const bz = -Math.sin(dir) * Math.sin(tilt) * len * 0.92
+    const by = y + Math.cos(tilt) * len * 0.92
+    blob(bx, by + 0.5, bz, 1.9 + (seed % 3) * 0.25, (seed % 2) as 0 | 1)
+  }
+  // Centrale massa en toplaag.
+  blob(0, 9.6, 0, 3.4, 0)
+  blob(1.6, 10.9, 0.9, 2.3, 1)
+  blob(-1.8, 10.7, -0.8, 2.2, 1)
+  blob(0.3, 12.2, -0.3, 1.9, 0)
+  blob(-0.4, 8.9, 2.6, 2.1, 1)
+  blob(0.7, 8.7, -2.7, 2.0, 0)
   return mergeGeometries(parts)
 }
 
@@ -428,6 +516,8 @@ const LEAFY_COLORS = [0x5ea844, 0x6cb44d, 0x7cc058, 0x8cc95f]
 const GRASS_COLORS = [0x7fb54a, 0x93c258, 0x6da842, 0xa3c95c, 0x9aad4e]
 const BIRCH_COLORS = [0x8fd06a, 0x9ed877, 0x7cc45e, 0xa8de85]
 const AUTUMN_COLORS = [0xd97b2e, 0xc9542f, 0xe0a832, 0xb8452a, 0xcc8a3a]
+// Lichte tinten die de vertexkleuren van de eikenkroon per boom variëren.
+const OAK_TINTS = [0xffffff, 0xf0fadd, 0xfdf2d8, 0xe9f5e2]
 const WILLOW_COLORS = [0x6da653, 0x7bb35e, 0x5f9a49]
 const AUTUMN_GRASS = [0xb0a04c, 0xc2a94e, 0x9a8f42, 0x8fa04a]
 const SWAMP_GRASS = [0x4e7c3a, 0x5a8842, 0x466f34]
@@ -471,6 +561,8 @@ export class Vegetation {
   private pineCanopyGeo = pineCanopyGeometry()
   private leafyTrunkGeo = leafyTrunkGeometry()
   private leafyCanopyGeo = leafyCanopyGeometry()
+  private oakTrunkGeo = oakTrunkGeometry()
+  private oakCanopyGeo = oakCanopyGeometry()
   private birchTrunkGeo = birchTrunkGeometry()
   private birchCanopyGeo = birchCanopyGeometry()
   private willowCanopyGeo = willowCanopyGeometry()
@@ -494,6 +586,10 @@ export class Vegetation {
 
   private trunkMat = new THREE.MeshLambertMaterial({ color: 0x7d4a30, flatShading: true })
   private leafyTrunkMat = new THREE.MeshLambertMaterial({ color: 0x7a5b38, flatShading: true })
+  private oakTrunkMat = new THREE.MeshLambertMaterial({ color: 0x6d4a2f, flatShading: true })
+  // Twee groentinten zitten als vertexkleuren in de kroon; de instantiekleur
+  // (lichte tint) varieert het geheel per boom.
+  private oakCanopyMat = swayMaterial({ vertexColors: true, flatShading: true }, 0.005)
   private pineCanopyMat = swayMaterial({ flatShading: true }, 0.004)
   private leafyCanopyMat = swayMaterial({ flatShading: true }, 0.006)
   private birchTrunkMat = new THREE.MeshLambertMaterial({ vertexColors: true, flatShading: true })
@@ -648,6 +744,32 @@ export class Vegetation {
         color: colors[Math.floor(rng() * colors.length)]
       })
       treeColliders.push({ x, z, r: radius * scale })
+    }
+
+    // Solitaire reuzeneiken: landmark-bomen op open weides (max één per chunk).
+    const oaks: Placement[] = []
+    for (let i = 0; i < 5 && oaks.length === 0; i++) {
+      const x = ox + rng() * CHUNK_SIZE
+      const z = oz + rng() * CHUNK_SIZE
+      const roll = rng()
+      const h = this.world.height(x, z)
+      if (h < 2.5 || h > 26) continue
+      if (this.world.normal(x, z).y < 0.88) continue
+      if (this.world.forestness(x, z) > 0.3) continue
+      if (this.world.meadow(x, z) < 0.3) continue
+      if (this.world.path(x, z, h) > 0.25) continue
+      if (this.inClearing(x, z)) continue
+      if (roll > 0.14) continue
+      const scale = 0.85 + rng() * 0.5
+      oaks.push({
+        x,
+        y: h - 0.25,
+        z,
+        yaw: rng() * Math.PI * 2,
+        scale,
+        color: OAK_TINTS[Math.floor(rng() * OAK_TINTS.length)]
+      })
+      treeColliders.push({ x, z, r: 1.0 * scale })
     }
 
     // Struiken: bosranden en kruidenrijke veldjes.
@@ -887,6 +1009,8 @@ export class Vegetation {
     this.addInstances(chunk, this.pineCanopyGeo, this.pineCanopyMat, pines, true, true, 'pijnkroon')
     this.addInstances(chunk, this.leafyTrunkGeo, this.leafyTrunkMat, leafies, true, false, 'loofstam')
     this.addInstances(chunk, this.leafyCanopyGeo, this.leafyCanopyMat, leafies, true, true, 'loofkroon')
+    this.addInstances(chunk, this.oakTrunkGeo, this.oakTrunkMat, oaks, true, false, 'eikstam')
+    this.addInstances(chunk, this.oakCanopyGeo, this.oakCanopyMat, oaks, true, true, 'eikkroon')
     this.addInstances(chunk, this.birchTrunkGeo, this.birchTrunkMat, birches, true, false, 'berkstam')
     this.addInstances(chunk, this.birchCanopyGeo, this.birchCanopyMat, birches, true, true, 'berkkroon')
     this.addInstances(chunk, this.leafyTrunkGeo, this.leafyTrunkMat, autumns, true, false, 'herfststam')
