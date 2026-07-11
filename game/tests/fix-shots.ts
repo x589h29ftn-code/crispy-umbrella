@@ -121,13 +121,16 @@ async function main(): Promise<void> {
       }
     }
     if (!best) return null
-    // Sta stroomafwaarts naast de oever en kijk stroomopwaarts naar het verval.
-    const px = best.x + best.dirX * 11 + -best.dirZ * 4.5
-    const pz = best.z + best.dirZ * 11 + best.dirX * 4.5
-    g.player.spawn(px, pz)
-    g.player.yaw = Math.atan2(-(best.x - px), -(best.z - pz))
-    g.player.pitch = -0.05
-    return { ...best, spawnH: w.height(px, pz) }
+    // Fotomodus: camera schuin boven de rivier, stroomopwaarts kijkend naar
+    // het verval — vrij van stammen en oevers.
+    g.player.spawn(best.x, best.z)
+    g.photoMode = true
+    const camX = best.x + best.dirX * 16
+    const camZ = best.z + best.dirZ * 16
+    g.photoPos.set(camX, best.h + 7, camZ)
+    g.player.yaw = Math.atan2(-(best.x - camX), -(best.z - camZ))
+    g.player.pitch = -0.3
+    return best
   })
   console.log('Rivierplek:', JSON.stringify(rivierInfo))
   await settle(10)
@@ -166,72 +169,46 @@ async function main(): Promise<void> {
     g.player.pitch = -0.03
   })
   await settle(6)
-  // Nu de chunks er zijn: weg van boomstammen schuiven en een kijkrichting
-  // kiezen met bomen in het middenveld maar geen stam vlak voor de neus.
+  // Fotomodus: camera boven de boomtoppen, schuin over het zonverlichte
+  // herfstbladerdak kijkend — geen donkere onderkant van kronen.
   const bosInfo = await page.evaluate(() => {
     const g = (window as unknown as Record<string, any>).__game
-    const p = g.player.position
-    const offsets = [
-      [0, 0],
-      [3, 0],
-      [-3, 0],
-      [0, 3],
-      [0, -3],
-      [4, 4],
-      [-4, 4],
-      [4, -4],
-      [-4, -4]
-    ]
-    let bestOff = offsets[0]
-    let bestClear = -1
-    for (const [ox, oz] of offsets) {
-      const trees = g.vegetation.collidersNear(p.x + ox, p.z + oz)
-      let minD = 99
-      for (const t of trees) {
-        const d = Math.hypot(t.x - (p.x + ox), t.z - (p.z + oz)) - t.r
-        if (d < minD) minD = d
-      }
-      if (minD > bestClear) {
-        bestClear = minD
-        bestOff = [ox, oz]
-      }
-    }
-    g.player.spawn(p.x + bestOff[0], p.z + bestOff[1])
     const px = g.player.position.x
     const pz = g.player.position.z
-    const eyeY = g.world.height(px, pz) + 1.6
+    const h = g.world.height(px, pz)
+    // Richting met de meeste bomen op 15-60 m: daar ligt het bos.
     const trees = g.vegetation.collidersNear(px, pz).slice()
     let bestA = 0
     let bestScore = -Infinity
-    for (let a = 0; a < 24; a++) {
-      const ang = (a / 24) * Math.PI * 2
+    for (let a = 0; a < 16; a++) {
+      const ang = (a / 16) * Math.PI * 2
       const dx = -Math.sin(ang)
       const dz = -Math.cos(ang)
-      // Terreinmuren voor de neus vermijden.
-      let walls = 0
-      for (let d = 12; d <= 150; d += 12) {
-        walls += Math.max(0, g.world.height(px + dx * d, pz + dz * d) - (eyeY + d * 0.22))
-      }
-      // Stammen: geen stam < 6 m in de kijkkegel; wel graag bomen op 10-45 m.
-      let nearTrunk = 0
       let midTrees = 0
       for (const t of trees) {
         const tx = t.x - px
         const tz = t.z - pz
         const dist = Math.hypot(tx, tz)
-        if (dist < 0.5) continue
+        if (dist < 2) continue
         const dot = (tx * dx + tz * dz) / dist
-        if (dot > 0.75 && dist < 6) nearTrunk++
-        if (dot > 0.6 && dist >= 8 && dist < 45) midTrees++
+        if (dot > 0.55 && dist < 60) midTrees++
       }
-      const score = -walls * 3 - nearTrunk * 12 + Math.min(midTrees, 8)
+      // Terrein dat boven de camera uit stijgt vermijden.
+      let walls = 0
+      for (let d = 20; d <= 160; d += 20) {
+        walls += Math.max(0, g.world.height(px + dx * d, pz + dz * d) - (h + 12 + d * 0.3))
+      }
+      const score = midTrees - walls * 4
       if (score > bestScore) {
         bestScore = score
         bestA = ang
       }
     }
+    g.photoMode = true
+    g.photoPos.set(px, h + 13, pz)
     g.player.yaw = bestA
-    return { x: px, z: pz, clear: bestClear, score: bestScore }
+    g.player.pitch = -0.24
+    return { x: px, z: pz, score: bestScore }
   })
   console.log('Bosplek:', JSON.stringify(bosInfo))
   await settle(6)
