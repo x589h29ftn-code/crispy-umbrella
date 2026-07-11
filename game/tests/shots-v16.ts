@@ -101,13 +101,17 @@ async function main(): Promise<void> {
       })
       if (!best) return null
       const o = best as { x: number; z: number; d: number }
-      // Fotomodus: laag standpunt schuin op de eik, heuvels op de achtergrond.
-      g.player.spawn(o.x + 14, o.z + 6)
+      // Fotomodus: ruim standpunt dat de hele kroon vangt, boven het maaiveld.
+      g.player.spawn(o.x, o.z)
       g.photoMode = true
-      const h = g.world.height(o.x + 14, o.z + 6)
-      g.photoPos.set(o.x + 14, h + 2.2, o.z + 6)
-      g.player.yaw = Math.atan2(-(o.x - (o.x + 14)), -(o.z - (o.z + 6)))
-      g.player.pitch = 0.06
+      const camX = o.x + 20
+      const camZ = o.z + 9
+      const oakH = g.world.height(o.x, o.z)
+      const camY = Math.max(g.world.height(camX, camZ) + 2, oakH + 7.5)
+      g.photoPos.set(camX, camY, camZ)
+      g.player.yaw = Math.atan2(-(o.x - camX), -(o.z - camZ))
+      // Op kroonhoogte mikken.
+      g.player.pitch = Math.atan2(oakH + 8.5 - camY, 22)
       return o
     })
     console.log('Eik:', JSON.stringify(oakPos))

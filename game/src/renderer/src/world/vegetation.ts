@@ -240,7 +240,8 @@ const OAK_BRANCHES: [number, number, number, number][] = [
  */
 function oakTrunkGeometry(): THREE.BufferGeometry {
   const parts: THREE.BufferGeometry[] = []
-  const trunk = jitterVertices(new THREE.CylinderGeometry(0.5, 1.0, 7.2, 9, 3), 0.14, 41)
+  // Alles niet-geïndexeerd houden, anders weigert mergeGeometries de mix.
+  const trunk = jitterVertices(new THREE.CylinderGeometry(0.5, 1.0, 7.2, 9, 3).toNonIndexed(), 0.14, 41)
   trunk.translate(0, 3.6, 0)
   parts.push(trunk)
   for (let i = 0; i < 5; i++) {
