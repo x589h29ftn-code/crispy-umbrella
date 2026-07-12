@@ -128,6 +128,8 @@ window.Main = (function () {
     Post.bloom = !!G.settings.bloom;
     Post.vignette = !!G.settings.vignette;
     Post.godrays = !!G.settings.godrays;
+    Post.ssao = !!G.settings.ssao;
+    Post.dof = !!G.settings.dof;
     reflectionsOn = !!G.settings.reflections;
     applyPixelRatio();
     Post.resize();

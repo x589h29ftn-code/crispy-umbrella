@@ -13,11 +13,14 @@ window.Post = (function () {
   P.bloom = true;
   P.vignette = true;
   P.godrays = true;
+  P.ssao = true;
+  P.dof = false;
   P.bloomStrength = 0.55;
   P.godStrength = 0.8;
   const sunUV = new THREE.Vector2(0.5, 0.5);
   let sunVisible = false;
-  let godMat;
+  let godMat, depthMat, ssaoMat;
+  let rtDepth, rtAO, rtAO2;
   P.setSun = function (x, y, visible) { sunUV.set(x, y); sunVisible = visible; };
 
   const FXAA = `
@@ -60,6 +63,13 @@ window.Post = (function () {
     if (rtBrightB) rtBrightB.dispose();
     rtBrightA = new THREE.WebGLRenderTarget(bw, bh, opt);
     rtBrightB = new THREE.WebGLRenderTarget(bw, bh, opt);
+    // diepte (voor SSAO en dieptescherpte) + AO-buffers
+    if (rtDepth) rtDepth.dispose();
+    rtDepth = new THREE.WebGLRenderTarget(w, h, Object.assign({ depthBuffer: true }, opt));
+    if (rtAO) rtAO.dispose();
+    if (rtAO2) rtAO2.dispose();
+    rtAO = new THREE.WebGLRenderTarget(bw, bh, opt);
+    rtAO2 = new THREE.WebGLRenderTarget(bw, bh, opt);
   }
 
   P.init = function (theRenderer, theScene, theCamera) {
@@ -102,6 +112,40 @@ window.Post = (function () {
         }`,
     });
 
+    // lineaire diepte-render (overrideMaterial voor de scene)
+    depthMat = new THREE.ShaderMaterial({
+      uniforms: { uFar: { value: 1000 } },
+      vertexShader: 'varying float vZ;\nvoid main(){ vec4 mv = modelViewMatrix * vec4(position,1.0); vZ = -mv.z; gl_Position = projectionMatrix * mv; }',
+      fragmentShader: 'uniform float uFar; varying float vZ;\nvoid main(){ gl_FragColor = vec4(vec3(clamp(vZ/uFar,0.0,1.0)),1.0); }',
+    });
+
+    // SSAO uit diepte (screen-space, met wereldschaal-radius)
+    ssaoMat = new THREE.ShaderMaterial({
+      uniforms: { tDepth: { value: null }, res: { value: new THREE.Vector2() }, uFar: { value: 1000 }, uRadius: { value: 1.1 }, uStrength: { value: 1.1 } },
+      vertexShader: VERT,
+      fragmentShader: `
+        uniform sampler2D tDepth; uniform vec2 res; uniform float uFar, uRadius, uStrength;
+        varying vec2 vUv;
+        void main(){
+          float cz = texture2D(tDepth, vUv).r * uFar;
+          if (cz >= uFar * 0.999) { gl_FragColor = vec4(1.0); return; }
+          float radUV = uRadius / max(cz, 1.0);        // wereldradius -> schermradius
+          float occ = 0.0; float total = 0.0;
+          for (int i = 0; i < 12; i++) {
+            float a = float(i) * 2.3999632;             // gulden hoek
+            float r = (float(i) + 1.0) / 12.0;
+            vec2 off = vec2(cos(a), sin(a)) * radUV * r;
+            float sz = texture2D(tDepth, vUv + off).r * uFar;
+            float diff = cz - sz;                        // sample dichterbij = occluder
+            float rangeCheck = smoothstep(0.0, 1.0, uRadius / max(abs(diff), 0.001));
+            if (diff > 0.03 && diff < uRadius * 1.5) occ += rangeCheck;
+            total += 1.0;
+          }
+          float ao = 1.0 - (occ / total) * uStrength;
+          gl_FragColor = vec4(vec3(clamp(ao, 0.0, 1.0)), 1.0);
+        }`,
+    });
+
     // zonnestralen (radiaal uitvegen van de felle plekken naar de zon toe)
     godMat = new THREE.ShaderMaterial({
       uniforms: { tBright: { value: null }, sunUV: { value: sunUV }, aspect: { value: 1 } },
@@ -128,20 +172,37 @@ window.Post = (function () {
     compMat = new THREE.ShaderMaterial({
       uniforms: {
         tDiffuse: { value: null }, tBloom: { value: null }, tGod: { value: null },
-        res: { value: new THREE.Vector2() }, sunUV: { value: sunUV },
-        bloomStr: { value: 0.65 }, godStr: { value: 0.0 }, vig: { value: 0.9 }, sat: { value: 1.08 }, fxaaOn: { value: 1 }, flare: { value: 0 },
+        tAO: { value: null }, tDepth: { value: null },
+        res: { value: new THREE.Vector2() }, sunUV: { value: sunUV }, uFar: { value: 1000 },
+        bloomStr: { value: 0.65 }, godStr: { value: 0.0 }, vig: { value: 0.9 }, sat: { value: 1.08 },
+        fxaaOn: { value: 1 }, flare: { value: 0 }, aoOn: { value: 0 }, dofOn: { value: 0 }, dofRadius: { value: 6.0 }, dofStr: { value: 3.0 },
       },
       vertexShader: VERT,
       fragmentShader: `
-        uniform sampler2D tDiffuse, tBloom, tGod; uniform vec2 res, sunUV;
-        uniform float bloomStr, godStr, vig, sat, fxaaOn, flare; varying vec2 vUv;
+        uniform sampler2D tDiffuse, tBloom, tGod, tAO, tDepth; uniform vec2 res, sunUV;
+        uniform float bloomStr, godStr, vig, sat, fxaaOn, flare, aoOn, dofOn, dofRadius, dofStr, uFar; varying vec2 vUv;
         ${FXAA}
         float ghost(vec2 uv, vec2 p, float r, float aspect){
           vec2 d = uv - p; d.x *= aspect;
           return smoothstep(r, 0.0, length(d));
         }
+        // dieptescherpte: variabele blur op basis van afstand tot het scherpe vlak
+        vec3 dofSample(vec2 uv){
+          float z = texture2D(tDepth, uv).r;
+          float focus = texture2D(tDepth, vec2(0.5)).r;
+          float coc = clamp(abs(z - focus) * dofStr, 0.0, 1.0);
+          if (coc < 0.03) return texture2D(tDiffuse, uv).rgb;
+          vec2 r = coc * dofRadius / res;
+          vec3 s = texture2D(tDiffuse, uv).rgb;
+          for (int i = 0; i < 6; i++) {
+            float a = float(i) * 1.0471975;
+            s += texture2D(tDiffuse, uv + vec2(cos(a), sin(a)) * r).rgb;
+          }
+          return s / 7.0;
+        }
         void main(){
-          vec3 base = fxaaOn > 0.5 ? fxaa(tDiffuse, vUv, res) : texture2D(tDiffuse, vUv).rgb;
+          vec3 base = dofOn > 0.5 ? dofSample(vUv) : (fxaaOn > 0.5 ? fxaa(tDiffuse, vUv, res) : texture2D(tDiffuse, vUv).rgb);
+          if (aoOn > 0.5) base *= mix(1.0, texture2D(tAO, vUv).r, 0.85);
           vec3 bloom = texture2D(tBloom, vUv).rgb;
           vec3 god = texture2D(tGod, vUv).rgb;
           vec3 c = base + bloom * bloomStr + god * godStr * vec3(1.0, 0.92, 0.78);
@@ -184,6 +245,32 @@ window.Post = (function () {
     renderer.clear();
     renderer.render(scene, camera);
 
+    const far = camera.far;
+    const needDepth = P.ssao || P.dof;
+    // 1b. diepte-render voor SSAO/DOF
+    if (needDepth) {
+      depthMat.uniforms.uFar.value = far;
+      scene.overrideMaterial = depthMat;
+      renderer.setRenderTarget(rtDepth);
+      renderer.clear();
+      renderer.render(scene, camera);
+      scene.overrideMaterial = null;
+    }
+    // 1c. SSAO berekenen + blurren
+    if (P.ssao) {
+      ssaoMat.uniforms.tDepth.value = rtDepth.texture;
+      ssaoMat.uniforms.res.value.set(rtAO.width, rtAO.height);
+      ssaoMat.uniforms.uFar.value = far;
+      pass(ssaoMat, rtAO);
+      const aw = rtAO.width, ah = rtAO.height;
+      blurMat.uniforms.tDiffuse.value = rtAO.texture;
+      blurMat.uniforms.dir.value.set(1.2 / aw, 0);
+      pass(blurMat, rtAO2);
+      blurMat.uniforms.tDiffuse.value = rtAO2.texture;
+      blurMat.uniforms.dir.value.set(0, 1.2 / ah);
+      pass(blurMat, rtAO);
+    }
+
     const doGod = P.godrays && sunVisible;
     const needBright = P.bloom || doGod;
 
@@ -212,11 +299,16 @@ window.Post = (function () {
     compMat.uniforms.tDiffuse.value = rtScene.texture;
     compMat.uniforms.tBloom.value = rtBrightA.texture;
     compMat.uniforms.tGod.value = rtBrightB.texture;
+    compMat.uniforms.tAO.value = rtAO.texture;
+    compMat.uniforms.tDepth.value = rtDepth.texture;
     compMat.uniforms.res.value.set(rtScene.width, rtScene.height);
+    compMat.uniforms.uFar.value = far;
     compMat.uniforms.bloomStr.value = P.bloom ? P.bloomStrength : 0.0;
     compMat.uniforms.godStr.value = doGod ? P.godStrength : 0.0;
     compMat.uniforms.vig.value = P.vignette ? 0.72 : 0.0;
     compMat.uniforms.flare.value = (P.bloom && sunVisible) ? 1 : 0;
+    compMat.uniforms.aoOn.value = P.ssao ? 1 : 0;
+    compMat.uniforms.dofOn.value = P.dof ? 1 : 0;
     quad.material = compMat;
     renderer.setRenderTarget(null);
     renderer.render(fsScene, fsCam);

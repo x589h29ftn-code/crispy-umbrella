@@ -198,15 +198,16 @@ window.Sky = (function () {
     // ---- lichten ----
     sunLight = new THREE.DirectionalLight(0xfff0d8, 1.2);
     sunLight.castShadow = true;
-    sunLight.shadow.mapSize.set(2048, 2048);
+    // scherpere schaduwen: hogere resolutie + strakkere frustum rond de speler
+    sunLight.shadow.mapSize.set(3072, 3072);
     sunLight.shadow.camera.near = 10;
-    sunLight.shadow.camera.far = 400;
-    const ext = 90;
+    sunLight.shadow.camera.far = 360;
+    const ext = 62;
     sunLight.shadow.camera.left = -ext; sunLight.shadow.camera.right = ext;
     sunLight.shadow.camera.top = ext; sunLight.shadow.camera.bottom = -ext;
     sunLight.shadow.camera.updateProjectionMatrix();
-    sunLight.shadow.bias = -0.0004;
-    sunLight.shadow.normalBias = 0.08;
+    sunLight.shadow.bias = -0.0003;
+    sunLight.shadow.normalBias = 0.06;
     scene.add(sunLight);
     scene.add(sunLight.target);
 
