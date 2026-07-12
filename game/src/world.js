@@ -322,9 +322,11 @@ window.World = (function () {
     const r = Noise.hash2(x * 17 + 5, z * 13 - 3);
     const r2 = Noise.hash2(x * 29 - 1, z * 31 + 9);
     let type;
-    if (h > 54) type = 'pine';
+    if (h <= SEA + 4 && r2 < 0.6) type = 'willow';    // treurwilgen langs het water
+    else if (h > 54) type = 'pine';
     else if (r2 < 0.22) type = 'birch';
     else if (r2 < 0.3) type = 'pine';
+    else if (r > 0.9) type = 'bigoak';                // af en toe een reuzeneik
     else type = 'oak';
     return { x, z, baseY: h + 1, type, size: r };
   }
@@ -353,6 +355,34 @@ window.World = (function () {
         if (dd > 4.6) continue;
         if (dd > 3.4 && Noise.hash3(x + dx, cy + dy, z + dz) < 0.45) continue;
         set(x + dx, cy + dy, z + dz, B.LEAVES_BIRCH, true);
+      }
+    } else if (type === 'bigoak') {
+      const th = 6 + Math.floor(size * 4);
+      for (let y = 0; y < th; y++) {
+        set(x, baseY + y, z, B.LOG, false);
+        if (y > th - 3) { set(x + 1, baseY + y, z, B.LOG, false); set(x, baseY + y, z + 1, B.LOG, false); }
+      }
+      const cy = baseY + th, rad = 4;
+      for (let dy = -3; dy <= 3; dy++) for (let dx = -rad; dx <= rad; dx++) for (let dz = -rad; dz <= rad; dz++) {
+        const dd = dx * dx + dz * dz + dy * dy * 1.5;
+        if (dd > rad * rad + 2) continue;
+        if (dd > rad * rad - 2 && Noise.hash3(x + dx, cy + dy, z + dz) < 0.45) continue;
+        set(x + dx, cy + dy, z + dz, B.LEAVES, true);
+      }
+    } else if (type === 'willow') {
+      const th = 4 + Math.floor(size * 2);
+      for (let y = 0; y < th; y++) set(x, baseY + y, z, B.LOG, false);
+      const cy = baseY + th, rad = 3;
+      for (let dy = -1; dy <= 2; dy++) for (let dx = -rad; dx <= rad; dx++) for (let dz = -rad; dz <= rad; dz++) {
+        if (dx * dx + dz * dz + dy * dy > rad * rad + 1) continue;
+        set(x + dx, cy + dy, z + dz, B.LEAVES_WILLOW, true);
+      }
+      // afhangende slierten aan de rand van de kroon
+      for (let a = 0; a < 12; a++) {
+        const ang = a / 12 * Math.PI * 2;
+        const dx = Math.round(Math.cos(ang) * rad), dz = Math.round(Math.sin(ang) * rad);
+        const len = 2 + Math.floor(Noise.hash2(x + dx + a, z + dz - a) * 3);
+        for (let k = 0; k < len; k++) set(x + dx, cy - 1 - k, z + dz, B.LEAVES_WILLOW, true);
       }
     } else { // pine — kegel
       const th = 6 + Math.floor(size * 5);
@@ -457,11 +487,14 @@ window.World = (function () {
       if (surfId !== B.GRASS) continue;
 
       const meadow = Noise.fbm2(wx * 0.012 + 55.5, wz * 0.012 - 88.8, 2);
+      const forest = Noise.fbm2(wx * 0.004 + 900.2, wz * 0.004 + 41.9, 3);
       const roll = Noise.hash2(wx * 11 + 2, wz * 11 + 6);
-      const grassP = 0.10 + Noise.smoothstep(-0.3, 0.6, meadow) * 0.38;
+      const grassP = 0.18 + Noise.smoothstep(-0.3, 0.6, meadow) * 0.52;   // dichter gras
       if (roll < grassP) {
-        blocks[idx(lx, h + 1, lz)] = B.TALLGRASS;
-      } else if (roll < grassP + 0.025) {
+        // varens in het bos, elders hoog gras
+        blocks[idx(lx, h + 1, lz)] =
+          (forest > 0.25 && Noise.hash2(wx * 7 - 3, wz * 7 + 1) < 0.35) ? B.FERN : B.TALLGRASS;
+      } else if (roll < grassP + 0.03) {
         const fpatch = Noise.fbm2(wx * 0.02 + 400, wz * 0.02 + 300, 2);
         const fr = Noise.hash2(wx * 13 - 8, wz * 17 + 4);
         let fl = B.FLOWER_YELLOW;
@@ -469,14 +502,25 @@ window.World = (function () {
         else if (fpatch < -0.25) fl = B.FLOWER_BLUE;
         else if (fr < 0.3) fl = B.FLOWER_WHITE;
         blocks[idx(lx, h + 1, lz)] = fl;
-      } else if (roll > 0.986 && h < 60) {
+      } else if (forest > 0.2 && roll > grassP + 0.03 && roll < grassP + 0.05) {
+        blocks[idx(lx, h + 1, lz)] = B.MUSHROOM;     // paddenstoel in het bos
+      } else if (roll > 0.988 && h < 60) {
         // losse struik
         blocks[idx(lx, h + 1, lz)] = B.LEAVES;
-        if (Noise.hash2(wx, wz + 3) < 0.4 && lx + 1 < CS && blocks[idx(lx + 1, h + 1, lz)] === B.AIR &&
-            W.height(wx + 1, wz) === h) {
-          blocks[idx(lx + 1, h + 1, lz)] = B.LEAVES;
-        }
+      } else if (roll > 0.978 && roll < 0.984) {
+        blocks[idx(lx, h + 1, lz)] = B.PEBBLES;      // steentjes
       }
+    }
+
+    // 3b. waterlelies op stil, ondiep meerwater
+    for (let lz = 0; lz < CS; lz++) for (let lx = 0; lx < CS; lx++) {
+      const wx = x0 + lx, wz = z0 + lz;
+      const h = W.height(wx, wz);
+      if (h >= SEA || SEA - h > 3) continue;                 // alleen ondiep
+      if (riverFactor(wx, wz) > 0.15) continue;              // alleen stil water (meren)
+      if (SEA + 1 >= CH) continue;
+      if (blocks[idx(lx, SEA + 1, lz)] !== B.AIR) continue;
+      if (Noise.hash2(wx * 5 + 3, wz * 5 - 7) < 0.06) blocks[idx(lx, SEA + 1, lz)] = B.LILYPAD;
     }
 
     // 4. dorpsbebouwing eroverheen

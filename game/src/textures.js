@@ -58,6 +58,7 @@ window.Textures = (function () {
     FLOWER_RED: 16, FLOWER_YELLOW: 17, FLOWER_BLUE: 18, FLOWER_WHITE: 19, CROP: 20,
     BIRCH_SIDE: 21, BIRCH_TOP: 22, LEAVES_BIRCH: 23, LEAVES_PINE: 24, FLAME: 25, SNOW_SIDE: 26,
     STONE_BRICK: 27, STONE_BRICK_MOSSY: 28, GLASS: 29, DOOR: 30, EMBER: 31,
+    FERN: 32, MUSHROOM: 33, LILYPAD: 34, PEBBLES: 35,
   };
 
   function draw() {
@@ -444,6 +445,70 @@ window.Textures = (function () {
         px(tx, ty, x, y, 255, 90 + hot * 120, 20 + hot * 40, 0.6 + hot * 0.4);
       }
     }
+
+    // VAREN: sierlijke gevederde bladeren (getint)
+    {
+      const idx = TI.FERN, tx = idx % COLS, ty = (idx / COLS) | 0;
+      clearTile(tx, ty);
+      for (let s = 0; s < 5; s++) {
+        const bx = 5 + s * 5 + ((R() * 2) | 0);
+        const h = 12 + ((R() * 12) | 0);
+        for (let y = 0; y < h; y++) {
+          const cx = bx + Math.round(Math.sin(y * 0.4) * 1.5);
+          const v = (R() - 0.5) * 34;
+          px(tx, ty, Noise.clamp(cx, 0, 31), 31 - y, 120 + v, 168 + v, 92 + v);
+          // zijblaadjes
+          if (y % 3 === 1) { const w = Math.max(1, (h - y) / 4) | 0;
+            for (let k = 1; k <= w; k++) { px(tx, ty, Noise.clamp(cx - k, 0, 31), 31 - y, 130, 176, 98); px(tx, ty, Noise.clamp(cx + k, 0, 31), 31 - y, 130, 176, 98); } }
+        }
+      }
+    }
+
+    // PADDENSTOEL: rode hoed met witte stippen
+    {
+      const idx = TI.MUSHROOM, tx = idx % COLS, ty = (idx / COLS) | 0;
+      clearTile(tx, ty);
+      for (let y = 18; y < 30; y++) for (let x = 13; x < 19; x++) px(tx, ty, x, y, 224, 214, 196);   // steel
+      for (let y = 8; y < 20; y++) {
+        const w = Math.round(11 - Math.abs(y - 13) * 0.6);
+        for (let x = 16 - w; x <= 16 + w; x++) {
+          const top = y < 14;
+          px(tx, ty, x, y, top ? 200 : 170, top ? 40 : 30, top ? 40 : 30);
+        }
+      }
+      for (const [sx, sy] of [[12, 11], [19, 12], [16, 9], [14, 14], [20, 15]]) { px(tx, ty, sx, sy, 245, 245, 240); px(tx, ty, sx + 1, sy, 245, 245, 240); }
+    }
+
+    // WATERLELIE: rond groen blad met inkeping
+    {
+      const idx = TI.LILYPAD, tx = idx % COLS, ty = (idx / COLS) | 0;
+      clearTile(tx, ty);
+      for (let y = 0; y < TILE; y++) for (let x = 0; x < TILE; x++) {
+        const dx = x - 15.5, dy = y - 15.5, d = Math.sqrt(dx * dx + dy * dy);
+        // inkeping (pac-man vorm)
+        const ang = Math.atan2(dy, dx);
+        if (d < 14 && !(ang > -0.5 && ang < 0.5 && d > 3)) {
+          const v = (R() - 0.5) * 26 + (14 - d) * 1.5;
+          px(tx, ty, x, y, 58 + v, 112 + v, 60 + v);
+        }
+      }
+      // bloem in het midden af en toe
+      for (const [sx, sy] of [[14, 12], [17, 13], [15, 15]]) px(tx, ty, sx, sy, 240, 220, 236);
+    }
+
+    // KIEZELS: verspreide steentjes op transparant (platte decoratie)
+    {
+      const idx = TI.PEBBLES, tx = idx % COLS, ty = (idx / COLS) | 0;
+      clearTile(tx, ty);
+      for (let i = 0; i < 8; i++) {
+        const cx = 3 + R() * 26, cy = 3 + R() * 26, rr = 1.5 + R() * 3;
+        const sh = 120 + R() * 50;
+        for (let y = 0; y < TILE; y++) for (let x = 0; x < TILE; x++) {
+          const dx = x - cx, dy = y - cy, d = dx * dx + dy * dy;
+          if (d < rr * rr) { const lit = 1 - Math.sqrt(d) / rr * 0.5; px(tx, ty, x, y, sh * lit, (sh - 4) * lit, (sh - 10) * lit); }
+        }
+      }
+    }
   }
   draw();
 
@@ -492,6 +557,11 @@ window.Textures = (function () {
       case B.SLAB: return TI2.PLANKS;
       case B.DOOR: return TI2.DOOR;
       case B.CAMPFIRE: return TI2.LOG_SIDE;
+      case B.LEAVES_WILLOW: return TI2.LEAVES;
+      case B.FERN: return TI2.FERN;
+      case B.MUSHROOM: return TI2.MUSHROOM;
+      case B.LILYPAD: return TI2.LILYPAD;
+      case B.PEBBLES: return TI2.PEBBLES;
       case B.SNOW: return face === 2 ? TI2.SNOW : (face === 3 ? TI2.DIRT : TI2.SNOW_SIDE);
       case B.PATH: return face === 2 ? TI2.PATH : (face === 3 ? TI2.DIRT : TI2.PATH);
       case B.FARMLAND: return face === 2 ? TI2.FARMLAND : TI2.DIRT;

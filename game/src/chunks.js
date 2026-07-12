@@ -18,10 +18,35 @@ window.Chunks = (function () {
   const sway = { value: 0 };         // gedeelde tijd-uniform voor wind
   C.timeUniform = sway;
 
+  // Gedeelde belichtings-uniforms voor doorschijnend (backlit) blad en gras
+  const uSunDir = { value: new THREE.Vector3(0, 1, 0) };
+  const uSunColor = { value: new THREE.Color(1, 1, 1) };
+  C.foliageUniforms = { uSunDir, uSunColor };
+
+  // Injecteert doorschijnende backlight: blad/gras licht op als de zon erachter staat
+  function injectBacklight(shader, strength, useAttr) {
+    shader.uniforms.uSunDir = uSunDir;
+    shader.uniforms.uSunColor = uSunColor;
+    const decl = 'uniform vec3 uSunDir; uniform vec3 uSunColor; varying vec3 vBacklight;\n' +
+      (useAttr ? 'attribute float aTrans;\n' : '');
+    shader.vertexShader = decl + shader.vertexShader.replace('#include <project_vertex>', `
+      #include <project_vertex>
+      {
+        vec3 Vv = normalize(-mvPosition.xyz);
+        vec3 Lv = normalize((viewMatrix * vec4(uSunDir, 0.0)).xyz);
+        float trans = pow(max(dot(Vv, Lv), 0.0), 3.0);
+        float amt = ${useAttr ? 'aTrans' : '1.0'};
+        vBacklight = uSunColor * trans * amt * ${strength.toFixed(2)};
+      }`);
+    shader.fragmentShader = 'varying vec3 vBacklight;\n' + shader.fragmentShader
+      .replace('#include <tonemapping_fragment>', 'gl_FragColor.rgb += vBacklight;\n#include <tonemapping_fragment>');
+  }
+
   const opaqueMat = new THREE.MeshStandardMaterial({
     map: Textures.texture, vertexColors: true, alphaTest: 0.5,
     roughness: 0.95, metalness: 0.0,
   });
+  opaqueMat.onBeforeCompile = (shader) => injectBacklight(shader, 0.55, true);
 
   const foliageMat = new THREE.MeshStandardMaterial({
     map: Textures.texture, vertexColors: true, alphaTest: 0.4,
@@ -37,6 +62,7 @@ window.Chunks = (function () {
         transformed.x += (windA * 0.06 + windB * 0.02) * aSway;
         transformed.z += (windB * 0.05) * aSway;
       `);
+    injectBacklight(shader, 0.7, false);
   };
 
   const flameMat = new THREE.MeshBasicMaterial({
@@ -213,7 +239,7 @@ window.Chunks = (function () {
     let top = 0;
     for (let y = CH - 1; y >= 0; y--) {
       const id = chObj.blocks[lidx(lx, y, lz)];
-      if (id !== B.AIR && !G.isCross(id) && id !== B.TORCH) { top = y; break; }
+      if (id !== B.AIR && !G.isCross(id) && id !== B.TORCH && id !== B.LILYPAD && id !== B.PEBBLES) { top = y; break; }
     }
     chObj.heightmap[lx + lz * CS] = top;
   }
@@ -321,7 +347,7 @@ window.Chunks = (function () {
     };
 
     // arrays voor de drie geometrieën
-    const oPos = [], oNrm = [], oUv = [], oCol = [], oIdx = [];
+    const oPos = [], oNrm = [], oUv = [], oCol = [], oIdx = [], oTrans = [];
     const fPos = [], fNrm = [], fUv = [], fCol = [], fSway = [], fIdx = [];
     const wPos = [], wIdx = [];
     const flPos = [], flUv = [], flIdx = [];
@@ -346,6 +372,7 @@ window.Chunks = (function () {
           oUv.push(uu, vv);
           const l = f.dir[1] === 1 ? 1 : (f.dir[1] === -1 ? 0.6 : cshade);
           oCol.push(l, l, l);
+          oTrans.push(0);
         }
         quad(oPos, oIdx, base);
       }
@@ -419,8 +446,36 @@ window.Chunks = (function () {
 
           if (G.isCross(id)) {
             if (id === B.TALLGRASS) { grassTint(wx, wz, tint); emitCross(wx, y, wz, Textures.texFor(id, 0), tint, 1, 0.85); }
+            else if (id === B.FERN) { grassTint(wx, wz, tint); tint[0] *= 0.9; tint[2] *= 0.95; emitCross(wx, y, wz, Textures.TI.FERN, tint, 1, 0.9); }
             else if (id === B.CROP) { emitCross(wx, y, wz, Textures.texFor(id, 0), [1, 1, 1], 0.6, 0.8); }
+            else if (id === B.MUSHROOM) { emitCross(wx, y, wz, Textures.TI.MUSHROOM, [1, 1, 1], 0.15, 0.6); }
             else { emitCross(wx, y, wz, Textures.texFor(id, 0), [1, 1, 1], 0.5, 0.9); }
+            continue;
+          }
+
+          if (id === B.LILYPAD) {
+            const [u0, v0, u1, v1] = Textures.uv(Textures.TI.LILYPAD);
+            const yy = y - 0.08;   // net op het wateroppervlak
+            const base = fPos.length / 3;
+            fPos.push(wx + 0.05, yy, wz + 0.05, wx + 0.95, yy, wz + 0.05, wx + 0.05, yy, wz + 0.95, wx + 0.95, yy, wz + 0.95);
+            fNrm.push(0, 1, 0, 0, 1, 0, 0, 1, 0, 0, 1, 0);
+            fUv.push(u0, v0, u1, v0, u0, v1, u1, v1);
+            for (let i = 0; i < 4; i++) fCol.push(1, 1, 1);
+            fSway.push(0, 0, 0, 0);
+            fIdx.push(base, base + 1, base + 2, base + 2, base + 1, base + 3);
+            continue;
+          }
+
+          if (id === B.PEBBLES) {
+            const [u0, v0, u1, v1] = Textures.uv(Textures.TI.PEBBLES);
+            const yy = y + 0.02;
+            const base = fPos.length / 3;
+            fPos.push(wx, yy, wz, wx + 1, yy, wz, wx, yy, wz + 1, wx + 1, yy, wz + 1);
+            fNrm.push(0, 1, 0, 0, 1, 0, 0, 1, 0, 0, 1, 0);
+            fUv.push(u0, v0, u1, v0, u0, v1, u1, v1);
+            for (let i = 0; i < 4; i++) fCol.push(1, 1, 1);
+            fSway.push(0, 0, 0, 0);
+            fIdx.push(base, base + 1, base + 2, base + 2, base + 1, base + 3);
             continue;
           }
 
@@ -508,7 +563,8 @@ window.Chunks = (function () {
           }
 
           // ---- normale blokken --------------------------------------------------
-          const isLeaf = (id === B.LEAVES || id === B.LEAVES_BIRCH || id === B.LEAVES_PINE);
+          const isLeaf = G.LEAF_BLOCKS.has(id);
+          const transVal = isLeaf ? 1 : ((id === B.GRASS) ? 0.55 : 0);
           for (let fi = 0; fi < 6; fi++) {
             const f = FACES[fi];
             const nb = get(wx + f.dir[0], y + f.dir[1], wz + f.dir[2]);
@@ -524,13 +580,16 @@ window.Chunks = (function () {
             else if (isLeaf) {
               leafTint(wx, y, wz, tint); tr = tint[0]; tg = tint[1]; tb = tint[2];
               if (id === B.LEAVES_PINE) { tr *= 0.75; tg *= 0.9; tb *= 0.85; }
+              else if (id === B.LEAVES_WILLOW) { tr *= 1.05; tg *= 1.02; tb *= 0.7; }
             }
 
+            const vTrans = isLeaf ? transVal : (id === B.GRASS && f.texFace === 2 ? 0.55 : 0);
             const base = oPos.length / 3;
             for (const c of f.corners) {
               oPos.push(wx + c[0], y + c[1], wz + c[2]);
               oNrm.push(f.dir[0], f.dir[1], f.dir[2]);
               oUv.push(c[3] ? u1 : u0, c[4] ? v1 : v0);
+              oTrans.push(vTrans);
 
               // ambient occlusion per hoekpunt
               let ao = 1;
@@ -559,14 +618,14 @@ window.Chunks = (function () {
     disposeMeshes(chObj);
     chObj.torches = torches;
 
-    function makeMesh(pos, nrm, uv, col, idxArr, mat, extra) {
+    function makeMesh(pos, nrm, uv, col, idxArr, mat, attrs) {
       if (idxArr.length === 0) return null;
       const geo = new THREE.BufferGeometry();
       geo.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
       if (nrm) geo.setAttribute('normal', new THREE.Float32BufferAttribute(nrm, 3));
       if (uv) geo.setAttribute('uv', new THREE.Float32BufferAttribute(uv, 2));
       if (col) geo.setAttribute('color', new THREE.Float32BufferAttribute(col, 3));
-      if (extra) geo.setAttribute('aSway', new THREE.Float32BufferAttribute(extra, 1));
+      if (attrs) for (const a of attrs) geo.setAttribute(a.name, new THREE.Float32BufferAttribute(a.data, 1));
       geo.setIndex(idxArr);
       if (!nrm) geo.computeVertexNormals();
       geo.computeBoundingSphere();
@@ -577,9 +636,9 @@ window.Chunks = (function () {
       return mesh;
     }
 
-    const om = makeMesh(oPos, oNrm, oUv, oCol, oIdx, opaqueMat);
+    const om = makeMesh(oPos, oNrm, oUv, oCol, oIdx, opaqueMat, [{ name: 'aTrans', data: oTrans }]);
     if (om) { om.castShadow = true; om.receiveShadow = true; }
-    const fm = makeMesh(fPos, fNrm, fUv, fCol, fIdx, foliageMat, fSway);
+    const fm = makeMesh(fPos, fNrm, fUv, fCol, fIdx, foliageMat, [{ name: 'aSway', data: fSway }]);
     if (fm) { fm.receiveShadow = true; }
     makeMesh(wPos, null, null, null, wIdx, waterMat);
     makeMesh(flPos, null, flUv, null, flIdx, flameMat);

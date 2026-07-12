@@ -362,6 +362,12 @@ window.Sky = (function () {
       fog.color.lerp(cA.setRGB(0.80, 0.88, 0.82), 0.10);
     }
 
+    // doorschijnend blad/gras voeden met de zonrichting/-kleur
+    if (Chunks.foliageUniforms) {
+      Chunks.foliageUniforms.uSunDir.value.copy(_sunDir);
+      Chunks.foliageUniforms.uSunColor.value.copy(S.uniforms.uSunColor.value).multiplyScalar(Math.max(0, e));
+    }
+
     // waterschader voeden
     const wu = Chunks.waterUniforms;
     wu.uSunDir.value.copy(_sunDir);
