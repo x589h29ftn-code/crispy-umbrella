@@ -5,6 +5,9 @@ window.Weather = (function () {
   let scene = null;
 
   W.current = 'clear';       // 'clear' | 'mist' | 'rain' | 'storm'
+  W.rainbow = 0;             // 0..1 sterkte van de regenboog
+  W._rainbowT = 0;
+  W._wasRaining = false;
   W.next = 'clear';
   W.intensity = 0;           // 0..1 van het huidige weertype
   let stateTimer = 60;       // seconden tot mogelijke weersverandering
@@ -95,6 +98,15 @@ window.Weather = (function () {
     const raining = (W.current === 'rain' || W.current === 'storm');
     const target = raining ? (W.current === 'storm' ? 1 : 0.6) : 0;
     W.intensity += (target - W.intensity) * Math.min(1, dt / 6);
+
+    // ---- regenboog: verschijnt kort nadat de bui overtrekt, overdag ----
+    const daytime = nightAmt < 0.35;
+    if (W._wasRaining && W.intensity < 0.06 && daytime) W._rainbowT = 45;
+    W._wasRaining = W.intensity > 0.35;
+    if (W._rainbowT > 0) {
+      W._rainbowT -= dt;
+      W.rainbow = Math.min(1, W._rainbowT / 6) * (daytime ? 1 : 0);   // uitfaden aan het eind
+    } else W.rainbow = 0;
 
     // ---- Sky-modulatie ----
     const wm = Sky.weatherMod;

@@ -47,6 +47,7 @@ window.Sky = (function () {
     uCloudCover: { value: 0.5 },
     uCamPos: { value: new THREE.Vector3() },
     uNight: { value: 0 },
+    uRainbow: { value: 0 },
   };
   let skyTime = 0;
 
@@ -71,8 +72,17 @@ window.Sky = (function () {
       fragmentShader: `
         uniform vec3 uTopColor, uHorizonColor, uSunColor;
         uniform vec3 uSunDir, uMoonDir, uCamPos;
-        uniform float uStars, uHaze, uTime, uAurora, uCloudsOn, uCloudCover, uNight;
+        uniform float uStars, uHaze, uTime, uAurora, uCloudsOn, uCloudCover, uNight, uRainbow;
         varying vec3 vDir;
+
+        // spectrale kleur voor de regenboog (0=rood .. 1=violet)
+        vec3 spectral(float t) {
+          t = clamp(t, 0.0, 1.0);
+          return clamp(vec3(
+            smoothstep(0.6, 0.2, t) + smoothstep(0.75, 1.0, t) * 0.6,
+            smoothstep(0.0, 0.35, t) - smoothstep(0.6, 0.95, t),
+            smoothstep(0.35, 0.75, t)), 0.0, 1.0);
+        }
 
         float hash(vec3 p) {
           p = fract(p * 0.3183099 + 0.1);
@@ -147,6 +157,18 @@ window.Sky = (function () {
               float tw = hash(cell + 7.0) * 6.283;
               col += vec3(1.0) * uStars * (0.5 + 0.5 * sin(tw + uHaze * 20.0)) *
                      smoothstep(0.997, 1.0, s) * 0.9;
+            }
+          }
+
+          // regenboog tegenover de zon (primaire boog rond ~42°)
+          if (uRainbow > 0.01 && dir.y > 0.0) {
+            vec3 anti = -normalize(uSunDir);
+            float ang = degrees(acos(clamp(dot(dir, anti), -1.0, 1.0)));
+            float band = smoothstep(40.2, 40.8, ang) * (1.0 - smoothstep(42.2, 42.8, ang));
+            if (band > 0.0) {
+              float t = clamp((42.2 - ang) / (42.2 - 40.8), 0.0, 1.0);   // rood buiten, violet binnen
+              float fade = smoothstep(0.0, 0.12, dir.y);
+              col += spectral(t) * band * uRainbow * 0.5 * fade;
             }
           }
 
@@ -425,6 +447,7 @@ window.Sky = (function () {
     skyMesh.position.copy(playerPos);
     S.uniforms.uCamPos.value.copy(camera.position);
     S.uniforms.uNight.value = nightAmt;
+    S.uniforms.uRainbow.value = (window.Weather ? Weather.rainbow : 0);
     S.uniforms.uCloudsOn.value = G.settings.clouds ? 1 : 0;
     // meer bewolking bij regen/onweer
     S.uniforms.uCloudCover.value = Noise.lerp(0.45, 0.85, wm.skyDesat) + wm.hazeAdd * 0.2;

@@ -167,6 +167,7 @@ window.Main = (function () {
     Chunks.init(scene);
     Entities.reset();
     Boats.reset();
+    Fishing.reset();
     WaterSim.reset();
     if (saveData && saveData.water) WaterSim.deserialize(saveData.water);
     Crops.reset();
@@ -306,6 +307,7 @@ window.Main = (function () {
     Player.update(dt, elapsed);
     WaterSim.update(dt);
     Crops.update(dt);
+    Fishing.update(dt, Player.pos);
 
     const sunInfo = Sky.update(dt, Player.pos);
     const rainLevel = Weather.update(dt, Player.pos, sunInfo.nightAmt);
@@ -362,6 +364,7 @@ window.Main = (function () {
     Weather.init(scene, 1);
     Entities.init(scene, 1);
     Boats.init(scene, 1);
+    Fishing.init(scene, 1);
     Player.init(camera, renderer.domElement, scene);
     World.init(1337);
     Chunks.init(scene);

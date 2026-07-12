@@ -323,8 +323,11 @@ window.World = (function () {
 
     const r = Noise.hash2(x * 17 + 5, z * 13 - 3);
     const r2 = Noise.hash2(x * 29 - 1, z * 31 + 9);
+    // kersenbloesem-gebieden (aparte, zeldzame biome-vlekken in het laagland)
+    const blossom = Noise.fbm2(x * 0.0026 - 410.7, z * 0.0026 + 88.3, 3);
     let type;
     if (h <= SEA + 4 && r2 < 0.6) type = 'willow';    // treurwilgen langs het water
+    else if (blossom > 0.28 && h > SEA + 2 && h < 52) type = 'cherry';   // kersenbloesem
     else if (h > 54) type = 'pine';
     else if (r2 < 0.22) type = 'birch';
     else if (r2 < 0.3) type = 'pine';
@@ -357,6 +360,19 @@ window.World = (function () {
         if (dd > 4.6) continue;
         if (dd > 3.4 && Noise.hash3(x + dx, cy + dy, z + dz) < 0.45) continue;
         set(x + dx, cy + dy, z + dz, B.LEAVES_BIRCH, true);
+      }
+    } else if (type === 'cherry') {
+      const th = 4 + Math.floor(size * 3);
+      for (let y = 0; y < th; y++) {
+        set(x, baseY + y, z, B.LOG, false);
+        if (y === th - 1) { set(x + 1, baseY + y, z, B.LOG, false); set(x - 1, baseY + y, z, B.LOG, false); }
+      }
+      const cy = baseY + th, rad = 3;
+      for (let dy = -1; dy <= 2; dy++) for (let dx = -rad; dx <= rad; dx++) for (let dz = -rad; dz <= rad; dz++) {
+        const dd = dx * dx + dz * dz + dy * dy * 1.4;
+        if (dd > rad * rad + 1.5) continue;
+        if (dd > rad * rad - 1 && Noise.hash3(x + dx, cy + dy, z + dz) < 0.4) continue;
+        set(x + dx, cy + dy, z + dz, B.LEAVES_CHERRY, true);
       }
     } else if (type === 'bigoak') {
       const th = 6 + Math.floor(size * 4);

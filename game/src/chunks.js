@@ -573,6 +573,12 @@ window.Chunks = (function () {
             continue;
           }
 
+          if (id === B.LANTERN) {
+            emitBox(wx, y, wz, 0.32, 0.0, 0.32, 0.68, 0.6, 0.68, Textures.TI.LANTERN);
+            torches.push({ x: wx + 0.5, y: y + 0.4, z: wz + 0.5, big: false });
+            continue;
+          }
+
           if (id === B.SLAB) {
             emitBox(wx, y, wz, 0, 0, 0, 1, 0.5, 1, Textures.TI.PLANKS);
             continue;
@@ -697,6 +703,11 @@ window.Chunks = (function () {
               leafTint(wx, y, wz, tint); tr = tint[0]; tg = tint[1]; tb = tint[2];
               if (id === B.LEAVES_PINE) { tr *= 0.75; tg *= 0.9; tb *= 0.85; }
               else if (id === B.LEAVES_WILLOW) { tr *= 1.05; tg *= 1.02; tb *= 0.7; }
+              else if (id === B.LEAVES_CHERRY) {
+                // roze bloesem: eigen tint, negeer de groene seizoenskleur
+                const nn = Noise.hash3(wx | 0, y | 0, wz | 0);
+                tr = 1.0 + nn * 0.08; tg = 0.72 + nn * 0.08; tb = 0.82 + nn * 0.06;
+              }
             }
 
             const vTrans = isLeaf ? transVal : (id === B.GRASS && f.texFace === 2 ? 0.55 : 0);

@@ -61,6 +61,7 @@ window.Player = (function () {
       }
       if (e.code === 'F1') { e.preventDefault(); UI.toggleHud(); }
       if (e.code === 'F2') { e.preventDefault(); Main.captureScreenshot(); }
+      if (e.code === 'KeyC' && window.Fishing) Fishing.toggle(P.pos, P.yaw);
       if (e.code === 'KeyE') toggleBoat();
       if (e.code === 'KeyB' && !P.ridingBoat) {
         const boat = Boats.placeInFront(P.pos, P.yaw);
@@ -223,8 +224,8 @@ window.Player = (function () {
           ty + 1 > py && ty < py + SIZE.h) { return; }
     }
 
-    // fakkel/kampvuur/gewas hebben een dragend blok nodig
-    if (id === B.TORCH || id === B.CAMPFIRE || id === B.CROP) {
+    // fakkel/lantaarn/kampvuur/gewas hebben een dragend blok nodig
+    if (id === B.TORCH || id === B.LANTERN || id === B.CAMPFIRE || id === B.CROP) {
       const below = Chunks.getBlock(tx, ty - 1, tz);
       if (!G.occludes(below) && below !== B.FENCE) {
         UI.hint(id === B.CROP ? 'Graan heeft grond nodig om te groeien.' : 'Dit heeft een stevige ondergrond nodig.');

@@ -58,7 +58,7 @@ window.Textures = (function () {
     FLOWER_RED: 16, FLOWER_YELLOW: 17, FLOWER_BLUE: 18, FLOWER_WHITE: 19, CROP: 20,
     BIRCH_SIDE: 21, BIRCH_TOP: 22, LEAVES_BIRCH: 23, LEAVES_PINE: 24, FLAME: 25, SNOW_SIDE: 26,
     STONE_BRICK: 27, STONE_BRICK_MOSSY: 28, GLASS: 29, DOOR: 30, EMBER: 31,
-    FERN: 32, MUSHROOM: 33, LILYPAD: 34, PEBBLES: 35,
+    FERN: 32, MUSHROOM: 33, LILYPAD: 34, PEBBLES: 35, LEAVES_CHERRY: 36, LANTERN: 37,
   };
 
   function draw() {
@@ -168,6 +168,7 @@ window.Textures = (function () {
     leavesTile(TI.LEAVES, [92, 146, 62], 0.30);
     leavesTile(TI.LEAVES_BIRCH, [120, 166, 82], 0.33);
     leavesTile(TI.LEAVES_PINE, [58, 106, 70], 0.24);
+    leavesTile(TI.LEAVES_CHERRY, [244, 196, 216], 0.28);   // roze kersenbloesem
 
     // PLANKEN: houtnerf met naden en knoesten
     {
@@ -509,6 +510,28 @@ window.Textures = (function () {
         }
       }
     }
+
+    // LANTAARN: metalen frame met warm gloeiend glas
+    {
+      const idx = TI.LANTERN, tx = idx % COLS, ty = (idx / COLS) | 0;
+      clearTile(tx, ty);
+      // glas-kern (warm)
+      for (let y = 8; y < 26; y++) for (let x = 8; x < 24; x++) {
+        const gx = (x - 16) / 8, gy = (y - 17) / 9;
+        const glow = 1 - Math.min(1, gx * gx + gy * gy);
+        px(tx, ty, x, y, 255, 210 + glow * 40, 120 + glow * 90);
+      }
+      // metalen frame
+      const met = [70, 62, 52];
+      for (let x = 6; x < 26; x++) { px(tx, ty, x, 6, met[0], met[1], met[2]); px(tx, ty, x, 7, met[0], met[1], met[2]); px(tx, ty, x, 26, met[0], met[1], met[2]); px(tx, ty, x, 27, met[0], met[1], met[2]); }
+      for (let y = 6; y < 28; y++) { px(tx, ty, 6, y, met[0], met[1], met[2]); px(tx, ty, 7, y, met[0], met[1], met[2]); px(tx, ty, 24, y, met[0], met[1], met[2]); px(tx, ty, 25, y, met[0], met[1], met[2]); }
+      // verticale stijlen
+      for (let y = 8; y < 26; y++) { px(tx, ty, 15, y, met[0], met[1], met[2], 0.6); px(tx, ty, 16, y, met[0], met[1], met[2], 0.6); }
+      // hengsel bovenaan
+      for (let x = 13; x < 19; x++) px(tx, ty, x, 3, met[0], met[1], met[2]);
+      px(tx, ty, 13, 4, met[0], met[1], met[2]); px(tx, ty, 18, 4, met[0], met[1], met[2]);
+      px(tx, ty, 13, 5, met[0], met[1], met[2]); px(tx, ty, 18, 5, met[0], met[1], met[2]);
+    }
   }
   draw();
 
@@ -558,6 +581,8 @@ window.Textures = (function () {
       case B.DOOR: return TI2.DOOR;
       case B.CAMPFIRE: return TI2.LOG_SIDE;
       case B.LEAVES_WILLOW: return TI2.LEAVES;
+      case B.LEAVES_CHERRY: return TI2.LEAVES_CHERRY;
+      case B.LANTERN: return TI2.LANTERN;
       case B.FERN: return TI2.FERN;
       case B.MUSHROOM: return TI2.MUSHROOM;
       case B.LILYPAD: return TI2.LILYPAD;

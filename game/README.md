@@ -55,9 +55,14 @@ Firefox). Lokaal serveren kan met `python3 -m http.server` in deze map.
   het dorpskampvuur om te praten, anderen gaan slapen in hun huisje.
 - **Reizigers** — af en toe trekken reizigers met een reispet over de paden
   naar de dorpen, 's nachts met een fakkel.
-- **Natuur** — gevarieerde bomen (eik, berk, den), wuivend gras, bloemen,
-  struiken en riet. Schapen, konijnen, herten, vossen en eenden op het water,
-  zwermen vogels, overdag vlinders en 's nachts vuurvliegjes.
+- **Natuur** — gevarieerde bomen (eik, berk, den, treurwilg, reuzeneik en roze
+  kersenbloesem), wuivend gras, bloemen, struiken en riet. Schapen, konijnen,
+  herten, vossen en eenden op het water, zwermen vogels, overdag vlinders en
+  's nachts vuurvliegjes.
+- **Regenboog** — verschijnt overdag kort nadat een regenbui is overgetrokken.
+- **Lantaarns** — plaatsbaar, warm gezellig licht (naast fakkels).
+- **Vissen** — druk op <kbd>C</kbd> bij het water om je lijn uit te werpen,
+  wacht op een beet en haal binnen — een rustig tijdverdrijf.
 - **Seizoenen** — lente, zomer, herfst en winter wisselen elkaar af (instelbaar
   aantal dagen per seizoen); gras en bladeren verkleuren en in de winter ligt er
   rijp over het land.
