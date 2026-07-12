@@ -53,6 +53,38 @@ window.UI = (function () {
     toastTimer = setTimeout(() => { t.style.opacity = 0; }, 2600);
   };
 
+  // ---- pratende tekstballonnen boven bewoners ----
+  const bubbles = [];
+  const _v3 = { x: 0, y: 0, z: 0 };
+  U.speak = function (info) {
+    if (!info || U._hudHidden) return;
+    const el = document.createElement('div');
+    el.className = 'bubble';
+    el.innerHTML = '<b></b><span></span>';
+    el.querySelector('b').textContent = info.name;
+    el.querySelector('span').textContent = info.line;
+    document.body.appendChild(el);
+    bubbles.push({ el, x: info.x, y: info.y, z: info.z, until: performance.now() + 4200 });
+    if (bubbles.length > 4) { const old = bubbles.shift(); old.el.remove(); }
+  };
+  U.updateBubbles = function (camera) {
+    if (!bubbles.length) return;
+    const now = performance.now();
+    const w = window.innerWidth, h = window.innerHeight;
+    for (let i = bubbles.length - 1; i >= 0; i--) {
+      const b = bubbles[i];
+      if (now > b.until) { b.el.remove(); bubbles.splice(i, 1); continue; }
+      _v3.x = b.x; _v3.y = b.y; _v3.z = b.z;
+      const p = new THREE.Vector3(b.x, b.y, b.z).project(camera);
+      if (p.z > 1 || p.z < -1) { b.el.style.display = 'none'; continue; }
+      const sx = (p.x * 0.5 + 0.5) * w, sy = (-p.y * 0.5 + 0.5) * h;
+      b.el.style.display = 'block';
+      b.el.style.left = sx + 'px';
+      b.el.style.top = sy + 'px';
+      b.el.style.opacity = Math.min(1, (b.until - now) / 600);
+    }
+  };
+
   // ---- klok & weer in de HUD ----
   U.updateClock = function () {
     const tod = G.timeOfDay();

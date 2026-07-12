@@ -375,6 +375,7 @@ window.Main = (function () {
     Sfx.updateCampfire(dt);
 
     UI.updateClock();
+    UI.updateBubbles(camera);
 
     // autosave elke 60 s
     autosaveTimer += dt;

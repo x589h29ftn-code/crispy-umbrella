@@ -63,6 +63,11 @@ window.Player = (function () {
       if (e.code === 'F1') { e.preventDefault(); UI.toggleHud(); }
       if (e.code === 'F2') { e.preventDefault(); Main.captureScreenshot(); }
       if (e.code === 'KeyC' && window.Fishing) Fishing.toggle(P.pos, P.yaw);
+      if (e.code === 'KeyG' && window.Entities) {
+        const g = Entities.greetNearest(P.pos, P.yaw);
+        if (g) UI.speak(g);
+        else UI.hint('Er is niemand in de buurt om te groeten.');
+      }
       if (e.code === 'KeyE') {
         // eerst kijken of we in/uit een trein kunnen stappen, anders bootje
         if (P.ridingTrain) { P.ridingTrain = null; UI.hint('Uit de trein gestapt'); }

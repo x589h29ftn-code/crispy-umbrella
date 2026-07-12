@@ -62,7 +62,11 @@ Firefox). Lokaal serveren kan met `python3 -m http.server` in deze map.
 - **Regenboog** — verschijnt overdag kort nadat een regenbui is overgetrokken.
 - **Lantaarns** — plaatsbaar, warm gezellig licht (naast fakkels).
 - **Vissen** — druk op <kbd>C</kbd> bij het water om je lijn uit te werpen,
-  wacht op een beet en haal binnen — een rustig tijdverdrijf.
+  wacht op een beet en haal binnen. Er zwemmen verschillende vissoorten (van
+  een baarsje tot een zeldzame regenboogvis) en je vangsten worden bijgehouden
+  in een klein logboek.
+- **Bewoners groeten** — druk op <kbd>G</kbd> bij een bewoner: hij of zij draait
+  naar je toe, zwaait en zegt via een tekstballon iets vriendelijks (met naam).
 - **Seizoenen** — lente, zomer, herfst en winter wisselen elkaar af (instelbaar
   aantal dagen per seizoen); gras en bladeren verkleuren en in de winter ligt er
   rijp over het land.

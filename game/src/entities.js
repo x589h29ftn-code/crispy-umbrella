@@ -39,6 +39,18 @@ window.Entities = (function () {
   const SKIN = [0xe8bd98, 0xd9a878, 0xc28e62, 0xf2ccaa];
   const ROBE = [0x8a6f4d, 0x6f8a5a, 0x5a708a, 0x9a6a5a, 0x77628f, 0xa08a4a];
 
+  // namen en vriendelijke zinnetjes voor de bewoners
+  const NAMES = ['Bram', 'Lena', 'Joris', 'Fien', 'Tibbe', 'Roos', 'Sil', 'Maud', 'Kees', 'Nore',
+    'Wout', 'Els', 'Jinte', 'Bas', 'Loes', 'Ravi', 'Suze', 'Daan', 'Mira', 'Ties'];
+  const GREETINGS = [
+    'Mooie dag vandaag, hè?', 'Welkom in ons dorp!', 'Fijn dat je er bent.',
+    'Heb je de watermolen al gezien?', 'Pas op voor de regen straks.',
+    'De oogst staat er goed bij.', 'Kom je ook bij het kampvuur vanavond?',
+    'Er rijdt zo weer een trein voorbij.', 'Wat een rust hier, niet?',
+    'De bloemen bloeien prachtig dit seizoen.', 'Loop je mee naar de markt?',
+    'Ik hoorde uilen vannacht.', 'Groetjes van de buren!'];
+  function villagerName(seedN) { return NAMES[Math.floor(Noise.rng(seedN + 313)() * NAMES.length)]; }
+
   // ---- fakkel-lichtpool -------------------------------------------------------------
   const POOL_N = 8;
   const lightPool = [];
@@ -128,7 +140,7 @@ window.Entities = (function () {
         const parts = buildVillagerMesh(seedN);
         const vr = Noise.rng(seedN + 7);
         const vil = {
-          type: 'villager', parts, mesh: parts.group,
+          type: 'villager', parts, mesh: parts.group, name: villagerName(seedN),
           village: layout.v, home: sp.home, door: sp.door, campfire: layout.campfire,
           x: sp.door.x + (vr() - 0.5) * 4, z: sp.door.z + (vr() - 0.5) * 4, y: 0,
           tx: 0, tz: 0, speed: 1.15 + vr() * 0.5,
@@ -153,7 +165,7 @@ window.Entities = (function () {
         const door = { x: stall.x, z: stall.z, y: stall.y };
         const vr = Noise.rng(seedN + 3);
         const vil = {
-          type: 'villager', parts, mesh: parts.group, village: layout.v, home, door, campfire: layout.campfire,
+          type: 'villager', parts, mesh: parts.group, name: villagerName(seedN), village: layout.v, home, door, campfire: layout.campfire,
           x: stall.x + (vr() - 0.5), z: stall.z + 1.2, y: 0, tx: 0, tz: 0, speed: 1.0,
           state: 'idle', timer: vr() * 3, phase: vr() * 10, carriesTorch: false,
           workBob: 0, heading: 0, willSleep: false, station: { x: stall.x + 0.5, z: stall.z + 1.2 },
@@ -174,7 +186,7 @@ window.Entities = (function () {
       const vr = Noise.rng(seedN + 5);
       const home = layout.spawns.length ? layout.spawns[(k) % layout.spawns.length].home : { x: layout.v.cx, z: layout.v.cz, y: layout.v.groundY };
       const vil = {
-        type: 'villager', parts, mesh: parts.group, village: layout.v, home, door: home, campfire: layout.campfire,
+        type: 'villager', parts, mesh: parts.group, name: villagerName(seedN), village: layout.v, home, door: home, campfire: layout.campfire,
         x: layout.v.cx + (vr() - 0.5) * 6, z: layout.v.cz + (vr() - 0.5) * 6, y: 0, tx: 0, tz: 0,
         speed: 1.9 + vr() * 0.6, state: 'idle', timer: vr() * 2, phase: vr() * 10,
         carriesTorch: false, workBob: 0, heading: vr() * 6.28, willSleep: false, child: true,
@@ -204,8 +216,11 @@ window.Entities = (function () {
     const isDusk = e <= 0.1 && e > -0.08;
     const isNight = e <= -0.08;
 
+    // groeten: even blijven staan en zwaaien
+    if (v.waveT > 0) { v.waveT -= dt; v.state = 'greet'; if (v.waveT <= 0) v.timer = Math.min(v.timer, 0.5); }
+
     // ---- gedragskeuze ----
-    if (v.timer <= 0) {
+    if (v.timer <= 0 && v.waveT <= 0) {
       if (isDay) {
         const r = rng();
         // marktkramer keert terug naar zijn kraam
@@ -298,6 +313,15 @@ window.Entities = (function () {
       m.position.y = v.y + Math.max(0, Math.sin(v.workBob * 0.5)) * 0.03;
     }
     v.parts.head.rotation.y = Math.sin(t * 0.6 + v.phase) * 0.3;
+
+    if (v.state === 'greet') {
+      // zwaaien: arm omhoog/opzij met een wiebel, vrolijk hoofd
+      v.parts.armR.rotation.z = -1.5;
+      v.parts.armR.rotation.x = Math.sin(t * 9) * 0.5;
+      v.parts.head.rotation.y = Math.sin(t * 3) * 0.3;
+    } else if (v.parts.armR.rotation.z !== 0) {
+      v.parts.armR.rotation.z = 0;   // arm terug na het zwaaien
+    }
 
     if (v.state === 'talk' || v.state === 'chat') {
       // pratend: levendiger hoofd + af en toe een handgebaar; kijk naar gesprekspartner
@@ -1077,6 +1101,24 @@ window.Entities = (function () {
     initLeaves();
     initSparks();
     initMist();
+  };
+
+  // Groet de dichtstbijzijnde bewoner voor je: hij draait, zwaait en zegt iets terug.
+  E.greetNearest = function (playerPos, yaw) {
+    const fx = -Math.sin(yaw), fz = -Math.cos(yaw);
+    let best = null, bd = 6.5;
+    for (const v of villagers) {
+      const dx = v.x - playerPos.x, dz = v.z - playerPos.z, d = Math.hypot(dx, dz) || 1;
+      if (d > bd) continue;
+      if (d > 2 && (dx / d) * fx + (dz / d) * fz < 0.25) continue;   // grofweg voor je
+      bd = d; best = v;
+    }
+    if (!best) return null;
+    best.waveT = 2.8;
+    best.state = 'greet';
+    best.heading = Math.atan2(playerPos.x - best.x, playerPos.z - best.z);
+    return { name: best.name || 'Dorpeling', line: GREETINGS[(rng() * GREETINGS.length) | 0],
+             x: best.x, y: best.y + 2.25, z: best.z };
   };
 
   E._trains = trains;   // debug/test-toegang

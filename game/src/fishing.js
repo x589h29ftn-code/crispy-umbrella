@@ -9,9 +9,31 @@ window.Fishing = (function () {
   let biteTimer = 0, biteWindow = 0, t = 0;
   let bx = 0, bz = 0;
 
+  // vissoorten met zeldzaamheid (w = gewicht); junk telt niet mee in het logboek
+  const FISH = [
+    { n: 'een klein baarsje', e: '🐟', w: 30 },
+    { n: 'een glinsterende forel', e: '🐟', w: 22 },
+    { n: 'een dikke karper', e: '🐡', w: 16 },
+    { n: 'een snoek', e: '🐟', w: 11 },
+    { n: 'een goudvis', e: '🐠', w: 7 },
+    { n: 'een zeldzame regenboogvis', e: '🌈', w: 3 },
+    { n: 'een oude laars', e: '🥾', w: 7, junk: true },
+    { n: 'een bosje zeewier', e: '🌿', w: 6, junk: true },
+  ];
+  const FISH_SPECIES = FISH.filter((f) => !f.junk).length;
+  F.caught = new Set();     // unieke soorten die je hebt gevangen
+  F.total = 0;              // totaal aantal vangsten
+  function pickFish() {
+    let tot = 0; for (const f of FISH) tot += f.w;
+    let r = rng() * tot;
+    for (const f of FISH) { r -= f.w; if (r <= 0) return f; }
+    return FISH[0];
+  }
+
   F.init = function (theScene, seed) {
     scene = theScene;
     rng = Noise.rng((seed ^ 0x5a1b0a) >>> 0);
+    F.caught = new Set(); F.total = 0;
     if (!bobber) {
       bobber = new THREE.Group();
       const top = new THREE.Mesh(new THREE.BoxGeometry(0.14, 0.14, 0.14),
@@ -55,8 +77,15 @@ window.Fishing = (function () {
     if (biting) {
       biting = false;
       if (window.Sfx) Sfx.splash();
-      const vis = ['een glinsterende forel', 'een dikke karper', 'een klein baarsje', 'een goudvis', 'een oude laars'];
-      UI.toast('Je ving ' + vis[(rng() * vis.length) | 0] + '! 🐟');
+      const f = pickFish();
+      F.total++;
+      let msg = 'Je ving ' + f.n + '! ' + f.e;
+      if (!f.junk) {
+        const isNew = !F.caught.has(f.n);
+        F.caught.add(f.n);
+        if (isNew) msg += ' — nieuwe soort! (' + F.caught.size + '/' + FISH_SPECIES + ')';
+      }
+      UI.toast(msg);
     } else {
       UI.hint('Niets gevangen — probeer het nog eens.');
     }
