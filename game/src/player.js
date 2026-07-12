@@ -14,6 +14,7 @@ window.Player = (function () {
   P.inWater = false;
   P.hotbarSel = 0;
   P.holdingTorch = false;
+  P.ridingBoat = null;
 
   let camera = null, dom = null;
   const keys = {};
@@ -57,6 +58,12 @@ window.Player = (function () {
       if (e.code === 'KeyF') {
         P.holdingTorch = !P.holdingTorch;
         UI.hint(P.holdingTorch ? 'Fakkel in de hand 🔥' : 'Fakkel opgeborgen');
+      }
+      if (e.code === 'KeyE') toggleBoat();
+      if (e.code === 'KeyB' && !P.ridingBoat) {
+        const boat = Boats.placeInFront(P.pos, P.yaw);
+        if (boat) UI.hint('Bootje te water gelaten 🛶 — druk op E om in te stappen');
+        else UI.hint('Geen open water in de buurt om een bootje neer te zetten.');
       }
     });
     document.addEventListener('keyup', (e) => { keys[e.code] = false; });
@@ -187,6 +194,61 @@ window.Player = (function () {
     Sfx.place(id);
   }
 
+  // ---- bootjes ----
+  function toggleBoat() {
+    if (P.ridingBoat) {
+      // uitstappen: zoek een droge, beloopbare plek naast de boot
+      const b = P.ridingBoat;
+      let placed = false;
+      for (let r = 1; r <= 3 && !placed; r++) {
+        for (const [dx, dz] of [[r, 0], [-r, 0], [0, r], [0, -r], [r, r], [-r, -r]]) {
+          const ex = Math.floor(b.x) + dx + 0.5, ez = Math.floor(b.z) + dz + 0.5;
+          if (Boats.isWater(ex, ez)) continue;
+          const gy = Chunks.groundY(ex, ez);
+          const surf = Chunks.getBlock(Math.floor(ex), gy, Math.floor(ez));
+          if (surf !== undefined && surf !== B.WATER) {
+            P.pos.set(ex, gy + 1, ez); placed = true; break;
+          }
+        }
+      }
+      if (!placed) P.pos.set(b.x, Boats.WATER_Y + 1.2, b.z);
+      P.vel.set(0, 0, 0);
+      b.active = false;
+      Boats.ridden = null;
+      P.ridingBoat = null;
+      UI.hint('Uitgestapt');
+    } else {
+      const boat = Boats.nearest(P.pos, 3.6);
+      if (boat) {
+        P.ridingBoat = boat;
+        boat.active = true;
+        Boats.ridden = boat;
+        P.vel.set(0, 0, 0);
+        UI.hint('Varen! W/S peddelen, A/D sturen — E om uit te stappen 🛶');
+      }
+    }
+  }
+
+  function rideBoat(dt, t) {
+    const b = P.ridingBoat;
+    let fwd = 0, turn = 0;
+    if (keys['KeyW']) fwd += 1;
+    if (keys['KeyS']) fwd -= 0.6;
+    if (keys['KeyA']) turn -= 1;
+    if (keys['KeyD']) turn += 1;
+    Boats.drive(b, fwd, turn, dt, t);
+    const seat = Boats.seat(b);
+    P.pos.set(seat.x, seat.y, seat.z);
+    camera.position.set(seat.x, seat.y + SIZE.eye - 0.4, seat.z);
+
+    torchModel.visible = P.holdingTorch;
+    torchLight.visible = P.holdingTorch;
+    if (P.holdingTorch) {
+      torchLight.position.set(seat.x, seat.y + 1, seat.z);
+      torchLight.intensity = 1.3 + Math.sin(t * 11) * 0.15;
+    }
+  }
+
   // ---- hoofd-update ----
   P.update = function (dt, t) {
     dt = Math.min(dt, 0.05);
@@ -195,6 +257,8 @@ window.Player = (function () {
     camera.rotation.order = 'YXZ';
     camera.rotation.y = P.yaw;
     camera.rotation.x = P.pitch;
+
+    if (P.ridingBoat && P.ridingBoat.active) { rideBoat(dt, t); return; }
 
     // waterstatus
     const feet = Chunks.getBlock(Math.floor(P.pos.x), Math.floor(P.pos.y + 0.3), Math.floor(P.pos.z));

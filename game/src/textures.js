@@ -1,8 +1,9 @@
-// Procedureel gegenereerde pixel-art textures in Minecraft-stijl.
-// Alles wordt in één atlas-canvas getekend; geen externe assets nodig.
+// Procedureel gegenereerde textures in Minecraft-stijl, op 32×32 per tegel met
+// organische, meerlagige detaillering (gladde ruis + fijne korrel + kenmerken).
+// Geen externe assets nodig; alles wordt in één atlas-canvas getekend.
 window.Textures = (function () {
   const T = {};
-  const TILE = 16;      // pixels per tegel
+  const TILE = 32;      // pixels per tegel (hoge kwaliteit)
   const COLS = 8, ROWS = 8;
   const B = G.B;
 
@@ -11,27 +12,46 @@ window.Textures = (function () {
   canvas.height = ROWS * TILE;
   const ctx = canvas.getContext('2d');
 
+  const R = Noise.rng(20240711);
+
   // ---- hulpjes -------------------------------------------------------------
   function px(tx, ty, x, y, r, g, b, a) {
     ctx.fillStyle = `rgba(${r | 0},${g | 0},${b | 0},${a === undefined ? 1 : a})`;
     ctx.fillRect(tx * TILE + x, ty * TILE + y, 1, 1);
   }
-  function fillNoise(tx, ty, base, vary, rng) {
-    for (let y = 0; y < TILE; y++) for (let x = 0; x < TILE; x++) {
-      const v = (rng() - 0.5) * 2 * vary;
-      px(tx, ty, x, y, base[0] + v, base[1] + v, base[2] + v);
-    }
-  }
-  function speckle(tx, ty, color, count, rng) {
-    for (let i = 0; i < count; i++) {
-      px(tx, ty, (rng() * TILE) | 0, (rng() * TILE) | 0, color[0], color[1], color[2], color[3] !== undefined ? color[3] : 1);
-    }
-  }
-  function clearTile(tx, ty) {
-    ctx.clearRect(tx * TILE, ty * TILE, TILE, TILE);
+  function clearTile(tx, ty) { ctx.clearRect(tx * TILE, ty * TILE, TILE, TILE); }
+
+  // gladde value-noise in tegel-ruimte, 0..1
+  function vn(tx, ty, x, y, scale, off) {
+    return (Noise.noise2((tx * TILE + x) * scale + tx * 31.7 + (off || 0),
+                         (ty * TILE + y) * scale + ty * 17.3 - (off || 0)) + 1) * 0.5;
   }
 
-  // ---- tegel-tekening --------------------------------------------------------
+  // Rijk oppervlak: macro-patches + micro-variatie + fijne korrel → natuurlijke look
+  function fill(idx, base, o) {
+    o = o || {};
+    const tx = idx % COLS, ty = (idx / COLS) | 0;
+    const macroS = o.macroS || 0.10, microS = o.microS || 0.34;
+    const macroA = o.macro === undefined ? 0.14 : o.macro;
+    const microA = o.micro === undefined ? 0.07 : o.micro;
+    const grainA = o.grain === undefined ? 0.05 : o.grain;
+    const warm = o.warm || 0;   // lichte kleurzweem in schaduw/licht
+    for (let y = 0; y < TILE; y++) for (let x = 0; x < TILE; x++) {
+      const m = (vn(tx, ty, x, y, macroS) - 0.5) * 2 * macroA;
+      const mi = (vn(tx, ty, x, y, microS, 50) - 0.5) * 2 * microA;
+      const g = (R() - 0.5) * 2 * grainA;
+      const l = 1 + m + mi + g;
+      px(tx, ty, x, y, base[0] * l + m * warm * 40, base[1] * l, base[2] * l - m * warm * 30);
+    }
+  }
+  function speckle(idx, color, count) {
+    const tx = idx % COLS, ty = (idx / COLS) | 0;
+    for (let i = 0; i < count; i++) {
+      px(tx, ty, (R() * TILE) | 0, (R() * TILE) | 0, color[0], color[1], color[2],
+         color[3] !== undefined ? color[3] : 1);
+    }
+  }
+
   const TI = T.TI = {
     GRASS_TOP: 0, GRASS_SIDE: 1, DIRT: 2, STONE: 3, SAND: 4, LOG_SIDE: 5, LOG_TOP: 6, LEAVES: 7,
     PLANKS: 8, COBBLE: 9, SNOW: 10, PATH: 11, FARMLAND: 12, GRAVEL: 13, TORCH: 14, TALLGRASS: 15,
@@ -40,125 +60,212 @@ window.Textures = (function () {
   };
 
   function draw() {
-    const R = Noise.rng(20240711);
-
-    // GRAS-TOP: bijna-wit groen zodat vertex-tint de kleur en variatie bepaalt
-    fillNoise(TI.GRASS_TOP % COLS, (TI.GRASS_TOP / COLS) | 0, [178, 210, 130], 26, R);
-
-    // GRAS-ZIJKANT: aarde met groene rand bovenaan
+    // GRAS-TOP: neutraal-licht groen (vertex-tint bepaalt de kleur), met graspolletjes
+    fill(TI.GRASS_TOP, [176, 205, 128], { macroS: 0.09, macro: 0.10, micro: 0.10, grain: 0.06 });
     {
-      const tx = TI.GRASS_SIDE % COLS, ty = (TI.GRASS_SIDE / COLS) | 0;
-      fillNoise(tx, ty, [134, 96, 67], 18, R);
+      const tx = TI.GRASS_TOP % COLS, ty = (TI.GRASS_TOP / COLS) | 0;
+      for (let i = 0; i < 60; i++) {
+        const x = (R() * TILE) | 0, y = (R() * TILE) | 0;
+        const v = R() < 0.5 ? 24 : -22;
+        px(tx, ty, x, y, 176 + v, 205 + v, 128 + v * 0.6);
+      }
+    }
+
+    // GRAS-ZIJKANT: aarde met golvende groene overhang
+    {
+      const idx = TI.GRASS_SIDE, tx = idx % COLS, ty = (idx / COLS) | 0;
+      fill(idx, [132, 94, 64], { macroS: 0.11, macro: 0.16, grain: 0.06, warm: 0.4 });
       for (let x = 0; x < TILE; x++) {
-        const depth = 2 + ((R() * 3) | 0);
+        const depth = 4 + Math.round(vn(tx, ty, x, 0, 0.2) * 6);
         for (let y = 0; y < depth; y++) {
-          const v = (R() - 0.5) * 30;
-          px(tx, ty, x, y, 116 + v, 168 + v, 76 + v);
+          const edge = y >= depth - 2;
+          const v = (R() - 0.5) * 34;
+          px(tx, ty, x, y, (edge ? 96 : 112) + v, (edge ? 150 : 172) + v, (edge ? 60 : 78) + v * 0.6);
+        }
+        // hangende sprietjes
+        if (R() < 0.25) { const v = (R() - 0.5) * 30; px(tx, ty, x, depth, 108 + v, 166 + v, 72); }
+      }
+    }
+
+    // AARDE
+    fill(TI.DIRT, [134, 96, 66], { macroS: 0.12, macro: 0.14, grain: 0.07, warm: 0.5 });
+    speckle(TI.DIRT, [98, 68, 44], 60);
+    speckle(TI.DIRT, [160, 120, 82, 0.6], 30);
+
+    // STEEN: warme zandsteen met scheurtjes en lagen
+    fill(TI.STONE, [143, 133, 118], { macroS: 0.08, macro: 0.13, micro: 0.06, grain: 0.05, warm: 0.6 });
+    {
+      const tx = TI.STONE % COLS, ty = (TI.STONE / COLS) | 0;
+      // horizontale sedimentlagen
+      for (let y = 0; y < TILE; y++) {
+        if (vn(tx, ty, 0, y, 0.5, 9) > 0.72) for (let x = 0; x < TILE; x++)
+          px(tx, ty, x, y, 120, 111, 96, 0.5);
+      }
+      // scheuren
+      for (let i = 0; i < 3; i++) {
+        let cx = (R() * TILE) | 0, cy = (R() * TILE) | 0;
+        for (let s = 0; s < 10; s++) {
+          px(tx, ty, cx, cy, 96, 88, 76);
+          cx += (R() * 3 - 1) | 0; cy += (R() < 0.5 ? 1 : 0) + ((R() * 2 - 1) | 0);
+          if (cx < 0 || cx >= TILE || cy < 0 || cy >= TILE) break;
         }
       }
     }
 
-    fillNoise(TI.DIRT % COLS, (TI.DIRT / COLS) | 0, [134, 96, 67], 20, R);
-    speckle(TI.DIRT % COLS, (TI.DIRT / COLS) | 0, [98, 68, 45], 14, R);
-
-    // warm getinte rots, zoals zandsteenachtige berghellingen
-    fillNoise(TI.STONE % COLS, (TI.STONE / COLS) | 0, [141, 132, 118], 14, R);
-    speckle(TI.STONE % COLS, (TI.STONE / COLS) | 0, [114, 106, 94], 18, R);
-
-    fillNoise(TI.SAND % COLS, (TI.SAND / COLS) | 0, [219, 206, 160], 13, R);
-    speckle(TI.SAND % COLS, (TI.SAND / COLS) | 0, [199, 184, 136], 12, R);
-
-    // LOG (eik): verticale schorslijnen
+    // ZAND: fijne korrel met lichte rimpels
+    fill(TI.SAND, [222, 208, 162], { macroS: 0.14, macro: 0.08, micro: 0.05, grain: 0.05 });
     {
-      const tx = TI.LOG_SIDE % COLS, ty = (TI.LOG_SIDE / COLS) | 0;
-      fillNoise(tx, ty, [104, 82, 50], 10, R);
-      for (let x = 0; x < TILE; x += 2 + ((R() * 2) | 0)) {
-        for (let y = 0; y < TILE; y++) {
-          if (R() < 0.8) px(tx, ty, x, y, 78, 60, 36);
+      const tx = TI.SAND % COLS, ty = (TI.SAND / COLS) | 0;
+      for (let y = 0; y < TILE; y++) for (let x = 0; x < TILE; x++)
+        if (vn(tx, ty, x, y, 0.6, 3) > 0.66) px(tx, ty, x, y, 204, 189, 142, 0.5);
+    }
+
+    // EIKENSTAM: verticale schorsgroeven + mos
+    {
+      const idx = TI.LOG_SIDE, tx = idx % COLS, ty = (idx / COLS) | 0;
+      fill(idx, [110, 84, 52], { macroS: 0.12, macro: 0.10, grain: 0.05, warm: 0.4 });
+      for (let x = 0; x < TILE; x++) {
+        const groove = vn(tx, ty, x, 0, 0.35, 12);
+        if (groove > 0.62) for (let y = 0; y < TILE; y++) {
+          const v = (R() - 0.5) * 12;
+          px(tx, ty, x, y, 78 + v, 58 + v, 34 + v);
+        }
+      }
+      for (let i = 0; i < 10; i++) px(tx, ty, (R() * TILE) | 0, (R() * TILE) | 0, 96, 118, 62, 0.5);
+    }
+    {
+      const idx = TI.LOG_TOP, tx = idx % COLS, ty = (idx / COLS) | 0;
+      fill(idx, [120, 92, 56], { macro: 0.06, grain: 0.04 });
+      // jaarringen
+      for (let ring = 3; ring < 15; ring += 3) {
+        for (let a = 0; a < 64; a++) {
+          const th = a / 64 * Math.PI * 2;
+          const x = (TILE / 2 + Math.cos(th) * ring) | 0;
+          const y = (TILE / 2 + Math.sin(th) * ring) | 0;
+          px(tx, ty, x, y, 158, 128, 82, 0.7);
         }
       }
     }
-    {
-      const tx = TI.LOG_TOP % COLS, ty = (TI.LOG_TOP / COLS) | 0;
-      fillNoise(tx, ty, [104, 82, 50], 8, R);
-      ctx.fillStyle = 'rgb(178,148,98)';
-      ctx.fillRect(tx * TILE + 3, ty * TILE + 3, 10, 10);
-      ctx.strokeStyle = 'rgb(140,112,70)';
-      ctx.strokeRect(tx * TILE + 5.5, ty * TILE + 5.5, 5, 5);
-    }
 
-    // BLADEREN (eik): neutraal groen + gaatjes (alphaTest)
+    // BLADEREN: geclusterde blaadjes met dieptelaag en gaatjes
     function leavesTile(idx, base, holes) {
       const tx = idx % COLS, ty = (idx / COLS) | 0;
       clearTile(tx, ty);
       for (let y = 0; y < TILE; y++) for (let x = 0; x < TILE; x++) {
-        if (R() < holes) continue; // gaatje
-        const v = (R() - 0.5) * 44;
-        px(tx, ty, x, y, base[0] + v, base[1] + v, base[2] + v);
+        const cluster = vn(tx, ty, x, y, 0.28, 20);
+        if (cluster < holes) continue;
+        const depth = vn(tx, ty, x, y, 0.5, 40);
+        const shade = 0.72 + depth * 0.5;
+        const v = (R() - 0.5) * 30;
+        px(tx, ty, x, y, base[0] * shade + v, base[1] * shade + v, base[2] * shade + v * 0.6);
       }
+      // enkele highlight-blaadjes
+      for (let i = 0; i < 20; i++) px(tx, ty, (R() * TILE) | 0, (R() * TILE) | 0,
+        base[0] * 1.25, base[1] * 1.2, base[2] * 1.1, 0.7);
     }
-    leavesTile(TI.LEAVES, [96, 150, 66], 0.05);
-    leavesTile(TI.LEAVES_BIRCH, [122, 168, 84], 0.07);
-    leavesTile(TI.LEAVES_PINE, [64, 110, 74], 0.04);
+    leavesTile(TI.LEAVES, [92, 146, 62], 0.30);
+    leavesTile(TI.LEAVES_BIRCH, [120, 166, 82], 0.33);
+    leavesTile(TI.LEAVES_PINE, [58, 106, 70], 0.24);
 
-    // PLANKEN
+    // PLANKEN: houtnerf met naden en knoesten
     {
-      const tx = TI.PLANKS % COLS, ty = (TI.PLANKS / COLS) | 0;
-      fillNoise(tx, ty, [176, 142, 88], 9, R);
-      for (const y of [3, 7, 11, 15]) for (let x = 0; x < TILE; x++) px(tx, ty, x, y, 132, 104, 62);
-      for (const [x, y] of [[4, 1], [12, 5], [2, 9], [10, 13]]) px(tx, ty, x, y, 120, 95, 56);
+      const idx = TI.PLANKS, tx = idx % COLS, ty = (idx / COLS) | 0;
+      fill(idx, [180, 145, 90], { macroS: 0.1, macro: 0.06, grain: 0.04, warm: 0.4 });
+      // nerflijnen
+      for (let y = 0; y < TILE; y++) for (let x = 0; x < TILE; x++) {
+        const grain = vn(tx, ty, x * 0.4, y, 0.5, 5);
+        if (grain > 0.7) px(tx, ty, x, y, 150, 118, 70, 0.4);
+      }
+      // plankscheiding elke 8px
+      for (const y of [0, 8, 16, 24]) for (let x = 0; x < TILE; x++) px(tx, ty, x, y, 120, 92, 54);
+      // knoesten
+      for (const [kx, ky] of [[6, 4], [22, 12], [12, 20], [26, 28]]) {
+        for (let a = 0; a < 20; a++) {
+          const th = a / 20 * 6.28;
+          px(tx, ty, (kx + Math.cos(th) * 2) | 0, (ky + Math.sin(th) * 2) | 0, 118, 90, 52, 0.7);
+        }
+      }
+      // verticale voegen versprongen
+      for (let x = 0; x < TILE; x += 16) for (let y = 0; y < TILE; y++)
+        px(tx, ty, x + ((((y / 8) | 0) % 2) * 8), y, 128, 100, 60, 0.6);
     }
 
-    // KEIEN (cobblestone)
+    // KEIEN: ronde stenen met donkere voegen
     {
-      const tx = TI.COBBLE % COLS, ty = (TI.COBBLE / COLS) | 0;
-      fillNoise(tx, ty, [116, 116, 118], 10, R);
-      for (let i = 0; i < 7; i++) {
-        const cx = R() * TILE, cy = R() * TILE, rr = 2 + R() * 3;
-        const shade = 96 + R() * 52;
+      const idx = TI.COBBLE, tx = idx % COLS, ty = (idx / COLS) | 0;
+      fill(idx, [122, 120, 122], { macro: 0.06, grain: 0.05 });
+      // voegen als donker net
+      for (let y = 0; y < TILE; y++) for (let x = 0; x < TILE; x++) px(tx, ty, x, y, 78, 76, 78);
+      for (let i = 0; i < 12; i++) {
+        const cx = R() * TILE, cy = R() * TILE, rr = 3 + R() * 4.5;
+        const shade = 108 + R() * 46;
         for (let y = 0; y < TILE; y++) for (let x = 0; x < TILE; x++) {
-          const dx = Math.min(Math.abs(x - cx), TILE - Math.abs(x - cx));
-          const dy = Math.min(Math.abs(y - cy), TILE - Math.abs(y - cy));
-          if (dx * dx + dy * dy < rr * rr) px(tx, ty, x, y, shade + (R() - 0.5) * 14, shade + (R() - 0.5) * 14, shade + 2);
+          const dx = x - cx, dy = y - cy;
+          const d = Math.sqrt(dx * dx + dy * dy);
+          if (d < rr) {
+            const lit = 1 - d / rr * 0.5 + (dy < 0 ? 0.15 : -0.1);
+            const v = (R() - 0.5) * 12;
+            px(tx, ty, x, y, shade * lit + v, shade * lit + v, (shade + 3) * lit + v);
+          }
         }
       }
     }
 
-    fillNoise(TI.SNOW % COLS, (TI.SNOW / COLS) | 0, [238, 242, 248], 7, R);
+    // SNEEUW: subtiele glinstering
+    fill(TI.SNOW, [240, 244, 250], { macro: 0.04, micro: 0.03, grain: 0.03 });
+    speckle(TI.SNOW, [255, 255, 255], 24);
+    speckle(TI.SNOW, [210, 222, 238, 0.5], 20);
 
-    // PAD: platgetreden aarde
-    fillNoise(TI.PATH % COLS, (TI.PATH / COLS) | 0, [156, 132, 92], 14, R);
-    speckle(TI.PATH % COLS, (TI.PATH / COLS) | 0, [128, 106, 70], 16, R);
+    // PAD: platgetreden aarde met kiezels
+    fill(TI.PATH, [158, 134, 94], { macroS: 0.13, macro: 0.13, grain: 0.06, warm: 0.4 });
+    speckle(TI.PATH, [128, 106, 70], 50);
+    speckle(TI.PATH, [178, 158, 120, 0.6], 24);
 
-    // AKKER (farmland): donkere natte aarde met voren
+    // AKKER: donkere natte aarde met voren
     {
-      const tx = TI.FARMLAND % COLS, ty = (TI.FARMLAND / COLS) | 0;
-      fillNoise(tx, ty, [96, 66, 44], 12, R);
-      for (const y of [2, 6, 10, 14]) for (let x = 0; x < TILE; x++) px(tx, ty, x, y, 70, 46, 30);
+      const idx = TI.FARMLAND, tx = idx % COLS, ty = (idx / COLS) | 0;
+      fill(idx, [98, 68, 44], { macro: 0.1, grain: 0.06, warm: 0.5 });
+      for (const y of [4, 12, 20, 28]) for (let x = 0; x < TILE; x++) {
+        px(tx, ty, x, y, 68, 44, 28); px(tx, ty, x, y + 1, 120, 88, 58, 0.6);
+      }
     }
 
-    fillNoise(TI.GRAVEL % COLS, (TI.GRAVEL / COLS) | 0, [138, 132, 126], 22, R);
-
-    // FAKKEL: stokje met gloeiende kop (op transparante tegel)
+    // GRIND
     {
-      const tx = TI.TORCH % COLS, ty = (TI.TORCH / COLS) | 0;
-      clearTile(tx, ty);
-      for (let y = 6; y < 16; y++) for (let x = 7; x < 9; x++) px(tx, ty, x, y, 110, 86, 52);
-      for (let y = 3; y < 6; y++) for (let x = 7; x < 9; x++) px(tx, ty, x, y, 255, 200, 80);
-      px(tx, ty, 7, 2, 255, 240, 160); px(tx, ty, 8, 2, 255, 240, 160);
+      const idx = TI.GRAVEL, tx = idx % COLS, ty = (idx / COLS) | 0;
+      fill(idx, [140, 134, 126], { macro: 0.18, grain: 0.1 });
+      for (let i = 0; i < 40; i++) {
+        const cx = R() * TILE, cy = R() * TILE, rr = 1.5 + R() * 2.5;
+        const sh = 110 + R() * 60;
+        for (let y = 0; y < TILE; y++) for (let x = 0; x < TILE; x++)
+          if ((x - cx) ** 2 + (y - cy) ** 2 < rr * rr) px(tx, ty, x, y, sh, sh - 4, sh - 10);
+      }
     }
 
-    // HOOG GRAS (neutraal, wordt getint)
+    // FAKKEL: stok met gloeiende kop (transparant)
     {
-      const tx = TI.TALLGRASS % COLS, ty = (TI.TALLGRASS / COLS) | 0;
+      const idx = TI.TORCH, tx = idx % COLS, ty = (idx / COLS) | 0;
       clearTile(tx, ty);
-      for (let i = 0; i < 9; i++) {
-        const bx = 1 + ((R() * 14) | 0);
-        const h = 6 + ((R() * 9) | 0);
+      for (let y = 12; y < 32; y++) for (let x = 14; x < 18; x++) {
+        const v = (R() - 0.5) * 16;
+        px(tx, ty, x, y, 112 + v, 88 + v, 52 + v);
+      }
+      for (let y = 6; y < 12; y++) for (let x = 13; x < 19; x++) px(tx, ty, x, y, 255, 200, 80);
+      for (let x = 14; x < 18; x++) { px(tx, ty, x, 4, 255, 240, 170); px(tx, ty, x, 5, 255, 224, 130); }
+    }
+
+    // HOOG GRAS (getint): meerdere sprieten met buiging
+    {
+      const idx = TI.TALLGRASS, tx = idx % COLS, ty = (idx / COLS) | 0;
+      clearTile(tx, ty);
+      for (let i = 0; i < 16; i++) {
+        let bx = 2 + ((R() * 28) | 0);
+        const h = 14 + ((R() * 16) | 0);
         for (let y = 0; y < h; y++) {
-          const sway = (y > h * 0.6 && R() < 0.4) ? (R() < 0.5 ? -1 : 1) : 0;
+          if (y > h * 0.5 && R() < 0.35) bx += (R() < 0.5 ? -1 : 1);
           const v = (R() - 0.5) * 40;
-          px(tx, ty, Noise.clamp(bx + sway, 0, 15), 15 - y, 150 + v, 195 + v, 105 + v);
+          const tip = y > h - 3;
+          px(tx, ty, Noise.clamp(bx, 0, 31), 31 - y, (tip ? 176 : 150) + v, (tip ? 205 : 192) + v, 100 + v);
         }
       }
     }
@@ -167,75 +274,84 @@ window.Textures = (function () {
     function flower(idx, petal, center) {
       const tx = idx % COLS, ty = (idx / COLS) | 0;
       clearTile(tx, ty);
-      for (let y = 8; y < 16; y++) px(tx, ty, 7 + (y % 2 === 0 ? 0 : 1) * 0, y, 62, 122, 48);
-      px(tx, ty, 6, 10, 62, 122, 48); px(tx, ty, 9, 12, 70, 132, 52);
-      const cx = 7, cy = 5;
-      for (const [dx, dy] of [[-2, 0], [2, 0], [0, -2], [0, 2], [-1, -1], [1, -1], [-1, 1], [1, 1]]) {
-        px(tx, ty, cx + dx, cy + dy, petal[0], petal[1], petal[2]);
-        if (R() < 0.6) px(tx, ty, cx + dx + (R() < 0.5 ? 1 : 0), cy + dy, petal[0] * 0.9, petal[1] * 0.9, petal[2] * 0.9);
+      // steel + blaadje
+      for (let y = 16; y < 32; y++) { const v = (R() - 0.5) * 20; px(tx, ty, 15 + (y % 3 === 0 ? 1 : 0), y, 58 + v, 118 + v, 46 + v); }
+      px(tx, ty, 13, 21, 62, 122, 48); px(tx, ty, 12, 22, 62, 122, 48);
+      px(tx, ty, 18, 24, 70, 132, 52);
+      const cx = 15, cy = 10;
+      for (let a = 0; a < 8; a++) {
+        const th = a / 8 * 6.28;
+        for (let r = 2; r <= 5; r++) {
+          const x = (cx + Math.cos(th) * r) | 0, y = (cy + Math.sin(th) * r) | 0;
+          const v = (R() - 0.5) * 24;
+          px(tx, ty, x, y, petal[0] + v, petal[1] + v, petal[2] + v);
+        }
       }
-      px(tx, ty, cx, cy, center[0], center[1], center[2]);
-      px(tx, ty, cx + 1, cy, center[0], center[1], center[2]);
+      for (let y = cy - 1; y <= cy + 1; y++) for (let x = cx - 1; x <= cx + 1; x++)
+        px(tx, ty, x, y, center[0], center[1], center[2]);
     }
-    flower(TI.FLOWER_RED, [216, 62, 62], [250, 220, 110]);
-    flower(TI.FLOWER_YELLOW, [242, 208, 70], [190, 150, 40]);
-    flower(TI.FLOWER_BLUE, [110, 140, 235], [240, 240, 250]);
-    flower(TI.FLOWER_WHITE, [240, 240, 244], [250, 220, 110]);
+    flower(TI.FLOWER_RED, [214, 60, 60], [250, 220, 110]);
+    flower(TI.FLOWER_YELLOW, [242, 206, 68], [188, 148, 40]);
+    flower(TI.FLOWER_BLUE, [108, 138, 234], [240, 240, 250]);
+    flower(TI.FLOWER_WHITE, [242, 242, 246], [250, 220, 110]);
 
-    // GEWAS (tarwe)
+    // GEWAS (tarwe): rijpe aren
     {
-      const tx = TI.CROP % COLS, ty = (TI.CROP / COLS) | 0;
+      const idx = TI.CROP, tx = idx % COLS, ty = (idx / COLS) | 0;
       clearTile(tx, ty);
-      for (let i = 0; i < 6; i++) {
-        const bx = 1 + i * 2 + ((R() * 2) | 0);
-        const h = 9 + ((R() * 6) | 0);
+      for (let i = 0; i < 8; i++) {
+        const bx = 2 + i * 4 + ((R() * 2) | 0);
+        const h = 20 + ((R() * 10) | 0);
         for (let y = 0; y < h; y++) {
-          const v = (R() - 0.5) * 26;
-          const ripe = y > h - 4;
-          px(tx, ty, Noise.clamp(bx, 0, 15), 15 - y,
-            ripe ? 212 + v : 128 + v, ripe ? 188 + v : 178 + v, ripe ? 96 + v : 84 + v);
+          const v = (R() - 0.5) * 22;
+          const ripe = y > h - 8;
+          px(tx, ty, Noise.clamp(bx, 0, 31), 31 - y, (ripe ? 214 : 132) + v, (ripe ? 190 : 178) + v, (ripe ? 96 : 88) + v);
+          if (ripe && R() < 0.4) px(tx, ty, Noise.clamp(bx + (R() < 0.5 ? -1 : 1), 0, 31), 31 - y, 224, 198, 104);
         }
       }
     }
 
     // BERK
     {
-      const tx = TI.BIRCH_SIDE % COLS, ty = (TI.BIRCH_SIDE / COLS) | 0;
-      fillNoise(tx, ty, [222, 220, 210], 10, R);
-      for (let i = 0; i < 9; i++) {
-        const x = (R() * TILE) | 0, y = (R() * TILE) | 0, w = 1 + ((R() * 3) | 0);
-        for (let k = 0; k < w; k++) px(tx, ty, Math.min(15, x + k), y, 40, 40, 38);
+      const idx = TI.BIRCH_SIDE, tx = idx % COLS, ty = (idx / COLS) | 0;
+      fill(idx, [224, 222, 212], { macro: 0.05, grain: 0.04 });
+      for (let i = 0; i < 16; i++) {
+        const x = (R() * TILE) | 0, y = (R() * TILE) | 0, w = 2 + ((R() * 5) | 0);
+        for (let k = 0; k < w; k++) px(tx, ty, Math.min(31, x + k), y, 44, 42, 40);
+        px(tx, ty, x, y + 1, 44, 42, 40, 0.5);
       }
     }
     {
-      const tx = TI.BIRCH_TOP % COLS, ty = (TI.BIRCH_TOP / COLS) | 0;
-      fillNoise(tx, ty, [222, 220, 210], 8, R);
-      ctx.fillStyle = 'rgb(196,178,128)';
-      ctx.fillRect(tx * TILE + 3, ty * TILE + 3, 10, 10);
+      const idx = TI.BIRCH_TOP, tx = idx % COLS, ty = (idx / COLS) | 0;
+      fill(idx, [224, 222, 212], { macro: 0.04 });
+      for (let ring = 3; ring < 14; ring += 3) for (let a = 0; a < 64; a++) {
+        const th = a / 64 * 6.28;
+        px(tx, ty, (16 + Math.cos(th) * ring) | 0, (16 + Math.sin(th) * ring) | 0, 196, 178, 128, 0.7);
+      }
     }
 
-    // VLAM (voor fakkels, additief)
+    // VLAM (additief)
     {
-      const tx = TI.FLAME % COLS, ty = (TI.FLAME / COLS) | 0;
+      const idx = TI.FLAME, tx = idx % COLS, ty = (idx / COLS) | 0;
       clearTile(tx, ty);
       for (let y = 0; y < TILE; y++) for (let x = 0; x < TILE; x++) {
-        const dx = (x - 7.5) / 5, dy = (y - 9) / 7;
+        const dx = (x - 15.5) / 9, dy = (y - 18) / 14;
         const d = dx * dx + dy * dy * 1.4;
         if (d < 1) {
-          const a = (1 - d) * (0.65 + R() * 0.35);
+          const a = (1 - d) * (0.6 + R() * 0.4);
           const hot = 1 - Math.min(1, d * 1.6);
-          px(tx, ty, x, y, 255, 150 + hot * 100, 40 + hot * 140, a);
+          px(tx, ty, x, y, 255, 150 + hot * 100, 40 + hot * 150, a);
         }
       }
     }
 
     // BESNEEUWD GRAS-ZIJKANT
     {
-      const tx = TI.SNOW_SIDE % COLS, ty = (TI.SNOW_SIDE / COLS) | 0;
-      fillNoise(tx, ty, [134, 96, 67], 16, R);
+      const idx = TI.SNOW_SIDE, tx = idx % COLS, ty = (idx / COLS) | 0;
+      fill(idx, [134, 96, 66], { macro: 0.14, grain: 0.06, warm: 0.4 });
       for (let x = 0; x < TILE; x++) {
-        const depth = 3 + ((R() * 3) | 0);
-        for (let y = 0; y < depth; y++) px(tx, ty, x, y, 236 + (R() - 0.5) * 10, 240, 246);
+        const depth = 6 + Math.round(vn(tx, ty, x, 0, 0.2) * 6);
+        for (let y = 0; y < depth; y++) px(tx, ty, x, y, 236 + (R() - 0.5) * 12, 240, 248);
       }
     }
   }
@@ -244,28 +360,29 @@ window.Textures = (function () {
   // ---- three.js texture -------------------------------------------------------
   const texture = new THREE.CanvasTexture(canvas);
   texture.magFilter = THREE.NearestFilter;
-  texture.minFilter = THREE.NearestFilter;
-  texture.generateMipmaps = false;
-  texture.colorSpace && (texture.colorSpace = THREE.SRGBColorSpace);
-  if (!texture.colorSpace) texture.encoding = THREE.sRGBEncoding;
+  texture.minFilter = THREE.LinearMipmapLinearFilter;
+  texture.generateMipmaps = true;
+  texture.anisotropy = 4;
+  if ('colorSpace' in texture) texture.colorSpace = THREE.SRGBColorSpace;
+  else texture.encoding = THREE.sRGBEncoding;
 
   T.canvas = canvas;
   T.texture = texture;
   T.TILE = TILE; T.COLS = COLS; T.ROWS = ROWS;
 
-  // UV-rechthoek voor een tegel, met halve pixel inzet tegen bleeding
+  // UV-rechthoek voor een tegel, met kleine inzet tegen bleeding
   T.uv = function (tile) {
     const tx = tile % COLS, ty = (tile / COLS) | 0;
-    const eps = 0.02 / COLS;
+    const eps = 0.5 / (COLS * TILE);
     return [
       tx / COLS + eps, 1 - (ty + 1) / ROWS + eps,
       (tx + 1) / COLS - eps, 1 - ty / ROWS - eps,
     ];
   };
 
-  // Welke tegel hoort bij welk blokvlak?  face: 0 +x 1 -x 2 +y 3 -y 4 +z 5 -z
+  // face: 0 +x 1 -x 2 +y 3 -y 4 +z 5 -z
   T.texFor = function (block, face) {
-    const B = G.B, TI2 = TI;
+    const TI2 = TI;
     switch (block) {
       case B.GRASS: return face === 2 ? TI2.GRASS_TOP : (face === 3 ? TI2.DIRT : TI2.GRASS_SIDE);
       case B.DIRT: return TI2.DIRT;
@@ -293,7 +410,6 @@ window.Textures = (function () {
     }
   };
 
-  // Tekent een tegel op een klein canvas (voor hotbar-iconen)
   T.drawIcon = function (targetCanvas, block) {
     const c = targetCanvas.getContext('2d');
     c.imageSmoothingEnabled = false;
@@ -301,7 +417,6 @@ window.Textures = (function () {
     const tx = tile % COLS, ty = (tile / COLS) | 0;
     c.clearRect(0, 0, targetCanvas.width, targetCanvas.height);
     c.drawImage(canvas, tx * TILE, ty * TILE, TILE, TILE, 0, 0, targetCanvas.width, targetCanvas.height);
-    // Grastegel groen tinten in het icoon
     if (block === G.B.GRASS || block === G.B.TALLGRASS) {
       c.globalCompositeOperation = 'multiply';
       c.fillStyle = 'rgb(120,190,90)';

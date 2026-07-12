@@ -69,6 +69,7 @@ window.Main = (function () {
     Chunks.reset ? Chunks.reset() : null;
     Chunks.init(scene);
     Entities.reset();
+    Boats.reset();
 
     if (saveData && saveData.player) Player.deserialize(saveData.player);
     else Player.spawn();
@@ -185,6 +186,7 @@ window.Main = (function () {
     const sunInfo = Sky.update(dt, Player.pos);
     const rainLevel = Weather.update(dt, Player.pos, sunInfo.nightAmt);
     Entities.update(dt, elapsed, Player.pos, sunInfo, camera);
+    Boats.update(dt, Player.pos);
 
     // onder water: dichte blauwe mist
     if (Player.eyeInWater()) {
@@ -217,6 +219,7 @@ window.Main = (function () {
     Sky.init(scene, camera, renderer);
     Weather.init(scene, 1);
     Entities.init(scene, 1);
+    Boats.init(scene, 1);
     Player.init(camera, renderer.domElement, scene);
     World.init(1337);
     Chunks.init(scene);
