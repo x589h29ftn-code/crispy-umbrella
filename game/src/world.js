@@ -12,7 +12,11 @@ window.World = (function () {
   let heightCache = new Map();
   let villageRawCache = new Map();
   let villageLayoutCache = new Map();
+  let landmarkRawCache = new Map();
+  let landmarkLayoutCache = new Map();
   W.waterfallBases = new Map();   // "x,z" -> y : voet van een berg-waterval (voor nevel)
+
+  const LANDMARK_CELL = 208;      // grof raster voor bezienswaardigheden
 
   W.init = function (seed) {
     G.seed = seed >>> 0;
@@ -20,6 +24,8 @@ window.World = (function () {
     heightCache = new Map();
     villageRawCache = new Map();
     villageLayoutCache = new Map();
+    landmarkRawCache = new Map();
+    landmarkLayoutCache = new Map();
     W.waterfallBases = new Map();
   };
 
@@ -38,6 +44,19 @@ window.World = (function () {
   W.brookFactor = brookFactor;
   // Gecombineerde "hoeveel water op dit punt" voor collision/lelie-checks
   W.waterFactor = function (x, z) { return Math.max(riverFactor(x, z), brookFactor(x, z) * 0.85); };
+
+  // ---- biomes (temperatuur/vochtigheid) --------------------------------------
+  // 'normal' laat de bestaande logica (weides, bossen, lavendel, kersen) intact.
+  W.biomeAt = function (x, z) {
+    const temp = Noise.fbm2(x * 0.0016 + 12.3, z * 0.0016 - 88.1, 3);
+    const humid = Noise.fbm2(x * 0.0016 - 300.7, z * 0.0016 + 210.4, 3);
+    const mush = Noise.fbm2(x * 0.006 + 555.5, z * 0.006 - 111.1, 2);
+    if (mush > 0.52) return 'mushroom';
+    if (temp > 0.34 && humid < -0.04) return 'desert';
+    if (temp > 0.22 && humid >= -0.04 && humid < 0.12) return 'savanna';
+    if (humid > 0.42 && temp < 0.16) return 'swamp';
+    return 'normal';
+  };
 
   function baseHeight(x, z) {
     // Continenten — flink omhoog gebiast zodat het land duidelijk bóven het
@@ -413,11 +432,157 @@ window.World = (function () {
       }
     }
 
-    const layout = { blocks: bm, spawns, v, campfire };
+    // marktkraampjes op het plein (doek-luifel op palen met een toonbank)
+    const market = [];
+    const nStalls = 2 + ((rng() * 2) | 0);
+    for (let i = 0; i < nStalls; i++) {
+      const ang = rng() * Math.PI * 2, r = 4 + rng() * 3;
+      const mx = Math.round(v.cx + Math.cos(ang) * r), mz = Math.round(v.cz + Math.sin(ang) * r);
+      // 4 palen
+      for (const [ox, oz] of [[0, 0], [1, 0], [0, 1], [1, 1]]) { bmSet(bm, mx + ox, gy + 1, mz + oz, B.FENCE); bmSet(bm, mx + ox, gy + 2, mz + oz, B.FENCE); }
+      // doek-luifel
+      for (const [ox, oz] of [[0, 0], [1, 0], [0, 1], [1, 1], [-0.0, 0]]) bmSet(bm, mx + ox, gy + 3, mz + oz, B.CLOTH);
+      // toonbank + waar
+      bmSet(bm, mx, gy + 1, mz, B.SLAB); bmSet(bm, mx + 1, gy + 1, mz, B.SLAB);
+      bmSet(bm, mx, gy + 2, mz, B.CROP);
+      market.push({ x: mx + 0.5, z: mz + 0.5, y: gy + 1 });
+    }
+
+    // klokkentoren aan de rand van het plein
+    {
+      const ang = rng() * Math.PI * 2, r = 7 + rng() * 3;
+      const tx = Math.round(v.cx + Math.cos(ang) * r), tz = Math.round(v.cz + Math.sin(ang) * r);
+      const H = 8;
+      for (let y = 1; y <= H; y++) for (const [ox, oz] of [[0, 0], [1, 0], [0, 1], [1, 1]]) {
+        bmSet(bm, tx + ox, gy + y, tz + oz, (y === H) ? B.PLANKS : (Noise.hash3(tx + ox, gy + y, tz + oz) < 0.2 ? B.STONE_BRICK_MOSSY : B.STONE_BRICK));
+      }
+      // open klokkenverdieping
+      for (const [ox, oz] of [[0, 0], [1, 0], [0, 1], [1, 1]]) bmSet(bm, tx + ox, gy + H - 1, tz + oz, B.AIR);
+      // de klok + spits
+      bmSet(bm, tx, gy + H - 1, tz, B.LANTERN);
+      bmSet(bm, tx, gy + H + 1, tz, B.PLANKS); bmSet(bm, tx + 1, gy + H + 1, tz + 1, B.PLANKS);
+    }
+
+    // omheinde boerderij-wei met een poortje
+    {
+      const ang = rng() * Math.PI * 2, r = 13 + rng() * 4;
+      const fx = Math.round(v.cx + Math.cos(ang) * r), fz = Math.round(v.cz + Math.sin(ang) * r);
+      const w = 3, d = 3;
+      for (let dx = -w; dx <= w; dx++) for (let dz = -d; dz <= d; dz++) {
+        const edge = Math.abs(dx) === w || Math.abs(dz) === d;
+        if (edge) bmSet(bm, fx + dx, gy + 1, fz + dz, (dx === 0 && dz === -d) ? B.FENCE_GATE : B.FENCE);
+      }
+      // wat hooi (doek) en een drinkbak
+      bmSet(bm, fx, gy + 1, fz, B.CLOTH);
+      bmSet(bm, fx + 1, gy + 1, fz + 1, B.WATER);
+      v.pen = { x: fx + 0.5, z: fz + 0.5, y: gy + 1, r: w };
+    }
+
+    const layout = { blocks: bm, spawns, v, campfire, market, pen: v.pen };
     villageLayoutCache.set(v.key, layout);
     return layout;
   }
   W.villageLayout = villageLayout;
+
+  // ---- bezienswaardigheden (torens, ruïnes, standbeelden, boogbruggen) ------------
+  function landmarkRaw(cellX, cellZ) {
+    const key = cellX + ',' + cellZ;
+    if (landmarkRawCache.has(key)) return landmarkRawCache.get(key);
+    let l = null;
+    const r = Noise.hash2(cellX * 8317 + 41, cellZ * 2609 - 13);
+    if (r < 0.4) {
+      const jx = Noise.hash2(cellX * 53 + 7, cellZ * 97 + 3);
+      const jz = Noise.hash2(cellX * 89 + 1, cellZ * 61 + 9);
+      const cx = cellX * LANDMARK_CELL + 40 + Math.floor(jx * (LANDMARK_CELL - 80));
+      const cz = cellZ * LANDMARK_CELL + 40 + Math.floor(jz * (LANDMARK_CELL - 80));
+      const v = W.nearestVillage(cx, cz, VILLAGE_R + 34);
+      if (!(v && Math.hypot(v.cx - cx, v.cz - cz) < VILLAGE_R + 34)) {
+        const h = baseHeight(cx, cz);
+        const river = riverFactor(cx, cz);
+        const tsel = Noise.hash2(cellX * 13 - 5, cellZ * 17 + 2);
+        let type = null;
+        if (river > 0.3 && h < SEA + 5) type = 'bridge';
+        else if (h > SEA + 2 && h < SEA + 66 && river < 0.2) type = tsel < 0.4 ? 'tower' : (tsel < 0.75 ? 'ruin' : 'statue');
+        if (type) l = { cx, cz, groundY: Math.round(h), type, cellX, cellZ, key, seed: ((cellX * 40009) ^ (cellZ * 70001)) >>> 0 };
+      }
+    }
+    landmarkRawCache.set(key, l);
+    return l;
+  }
+  W.landmarkRaw = landmarkRaw;
+
+  function landmarkLayout(l) {
+    if (landmarkLayoutCache.has(l.key)) return landmarkLayoutCache.get(l.key);
+    const bm = new Map();
+    const set = (x, y, z, id) => { if (y >= 0 && y < CH) bm.set(x + ',' + y + ',' + z, id); };
+    const rng = Noise.rng(l.seed);
+    const gy = l.groundY, cx = l.cx, cz = l.cz;
+
+    if (l.type === 'tower') {
+      const rad = 2, H = 9 + ((rng() * 6) | 0);
+      // fundering
+      for (let dx = -rad; dx <= rad; dx++) for (let dz = -rad; dz <= rad; dz++) set(cx + dx, gy, cz + dz, B.COBBLE);
+      for (let y = 1; y <= H; y++) {
+        for (let dx = -rad; dx <= rad; dx++) for (let dz = -rad; dz <= rad; dz++) {
+          const ring = Math.max(Math.abs(dx), Math.abs(dz)) === rad;
+          if (!ring) { if (y === H) set(cx + dx, gy + y, cz + dz, B.STONE_BRICK); continue; }  // dak
+          const mossy = Noise.hash3(cx + dx, gy + y, cz + dz) < 0.25;
+          set(cx + dx, gy + y, cz + dz, mossy ? B.STONE_BRICK_MOSSY : B.STONE_BRICK);
+        }
+        // ramen
+        if (y % 3 === 2) { set(cx + rad, gy + y, cz, B.GLASS); set(cx - rad, gy + y, cz, B.GLASS); set(cx, gy + y, cz + rad, B.GLASS); set(cx, gy + y, cz - rad, B.GLASS); }
+      }
+      // deuropening
+      set(cx, gy + 1, cz + rad, B.AIR); set(cx, gy + 2, cz + rad, B.AIR);
+      // kantelen op het dak
+      for (let dx = -rad; dx <= rad; dx++) for (let dz = -rad; dz <= rad; dz++) {
+        if (Math.max(Math.abs(dx), Math.abs(dz)) === rad && ((dx + dz) & 1) === 0) set(cx + dx, gy + H + 1, cz + dz, B.STONE_BRICK);
+      }
+      set(cx, gy + H, cz, B.LANTERN);
+    } else if (l.type === 'ruin') {
+      const w = 3 + ((rng() * 3) | 0), d = 2 + ((rng() * 3) | 0);
+      for (let dx = -w; dx <= w; dx++) for (let dz = -d; dz <= d; dz++) set(cx + dx, gy, cz + dz, rng() < 0.5 ? B.COBBLE : B.STONE_BRICK_MOSSY);
+      for (let dx = -w; dx <= w; dx++) for (let dz = -d; dz <= d; dz++) {
+        const edge = Math.abs(dx) === w || Math.abs(dz) === d;
+        if (!edge) continue;
+        const hh = 1 + ((Noise.hash3(cx + dx, 7, cz + dz) * 4) | 0);   // afgebrokkelde muur
+        for (let y = 1; y <= hh; y++) if (Noise.hash3(cx + dx, gy + y, cz + dz) > 0.2) set(cx + dx, gy + y, cz + dz, B.STONE_BRICK_MOSSY);
+      }
+      // een losstaande gebroken zuil
+      const px = cx + (w - 1), pz = cz - (d - 1);
+      for (let y = 1; y <= 4; y++) set(px, gy + y, pz, B.STONE_BRICK);
+    } else if (l.type === 'statue') {
+      // sokkel
+      for (let dx = -1; dx <= 1; dx++) for (let dz = -1; dz <= 1; dz++) { set(cx + dx, gy + 1, cz + dz, B.STONE_BRICK); set(cx + dx, gy + 2, cz + dz, B.STONE_BRICK); }
+      // figuur van keien
+      set(cx, gy + 3, cz, B.COBBLE); set(cx, gy + 4, cz, B.COBBLE);   // lijf
+      set(cx, gy + 5, cz, B.COBBLE);                                   // hoofd
+      set(cx + 1, gy + 4, cz, B.COBBLE); set(cx - 1, gy + 4, cz, B.COBBLE);  // armen
+    } else if (l.type === 'bridge') {
+      // richting bepalen: overspan loodrecht op de rivierloop
+      const gX = riverFactor(cx + 2, cz) - riverFactor(cx - 2, cz);
+      const gZ = riverFactor(cx, cz + 2) - riverFactor(cx, cz - 2);
+      const alongX = Math.abs(gX) <= Math.abs(gZ);   // rivier langs z → brug langs x
+      const deckY = SEA + 2, half = 7;
+      for (let s = -half; s <= half; s++) {
+        const bx = alongX ? cx + s : cx;
+        const bz = alongX ? cz : cz + s;
+        // dek met lichte boog
+        const arch = Math.round((1 - (s * s) / (half * half)) * 2);
+        const y = deckY + arch;
+        for (const [ox, oz] of alongX ? [[0, -1], [0, 0], [0, 1]] : [[-1, 0], [0, 0], [1, 0]]) set(bx + ox, y, bz + oz, B.STONE_BRICK);
+        // leuningen
+        const rail = alongX ? [[0, -1], [0, 1]] : [[-1, 0], [1, 0]];
+        for (const [ox, oz] of rail) set(bx + ox, y + 1, bz + oz, B.FENCE);
+        // pijler in het midden
+        if (s === 0) for (let y2 = SEA - 3; y2 < y; y2++) { set(bx, y2, bz, B.COBBLE); }
+      }
+    }
+    const layout = { blocks: bm, l };
+    landmarkLayoutCache.set(l.key, layout);
+    return layout;
+  }
+  W.landmarkLayout = landmarkLayout;
 
   // ---- bomen ---------------------------------------------------------------------
   // Deterministisch: bestaat er een boom met voet op kolom (x,z)?
@@ -447,6 +612,20 @@ window.World = (function () {
 
     const r = Noise.hash2(x * 17 + 5, z * 13 - 3);
     const r2 = Noise.hash2(x * 29 - 1, z * 31 + 9);
+    // biome-specifieke begroeiing
+    const biome = W.biomeAt(x, z);
+    if (biome === 'desert') return null;                     // geen bomen (cactussen via veg-stap)
+    if (biome === 'savanna') {
+      if (roll > density * 0.35) return null;                // schaars
+      return { x, z, baseY: h + 1, type: 'acacia', size: r };
+    }
+    if (biome === 'mushroom') {
+      if (roll > density * 0.5) return null;
+      return { x, z, baseY: h + 1, type: 'giantmushroom', size: r };
+    }
+    if (biome === 'swamp') {
+      return { x, z, baseY: h + 1, type: 'willow', size: r };   // dicht wilgenmoeras
+    }
     // kersenbloesem-gebieden (aparte, zeldzame biome-vlekken in het laagland)
     const blossom = Noise.fbm2(x * 0.0026 - 410.7, z * 0.0026 + 88.3, 3);
     let type;
@@ -527,6 +706,36 @@ window.World = (function () {
         const len = 2 + Math.floor(Noise.hash2(x + dx + a, z + dz - a) * 3);
         for (let k = 0; k < len; k++) set(x + dx, cy - 1 - k, z + dz, B.LEAVES_WILLOW, true);
       }
+    } else if (type === 'acacia') {
+      // savanne-acacia: rechte stam met een brede, platte kroon
+      const th = 6 + Math.floor(size * 3);
+      const lean = size > 0.5 ? 1 : -1;
+      let ax = x, az = z;
+      for (let y = 0; y < th; y++) { if (y === (th >> 1)) { ax += lean; } set(ax, baseY + y, az, B.LOG, false); }
+      const cy = baseY + th, rad = 3;
+      for (let dx = -rad; dx <= rad; dx++) for (let dz = -rad; dz <= rad; dz++) {
+        if (dx * dx + dz * dz > rad * rad + 1) continue;
+        set(ax + dx, cy, az + dz, B.LEAVES, true);
+        if ((dx * dx + dz * dz) < 2) set(ax + dx, cy + 1, az + dz, B.LEAVES, true);
+      }
+    } else if (type === 'giantmushroom') {
+      // reuzenpaddenstoel: dikke steel met een brede, gloeiende hoed
+      const th = 4 + Math.floor(size * 4);
+      for (let y = 0; y < th; y++) {
+        set(x, baseY + y, z, B.MUSHROOM_STEM, false);
+        if (size > 0.5) { set(x + 1, baseY + y, z, B.MUSHROOM_STEM, false); set(x, baseY + y, z + 1, B.MUSHROOM_STEM, false); set(x + 1, baseY + y, z + 1, B.MUSHROOM_STEM, false); }
+      }
+      const cy = baseY + th, rad = 3 + (size > 0.5 ? 1 : 0);
+      const ox = size > 0.5 ? 0.5 : 0;
+      for (let dx = -rad; dx <= rad; dx++) for (let dz = -rad; dz <= rad; dz++) {
+        const dd = dx * dx + dz * dz;
+        if (dd > rad * rad + 1) continue;
+        const cxr = Math.round(x + ox), czr = Math.round(z + ox);
+        set(cxr + dx, cy, czr + dz, B.MUSHROOM_CAP, true);
+        // opstaande rand
+        if (dd > (rad - 1) * (rad - 1)) set(cxr + dx, cy + 1, czr + dz, B.MUSHROOM_CAP, true);
+      }
+      set(Math.round(x + ox), cy + 1, Math.round(z + ox), B.MUSHROOM_CAP, true);
     } else if (type === 'palm') {
       // gebogen stam met een kroon van palmbladeren
       const th = 6 + Math.floor(size * 4);
@@ -596,6 +805,11 @@ window.World = (function () {
       else if (h >= stoneLine) { surf = B.STONE; under = B.STONE; }
       else if (h <= SEA + 1 + surfNoise * 1.5) { surf = B.SAND; under = B.SAND; }
       else if (rf > 0.25 && h <= SEA + 3) { surf = B.SAND; under = B.SAND; }
+
+      // biome-oppervlak (alleen op begaanbaar grasland, niet op sneeuw/steen/strand)
+      const biome = (surf === B.GRASS) ? W.biomeAt(wx, wz) : 'normal';
+      if (biome === 'desert') { surf = B.SAND; under = B.SAND; }
+      else if (biome === 'mushroom') { surf = B.MYCELIUM; }
 
       // wandelpaden door het landschap
       if (surf === B.GRASS) {
@@ -674,6 +888,24 @@ window.World = (function () {
         }
       }
 
+      const bio = W.biomeAt(wx, wz);
+      // woestijn: cactussen en dorre struiken op het zand
+      if (surfId === B.SAND && bio === 'desert' && h > SEA + 1) {
+        const rr = Noise.hash2(wx * 11 + 2, wz * 11 + 6);
+        if (rr < 0.010) {
+          const ch = 2 + ((Noise.hash2(wx * 3, wz * 5) * 2) | 0);
+          for (let k = 0; k < ch && h + 1 + k < CH; k++) blocks[idx(lx, h + 1 + k, lz)] = B.CACTUS;
+        } else if (rr < 0.03) blocks[idx(lx, h + 1, lz)] = B.DEAD_BUSH;
+        continue;
+      }
+      // paddenstoelbiome: mycelium met kleine paddenstoelen
+      if (surfId === B.MYCELIUM) {
+        const rr = Noise.hash2(wx * 11 + 2, wz * 11 + 6);
+        if (rr < 0.14) blocks[idx(lx, h + 1, lz)] = B.MUSHROOM;
+        else if (rr < 0.17) blocks[idx(lx, h + 1, lz)] = B.DEAD_BUSH;
+        continue;
+      }
+
       // riet langs het water
       if (surfId === B.SAND && h >= SEA && h <= SEA + 2) {
         if (Noise.hash2(wx * 23 + 9, wz * 19 - 2) < 0.12) {
@@ -682,6 +914,22 @@ window.World = (function () {
         continue;
       }
       if (surfId !== B.GRASS) continue;
+
+      // savanne: droog, spaarzaam gras met een enkele dorre struik
+      if (bio === 'savanna') {
+        const rr = Noise.hash2(wx * 11 + 2, wz * 11 + 6);
+        if (rr < 0.28) blocks[idx(lx, h + 1, lz)] = B.TALLGRASS;
+        else if (rr < 0.30) blocks[idx(lx, h + 1, lz)] = B.DEAD_BUSH;
+        continue;
+      }
+      // moeras: paddenstoelen, riet en dorre struiken
+      if (bio === 'swamp') {
+        const rr = Noise.hash2(wx * 11 + 2, wz * 11 + 6);
+        if (rr < 0.16) blocks[idx(lx, h + 1, lz)] = B.MUSHROOM;
+        else if (rr < 0.42) blocks[idx(lx, h + 1, lz)] = B.TALLGRASS;
+        else if (rr < 0.45) blocks[idx(lx, h + 1, lz)] = B.DEAD_BUSH;
+        continue;
+      }
 
       // lavendelvelden — zeldzame paarse biome-vlekken in het glooiende laagland
       const lav = Noise.fbm2(wx * 0.0032 + 220.4, wz * 0.0032 - 660.1, 3);
@@ -771,6 +1019,24 @@ window.World = (function () {
       if (v.cx + VILLAGE_R + 8 < x0 || v.cx - VILLAGE_R - 8 > x0 + CS) continue;
       if (v.cz + VILLAGE_R + 8 < z0 || v.cz - VILLAGE_R - 8 > z0 + CS) continue;
       const layout = villageLayout(v);
+      layout.blocks.forEach((id, k) => {
+        const p = k.split(',');
+        const wx = +p[0], wy = +p[1], wz = +p[2];
+        const lx = wx - x0, lz = wz - z0;
+        if (lx < 0 || lx >= CS || lz < 0 || lz >= CS || wy < 0 || wy >= CH) return;
+        blocks[idx(lx, wy, lz)] = id;
+      });
+    }
+
+    // 5. bezienswaardigheden (torens, ruïnes, standbeelden, bruggen)
+    const lmR = 18;
+    const lcMinX = Math.floor((x0 - lmR) / LANDMARK_CELL), lcMaxX = Math.floor((x0 + CS + lmR) / LANDMARK_CELL);
+    const lcMinZ = Math.floor((z0 - lmR) / LANDMARK_CELL), lcMaxZ = Math.floor((z0 + CS + lmR) / LANDMARK_CELL);
+    for (let lxc = lcMinX; lxc <= lcMaxX; lxc++) for (let lzc = lcMinZ; lzc <= lcMaxZ; lzc++) {
+      const l = landmarkRaw(lxc, lzc);
+      if (!l) continue;
+      if (l.cx + lmR < x0 || l.cx - lmR > x0 + CS || l.cz + lmR < z0 || l.cz - lmR > z0 + CS) continue;
+      const layout = landmarkLayout(l);
       layout.blocks.forEach((id, k) => {
         const p = k.split(',');
         const wx = +p[0], wy = +p[1], wz = +p[2];

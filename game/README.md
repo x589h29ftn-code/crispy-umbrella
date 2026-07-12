@@ -112,7 +112,19 @@ Firefox). Lokaal serveren kan met `python3 -m http.server` in deze map.
 - **Beekjes** — een fijn net van smalle, kronkelende stroompjes door het
   landschap, en elk dorp heeft een vijvertje met een beekje en een bruggetje.
 - **Grote kijkafstand** — de kijkafstand is instelbaar tot 28 chunks voor weidse
-  vergezichten (kost meer rekenkracht).
+  vergezichten. Verre chunks laten automatisch fijn detail (gras, bloemen) weg
+  (afstand-LOD), zodat het soepel blijft.
+- **Biomes** — naast bossen en weides ook woestijnen met cactussen, moerassen
+  met wilgen en paddenstoelen, droge savannes met acacia's, en zeldzame
+  paddenstoelenbossen met gloeiende reuzenpaddenstoelen op mycelium.
+- **Bezienswaardigheden** — verspreid over de wereld staan verlaten stenen
+  torens, bemoste ruïnes, standbeelden en stenen boogbruggen over rivieren.
+- **Rijkere dorpen** — marktkraampjes met doek-luifels, een klokkentoren, een
+  omheinde boerderij-wei, en een vijvertje met bruggetje. Er lopen ook
+  spelende kinderen rond, marktkramers bij hun kraam, en bewoners die in
+  groepjes met elkaar staan te kletsen.
+- **Meerijden met de trein** — stap met <kbd>E</kbd> in de langsrijdende
+  stoomtrein en geniet van de rit; leg met het rails-blok zelf sporen aan.
 
 ## Besturing
 

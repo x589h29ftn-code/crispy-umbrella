@@ -68,6 +68,7 @@ window.Entities = (function () {
         l.position.set(c.x, c.y + 0.1, c.z);
         const flick = Math.sin(t * 9 + i * 2.7) * 0.18 + Math.sin(t * 23 + i) * 0.08;
         if (c.crystal) { l.intensity = 1.0 + Math.sin(t * 2 + i) * 0.12; l.distance = 12; l.color.setHex(0x8fb6ff); }
+        else if (c.mushroom) { l.intensity = 0.8 + Math.sin(t * 1.5 + i) * 0.1; l.distance = 10; l.color.setHex(0xffb060); }
         else if (c.big) { l.intensity = 2.0 + flick; l.distance = 22; l.color.setHex(0xff9a4e); }
         else { l.intensity = 1.15 + flick; l.distance = 13; l.color.setHex(0xffab5e); }
       } else l.visible = false;
@@ -142,6 +143,47 @@ window.Entities = (function () {
         n++;
       }
     }
+
+    // marktkramers: blijven bij hun kraam rondhangen
+    if (layout.market) {
+      for (const stall of layout.market) {
+        const seedN = (G.seed ^ (stall.x * 131) ^ (stall.z * 977) ^ 0x5ad) >>> 0;
+        const parts = buildVillagerMesh(seedN);
+        const home = layout.spawns.length ? layout.spawns[0].home : { x: stall.x, z: stall.z, y: stall.y };
+        const door = { x: stall.x, z: stall.z, y: stall.y };
+        const vr = Noise.rng(seedN + 3);
+        const vil = {
+          type: 'villager', parts, mesh: parts.group, village: layout.v, home, door, campfire: layout.campfire,
+          x: stall.x + (vr() - 0.5), z: stall.z + 1.2, y: 0, tx: 0, tz: 0, speed: 1.0,
+          state: 'idle', timer: vr() * 3, phase: vr() * 10, carriesTorch: false,
+          workBob: 0, heading: 0, willSleep: false, station: { x: stall.x + 0.5, z: stall.z + 1.2 },
+        };
+        vil.y = Chunks.walkGroundY(vil.x, vil.z, stall.y + 1) + 1;
+        vil.mesh.position.set(vil.x, vil.y, vil.z);
+        scene.add(vil.mesh);
+        villagers.push(vil);
+      }
+    }
+
+    // een paar spelende kinderen (kleiner, sneller, rennen rond het plein)
+    const nKids = 1 + (Noise.hash2(layout.v.cx, layout.v.cz) < 0.5 ? 1 : 0);
+    for (let k = 0; k < nKids; k++) {
+      const seedN = (G.seed ^ (layout.v.cx * 613) ^ (layout.v.cz * 271) ^ (k * 9173) ^ 0xc11d) >>> 0;
+      const parts = buildVillagerMesh(seedN);
+      parts.group.scale.set(0.62, 0.62, 0.62);
+      const vr = Noise.rng(seedN + 5);
+      const home = layout.spawns.length ? layout.spawns[(k) % layout.spawns.length].home : { x: layout.v.cx, z: layout.v.cz, y: layout.v.groundY };
+      const vil = {
+        type: 'villager', parts, mesh: parts.group, village: layout.v, home, door: home, campfire: layout.campfire,
+        x: layout.v.cx + (vr() - 0.5) * 6, z: layout.v.cz + (vr() - 0.5) * 6, y: 0, tx: 0, tz: 0,
+        speed: 1.9 + vr() * 0.6, state: 'idle', timer: vr() * 2, phase: vr() * 10,
+        carriesTorch: false, workBob: 0, heading: vr() * 6.28, willSleep: false, child: true,
+      };
+      vil.y = Chunks.walkGroundY(vil.x, vil.z, layout.v.groundY + 1) + 1;
+      vil.mesh.position.set(vil.x, vil.y, vil.z);
+      scene.add(vil.mesh);
+      villagers.push(vil);
+    }
   }
 
   function villagePoint(v, r) {
@@ -166,14 +208,35 @@ window.Entities = (function () {
     if (v.timer <= 0) {
       if (isDay) {
         const r = rng();
-        if (r < 0.55) {
-          const p = villagePoint(v.village, 22);
+        // marktkramer keert terug naar zijn kraam
+        if (v.station && Math.hypot(v.station.x - v.x, v.station.z - v.z) > 2.5 && r < 0.7) {
+          v.tx = v.station.x; v.tz = v.station.z; v.state = 'walk'; v.timer = 4 + rng() * 4;
+        } else if (v.child) {
+          // kinderen rennen speels rond het plein
+          const p = villagePoint(v.village, 14);
           if (walkable(p[0], p[1])) { v.tx = p[0]; v.tz = p[1]; v.state = 'walk'; }
-          v.timer = 4 + rng() * 6;
-        } else if (r < 0.8) {
-          v.state = 'work'; v.timer = 3 + rng() * 5;
+          v.timer = 1.5 + rng() * 2.5;
         } else {
-          v.state = 'idle'; v.timer = 2 + rng() * 4;
+          // in de buurt van een andere bewoner? even blijven kletsen
+          let mate = null, md = 5;
+          for (const o of villagers) {
+            if (o === v || o.child) continue;
+            const dd = Math.hypot(o.x - v.x, o.z - v.z);
+            if (dd < md) { md = dd; mate = o; }
+          }
+          if (mate && r < 0.4) {
+            v.state = 'chat'; v.chatWith = mate;
+            v.heading = Math.atan2(mate.x - v.x, mate.z - v.z);
+            v.timer = 4 + rng() * 5;
+          } else if (r < 0.6) {
+            const p = villagePoint(v.village, 22);
+            if (walkable(p[0], p[1])) { v.tx = p[0]; v.tz = p[1]; v.state = 'walk'; }
+            v.timer = 4 + rng() * 6;
+          } else if (r < 0.82) {
+            v.state = 'work'; v.timer = 3 + rng() * 5;
+          } else {
+            v.state = 'idle'; v.timer = 2 + rng() * 4;
+          }
         }
       } else if (isDusk) {
         v.state = 'gohome'; v.tx = v.door.x; v.tz = v.door.z; v.timer = 20;
@@ -236,8 +299,9 @@ window.Entities = (function () {
     }
     v.parts.head.rotation.y = Math.sin(t * 0.6 + v.phase) * 0.3;
 
-    if (v.state === 'talk') {
-      // pratend bij het kampvuur: levendiger hoofd + af en toe een handgebaar
+    if (v.state === 'talk' || v.state === 'chat') {
+      // pratend: levendiger hoofd + af en toe een handgebaar; kijk naar gesprekspartner
+      if (v.state === 'chat' && v.chatWith) v.heading = Math.atan2(v.chatWith.x - v.x, v.chatWith.z - v.z);
       v.parts.head.rotation.y = Math.sin(t * 2.5 + v.phase) * 0.5;
       const gest = Math.max(0, Math.sin(t * 2.0 + v.phase * 2.0));
       v.parts.armR.rotation.x = -gest * 0.9;
@@ -1017,6 +1081,21 @@ window.Entities = (function () {
 
   E._trains = trains;   // debug/test-toegang
   E.spawnTrainNow = function (playerPos) { trainTimer = 0; trySpawnTrain(playerPos); };
+  // dichtstbijzijnde trein bij een positie (om in te stappen)
+  E.nearestTrain = function (pos, maxD) {
+    let best = null, bd = maxD || 5;
+    for (const tn of trains) {
+      const d = Math.hypot(tn.mesh.position.x - pos.x, tn.mesh.position.z - pos.z);
+      if (d < bd) { bd = d; best = tn; }
+    }
+    return best;
+  };
+  // wereldpositie van de bestuurdersstoel (cabine) van een trein
+  E.trainSeat = function (tn) {
+    const m = tn.mesh, yaw = m.rotation.y;
+    const ox = 0, oy = 2.15, oz = -1.1;   // lokaal in de cabine
+    return { x: m.position.x + Math.sin(yaw) * oz, y: m.position.y + oy, z: m.position.z + Math.cos(yaw) * oz, yaw };
+  };
 
   E.reset = function () {
     for (const v of villagers) scene.remove(v.mesh);

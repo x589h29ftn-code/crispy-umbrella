@@ -15,6 +15,7 @@ window.Player = (function () {
   P.hotbarSel = 0;
   P.holdingTorch = false;
   P.ridingBoat = null;
+  P.ridingTrain = null;
 
   let camera = null, dom = null;
   const keys = {};
@@ -62,7 +63,15 @@ window.Player = (function () {
       if (e.code === 'F1') { e.preventDefault(); UI.toggleHud(); }
       if (e.code === 'F2') { e.preventDefault(); Main.captureScreenshot(); }
       if (e.code === 'KeyC' && window.Fishing) Fishing.toggle(P.pos, P.yaw);
-      if (e.code === 'KeyE') toggleBoat();
+      if (e.code === 'KeyE') {
+        // eerst kijken of we in/uit een trein kunnen stappen, anders bootje
+        if (P.ridingTrain) { P.ridingTrain = null; UI.hint('Uit de trein gestapt'); }
+        else {
+          const tn = (window.Entities && Entities.nearestTrain) ? Entities.nearestTrain(P.pos, 5) : null;
+          if (tn && !P.ridingBoat) { P.ridingTrain = tn; P.resting = null; UI.hint('Meerijden met de trein 🚂 — E om uit te stappen'); }
+          else toggleBoat();
+        }
+      }
       if (e.code === 'KeyB' && !P.ridingBoat) {
         const boat = Boats.placeInFront(P.pos, P.yaw);
         if (boat) UI.hint('Bootje te water gelaten 🛶 — druk op E om in te stappen');
@@ -105,6 +114,7 @@ window.Player = (function () {
     P.pos.set(sx + 0.5, h + 2.5, sz + 0.5);
     P.vel.set(0, 0, 0);
     P.resting = null;
+    P.ridingTrain = null;
     P.yaw = Math.PI * 0.25;
     P.pitch = -0.05;
   };
@@ -363,6 +373,24 @@ window.Player = (function () {
       } else {
         const r = P.resting;
         camera.position.set(r.x, r.eyeY, r.z);
+        torchModel.visible = false;
+        torchLight.visible = false;
+        return;
+      }
+    }
+
+    // meerijden met de trein
+    if (P.ridingTrain) {
+      const tn = P.ridingTrain;
+      if (!tn.mesh || !tn.mesh.parent) {
+        // trein is op zijn eindbestemming verdwenen → uitstappen
+        P.ridingTrain = null;
+        P.vel.set(0, 0, 0);
+      } else {
+        const seat = Entities.trainSeat(tn);
+        P.pos.set(seat.x, seat.y - SIZE.eye, seat.z);
+        camera.position.set(seat.x, seat.y, seat.z);
+        P.vel.set(0, 0, 0);
         torchModel.visible = false;
         torchLight.visible = false;
         return;

@@ -60,7 +60,8 @@ window.Textures = (function () {
     STONE_BRICK: 27, STONE_BRICK_MOSSY: 28, GLASS: 29, DOOR: 30, EMBER: 31,
     FERN: 32, MUSHROOM: 33, LILYPAD: 34, PEBBLES: 35, LEAVES_CHERRY: 36, LANTERN: 37,
     BOOKSHELF: 38, CRYSTAL: 39, LAVENDER: 40, PALM_LEAVES: 41, PALM_SIDE: 42, BED: 43,
-    RAIL: 44,
+    RAIL: 44, CACTUS_SIDE: 45, CACTUS_TOP: 46, DEAD_BUSH: 47, MUSHROOM_STEM: 48,
+    MUSHROOM_CAP: 49, MYCELIUM: 50, CLOTH: 51,
   };
 
   function draw() {
@@ -660,6 +661,63 @@ window.Textures = (function () {
         px(tx, ty, rx - 1, y, 120, 124, 132, 0.6);
       }
     }
+
+    // CACTUS-zijkant: mat groen met ribbels en stekeltjes
+    {
+      const idx = TI.CACTUS_SIDE, tx = idx % COLS, ty = (idx / COLS) | 0;
+      fill(idx, [92, 132, 74], { macroS: 0.1, macro: 0.08, grain: 0.05 });
+      for (const rx of [8, 16, 24]) for (let y = 0; y < TILE; y++) px(tx, ty, rx, y, 70, 104, 56, 0.6);
+      for (let i = 0; i < 26; i++) { const x = (R() * TILE) | 0, y = (R() * TILE) | 0; px(tx, ty, x, y, 230, 230, 200, 0.8); }
+    }
+    {
+      const idx = TI.CACTUS_TOP, tx = idx % COLS, ty = (idx / COLS) | 0;
+      fill(idx, [104, 144, 82], { macro: 0.08, grain: 0.05 });
+      for (let a = 0; a < 40; a++) { const th = a / 40 * 6.28; px(tx, ty, (16 + Math.cos(th) * 7) | 0, (16 + Math.sin(th) * 7) | 0, 78, 112, 60); }
+    }
+
+    // DODE STRUIK: dorre bruine takjes (kruisvorm)
+    {
+      const idx = TI.DEAD_BUSH, tx = idx % COLS, ty = (idx / COLS) | 0;
+      clearTile(tx, ty);
+      for (let s = 0; s < 6; s++) {
+        let bx = 6 + ((R() * 20) | 0); const h = 10 + ((R() * 12) | 0);
+        for (let y = 0; y < h; y++) {
+          if (R() < 0.3) bx += (R() < 0.5 ? -1 : 1);
+          const v = (R() - 0.5) * 22;
+          px(tx, ty, Noise.clamp(bx, 0, 31), 31 - y, 150 + v, 116 + v, 66 + v);
+        }
+      }
+    }
+
+    // PADDENSTOEL-STEEL: bleek met verticale vezels
+    {
+      const idx = TI.MUSHROOM_STEM, tx = idx % COLS, ty = (idx / COLS) | 0;
+      fill(idx, [226, 218, 200], { macro: 0.05, grain: 0.04 });
+      for (let x = 0; x < TILE; x += 3) for (let y = 0; y < TILE; y++) if (R() < 0.5) px(tx, ty, x, y, 200, 190, 168, 0.5);
+    }
+    // PADDENSTOEL-HOED: warme rood-oranje met lichte stippen (gloeiend biome-blok)
+    {
+      const idx = TI.MUSHROOM_CAP, tx = idx % COLS, ty = (idx / COLS) | 0;
+      fill(idx, [196, 74, 58], { macroS: 0.09, macro: 0.1, grain: 0.05, warm: 0.5 });
+      for (let i = 0; i < 16; i++) {
+        const cx = 3 + R() * 26, cy = 3 + R() * 26, rr = 1.6 + R() * 2.2;
+        for (let y = 0; y < TILE; y++) for (let x = 0; x < TILE; x++)
+          if ((x - cx) ** 2 + (y - cy) ** 2 < rr * rr) px(tx, ty, x, y, 250, 238, 214);
+      }
+    }
+    // MYCELIUM: paars-grijze schimmelgrond (bovenkant)
+    {
+      const idx = TI.MYCELIUM, tx = idx % COLS, ty = (idx / COLS) | 0;
+      fill(idx, [126, 110, 128], { macroS: 0.12, macro: 0.12, grain: 0.06 });
+      for (let i = 0; i < 40; i++) { const x = (R() * TILE) | 0, y = (R() * TILE) | 0; px(tx, ty, x, y, 150, 130, 156, 0.7); }
+    }
+    // DOEK: warm geweven textiel (marktkraam-luifels, vlaggen)
+    {
+      const idx = TI.CLOTH, tx = idx % COLS, ty = (idx / COLS) | 0;
+      fill(idx, [200, 90, 70], { macro: 0.06, grain: 0.04 });
+      for (let y = 0; y < TILE; y += 2) for (let x = 0; x < TILE; x++) px(tx, ty, x, y, 180, 74, 56, 0.4);
+      for (let x = 0; x < TILE; x += 2) for (let y = 0; y < TILE; y++) px(tx, ty, x, y, 216, 104, 84, 0.3);
+    }
   }
   draw();
 
@@ -719,6 +777,12 @@ window.Textures = (function () {
       case B.CRYSTAL: return TI2.CRYSTAL;
       case B.LAVENDER: return TI2.LAVENDER;
       case B.RAIL: return TI2.RAIL;
+      case B.CACTUS: return (face === 2 || face === 3) ? TI2.CACTUS_TOP : TI2.CACTUS_SIDE;
+      case B.DEAD_BUSH: return TI2.DEAD_BUSH;
+      case B.MUSHROOM_STEM: return TI2.MUSHROOM_STEM;
+      case B.MUSHROOM_CAP: return TI2.MUSHROOM_CAP;
+      case B.MYCELIUM: return face === 2 ? TI2.MYCELIUM : (face === 3 ? TI2.DIRT : TI2.DIRT);
+      case B.CLOTH: return TI2.CLOTH;
       case B.FERN: return TI2.FERN;
       case B.MUSHROOM: return TI2.MUSHROOM;
       case B.LILYPAD: return TI2.LILYPAD;

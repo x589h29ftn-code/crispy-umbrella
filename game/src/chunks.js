@@ -341,6 +341,15 @@ window.Chunks = (function () {
     return m / 8;
   };
 
+  // Gewenst LOD-niveau voor een chunk: verre chunks (0/1) laten fijn detail weg.
+  function lodFor(cx, cz) {
+    if (!lastCenter) return 0;
+    const dx = cx - lastCenter[0], dz = cz - lastCenter[1];
+    const d = Math.max(Math.abs(dx), Math.abs(dz));
+    const band = Math.max(9, Math.floor(G.settings.renderDist * 0.55));
+    return d > band ? 1 : 0;
+  }
+
   // ---- chunk genereren -------------------------------------------------------------------
   function createChunk(cx, cz) {
     const key = ck(cx, cz);
@@ -350,6 +359,7 @@ window.Chunks = (function () {
       cx, cz, key, blocks,
       heightmap: new Uint8Array(CS * CS),
       meshes: [], torches: [], dirty: true,
+      lod: lodFor(cx, cz),
     };
     // speler-bewerkingen toepassen
     const editIdx = G.editIndex.get(key);
@@ -404,6 +414,8 @@ window.Chunks = (function () {
     const t0 = performance.now();
     const x0 = chObj.cx * CS, z0 = chObj.cz * CS;
     const blocks = chObj.blocks;
+    const lod = chObj.lod || 0;    // 1 = verre chunk: fijn detail weglaten
+    chObj.lodBuilt = lod;
 
     const get = (wx, wy, wz) => {
       if (wy < 0) return B.STONE;
@@ -519,8 +531,9 @@ window.Chunks = (function () {
               wFlow.push(flx, flz, flx, flz, flx, flz, flx, flz);
               wIdx.push(base, base + 2, base + 1, base + 1, base + 2, base + 3);
             }
-            // zijvlakken tegen lucht
+            // zijvlakken tegen lucht (overgeslagen bij verre chunks)
             for (const f of FACES) {
+              if (lod) break;
               if (f.dir[1] !== 0) continue;
               const nb = get(wx + f.dir[0], y + f.dir[1], wz + f.dir[2]);
               if (nb === B.AIR) {
@@ -536,6 +549,7 @@ window.Chunks = (function () {
           }
 
           if (G.isCross(id)) {
+            if (lod) continue;   // verre chunk: geen fijn gras/bloemen
             if (id === B.TALLGRASS) { grassTint(wx, wz, tint); emitCross(wx, y, wz, Textures.texFor(id, 0), tint, 1, 0.85); }
             else if (id === B.FERN) { grassTint(wx, wz, tint); tint[0] *= 0.9; tint[2] *= 0.95; emitCross(wx, y, wz, Textures.TI.FERN, tint, 1, 0.9); }
             else if (id === B.CROP) { const mm = C.getMeta(wx, y, wz); const st = mm === 0 ? 4 : mm; emitCross(wx, y, wz, Textures.TI.CROP, [1, 1, 1], 0.6, 0.28 + st * 0.13); }
@@ -546,6 +560,7 @@ window.Chunks = (function () {
           }
 
           if (id === B.LILYPAD) {
+            if (lod) continue;
             const [u0, v0, u1, v1] = Textures.uv(Textures.TI.LILYPAD);
             const yy = y - 0.08;   // net op het wateroppervlak
             const base = fPos.length / 3;
@@ -559,6 +574,7 @@ window.Chunks = (function () {
           }
 
           if (id === B.PEBBLES) {
+            if (lod) continue;
             const [u0, v0, u1, v1] = Textures.uv(Textures.TI.PEBBLES);
             const yy = y + 0.02;
             const base = fPos.length / 3;
@@ -572,6 +588,7 @@ window.Chunks = (function () {
           }
 
           if (id === B.RAIL) {
+            if (lod) continue;
             const [u0, v0, u1, v1] = Textures.uv(Textures.TI.RAIL);
             const yy = y + 0.08;
             const base = fPos.length / 3;
@@ -747,6 +764,10 @@ window.Chunks = (function () {
           // ---- normale blokken --------------------------------------------------
           const isLeaf = G.LEAF_BLOCKS.has(id);
           const transVal = isLeaf ? 1 : ((id === B.GRASS) ? 0.55 : 0);
+          // gloeiende reuzenpaddenstoel-hoed: warm licht wanneer de bovenkant vrij ligt
+          if (id === B.MUSHROOM_CAP && get(wx, y + 1, wz) === B.AIR) {
+            torches.push({ x: wx + 0.5, y: y + 0.9, z: wz + 0.5, big: false, mushroom: true });
+          }
           for (let fi = 0; fi < 6; fi++) {
             const f = FACES[fi];
             const nb = get(wx + f.dir[0], y + f.dir[1], wz + f.dir[2]);
@@ -898,7 +919,12 @@ window.Chunks = (function () {
         const key = ck(ccx + dx, ccz + dz);
         const existing = chunks.get(key);
         if (!existing) genQueue.push([ccx + dx, ccz + dz]);
-        else if (existing.dirty) queueMesh(existing);
+        else {
+          // LOD bijstellen wanneer een chunk een detailband in/uit beweegt
+          const want = lodFor(existing.cx, existing.cz);
+          if (want !== (existing.lodBuilt === undefined ? existing.lod : existing.lodBuilt)) { existing.lod = want; queueMesh(existing); }
+          else if (existing.dirty) queueMesh(existing);
+        }
       }
       // te verre chunks opruimen
       const maxD = (G.settings.renderDist + 2) * (G.settings.renderDist + 2);

@@ -20,25 +20,26 @@ window.G = (function () {
     FENCE_GATE: 37, LEAVES_CHERRY: 38, LANTERN: 39,
     BOOKSHELF: 40, CHAIR: 41, TABLE: 42, BED: 43, CRYSTAL: 44,
     LAVENDER: 45, PALM_LEAVES: 46, PALM_LOG: 47, RAIL: 48,
+    CACTUS: 49, DEAD_BUSH: 50, MUSHROOM_STEM: 51, MUSHROOM_CAP: 52, MYCELIUM: 53, CLOTH: 54,
   };
   const B = G.B;
 
   // Kruisvormige plantjes (geen collision, in het foliage-mesh met wind)
   G.CROSS_BLOCKS = new Set([B.TALLGRASS, B.FLOWER_RED, B.FLOWER_YELLOW, B.FLOWER_BLUE, B.FLOWER_WHITE, B.CROP,
-    B.FERN, B.MUSHROOM, B.LAVENDER]);
+    B.FERN, B.MUSHROOM, B.LAVENDER, B.DEAD_BUSH]);
   // Bladeren (krijgen doorschijnende backlight-shading)
   G.LEAF_BLOCKS = new Set([B.LEAVES, B.LEAVES_BIRCH, B.LEAVES_PINE, B.LEAVES_WILLOW, B.LEAVES_CHERRY, B.PALM_LEAVES]);
   // Meubel-blokken met een eigen (lage) vorm — collision via Chunks.solidShapeAt
   G.FURNITURE = new Set([B.CHAIR, B.TABLE, B.BED]);
   // Blokken waar je doorheen kunt lopen (incl. bladeren — alleen stammen blokkeren)
   G.NON_SOLID = new Set([B.AIR, B.WATER, B.TORCH, B.TALLGRASS, B.FLOWER_RED, B.FLOWER_YELLOW, B.FLOWER_BLUE, B.FLOWER_WHITE, B.CROP, B.CAMPFIRE,
-    B.FERN, B.MUSHROOM, B.LILYPAD, B.PEBBLES, B.LANTERN, B.LAVENDER, B.RAIL,
+    B.FERN, B.MUSHROOM, B.LILYPAD, B.PEBBLES, B.LANTERN, B.LAVENDER, B.RAIL, B.DEAD_BUSH,
     B.LEAVES, B.LEAVES_BIRCH, B.LEAVES_PINE, B.LEAVES_WILLOW, B.LEAVES_CHERRY, B.PALM_LEAVES]);
   // Blokken die het vlak van hun buurman NIET volledig bedekken
   G.NON_OCCLUDING = new Set([B.AIR, B.WATER, B.LEAVES, B.LEAVES_BIRCH, B.LEAVES_PINE, B.LEAVES_WILLOW, B.LEAVES_CHERRY, B.PALM_LEAVES, B.TORCH, B.FENCE,
     B.TALLGRASS, B.FLOWER_RED, B.FLOWER_YELLOW, B.FLOWER_BLUE, B.FLOWER_WHITE, B.CROP, B.GLASS,
     B.STAIRS, B.SLAB, B.DOOR, B.CAMPFIRE, B.FERN, B.MUSHROOM, B.LILYPAD, B.PEBBLES, B.FENCE_GATE, B.LANTERN,
-    B.CHAIR, B.TABLE, B.BED, B.CRYSTAL, B.LAVENDER, B.RAIL]);
+    B.CHAIR, B.TABLE, B.BED, B.CRYSTAL, B.LAVENDER, B.RAIL, B.DEAD_BUSH]);
   // Blokken met een eigen vorm (deels gevuld) — collision via Chunks.solidShapeAt
   G.SHAPED = new Set([B.STAIRS, B.SLAB, B.DOOR, B.FENCE_GATE, B.CHAIR, B.TABLE, B.BED]);
 
@@ -55,12 +56,13 @@ window.G = (function () {
     [B.FARMLAND]: 'Akkergrond', [B.CROP]: 'Graan (zaaien)', [B.WATER]: 'Water', [B.FENCE_GATE]: 'Hekpoort',
     [B.LANTERN]: 'Lantaarn',
     [B.BOOKSHELF]: 'Boekenkast', [B.CHAIR]: 'Stoel', [B.TABLE]: 'Tafel', [B.BED]: 'Bed',
-    [B.CRYSTAL]: 'Kristal', [B.LAVENDER]: 'Lavendel',
+    [B.CRYSTAL]: 'Kristal', [B.LAVENDER]: 'Lavendel', [B.RAIL]: 'Rails', [B.CACTUS]: 'Cactus',
+    [B.CLOTH]: 'Doek', [B.MUSHROOM_CAP]: 'Paddenstoelhoed',
   };
   // Bouw-set voorop op 1–9; overige blokken via scrollwiel
   G.HOTBAR = [B.STONE_BRICK, B.STONE_BRICK_MOSSY, B.STAIRS, B.SLAB, B.PLANKS, B.DOOR, B.GLASS, B.FENCE, B.TORCH,
     B.LANTERN, B.FENCE_GATE, B.CAMPFIRE, B.CHAIR, B.TABLE, B.BED, B.BOOKSHELF, B.CRYSTAL, B.LAVENDER,
-    B.FARMLAND, B.CROP, B.WATER, B.COBBLE, B.LOG, B.GRASS, B.DIRT, B.SAND];
+    B.RAIL, B.CLOTH, B.CACTUS, B.FARMLAND, B.CROP, B.WATER, B.COBBLE, B.LOG, B.GRASS, B.DIRT, B.SAND];
 
   // Instellingen (met persistentie)
   const DEFAULTS = {
