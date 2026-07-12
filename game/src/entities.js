@@ -652,6 +652,90 @@ window.Entities = (function () {
     posA.needsUpdate = true; colA.needsUpdate = true;
   }
 
+  // ---- dwarrelende blaadjes / bloesem + kampvuurvonken ---------------------------------------
+  const LEAF_N = 80;
+  let leaves = null, leafData = [];
+  function initLeaves() {
+    const geo = new THREE.BufferGeometry();
+    geo.setAttribute('position', new THREE.BufferAttribute(new Float32Array(LEAF_N * 3), 3));
+    geo.setAttribute('color', new THREE.BufferAttribute(new Float32Array(LEAF_N * 3), 3));
+    const mat = new THREE.PointsMaterial({
+      size: 0.22, vertexColors: true, transparent: true, opacity: 0.9,
+      depthWrite: false, sizeAttenuation: true,
+    });
+    leaves = new THREE.Points(geo, mat);
+    leaves.frustumCulled = false;
+    scene.add(leaves);
+    for (let i = 0; i < LEAF_N; i++) leafData.push({ x: 0, y: -100, z: 0, vy: 0, phase: Math.random() * 10, alive: false, c: [0.6, 0.4, 0.2] });
+  }
+  const AUTUMN_COLS = [[0.75, 0.35, 0.12], [0.85, 0.55, 0.15], [0.6, 0.25, 0.1], [0.8, 0.4, 0.2]];
+  const SPRING_COLS = [[1.0, 0.8, 0.85], [1.0, 0.85, 0.9], [0.95, 0.7, 0.8]];
+  function updateLeaves(dt, t, playerPos) {
+    const idx = G.season.idx;
+    const active = (idx === 2 || idx === 0);   // herfst (blad) of lente (bloesem)
+    const cols = idx === 2 ? AUTUMN_COLS : SPRING_COLS;
+    const posA = leaves.geometry.attributes.position, colA = leaves.geometry.attributes.color;
+    for (let i = 0; i < LEAF_N; i++) {
+      const f = leafData[i];
+      if (!f.alive) {
+        if (active && rng() < dt * 3) {
+          const a = rng() * Math.PI * 2, d = rng() * 26;
+          f.x = playerPos.x + Math.cos(a) * d; f.z = playerPos.z + Math.sin(a) * d;
+          const gy = Chunks.groundY(f.x, f.z);
+          f.y = gy + 6 + rng() * 8; f.vy = -(0.4 + rng() * 0.5);
+          f.phase = rng() * 10; f.c = cols[(rng() * cols.length) | 0];
+          f.ground = gy + 1; f.alive = true;
+        } else { posA.setXYZ(i, 0, -100, 0); colA.setXYZ(i, 0, 0, 0); continue; }
+      }
+      f.y += f.vy * dt;
+      f.x += Math.sin(t * 1.5 + f.phase) * dt * 0.7;
+      f.z += Math.cos(t * 1.2 + f.phase * 1.3) * dt * 0.7;
+      if (f.y <= f.ground || Math.hypot(f.x - playerPos.x, f.z - playerPos.z) > 40) f.alive = false;
+      posA.setXYZ(i, f.x, f.y, f.z);
+      colA.setXYZ(i, f.c[0], f.c[1], f.c[2]);
+    }
+    posA.needsUpdate = true; colA.needsUpdate = true;
+  }
+
+  const SPARK_N = 60;
+  let sparks = null, sparkData = [];
+  function initSparks() {
+    const geo = new THREE.BufferGeometry();
+    geo.setAttribute('position', new THREE.BufferAttribute(new Float32Array(SPARK_N * 3), 3));
+    geo.setAttribute('color', new THREE.BufferAttribute(new Float32Array(SPARK_N * 3), 3));
+    const mat = new THREE.PointsMaterial({
+      size: 0.13, vertexColors: true, transparent: true, opacity: 0.95,
+      blending: THREE.AdditiveBlending, depthWrite: false, sizeAttenuation: true,
+    });
+    sparks = new THREE.Points(geo, mat);
+    sparks.frustumCulled = false;
+    scene.add(sparks);
+    for (let i = 0; i < SPARK_N; i++) sparkData.push({ x: 0, y: -100, z: 0, vy: 0, life: 0 });
+  }
+  function updateSparks(dt, t, playerPos) {
+    const fires = Chunks.nearbyTorches(playerPos.x, playerPos.y, playerPos.z, 40).filter((o) => o.big);
+    const posA = sparks.geometry.attributes.position, colA = sparks.geometry.attributes.color;
+    for (let i = 0; i < SPARK_N; i++) {
+      const s = sparkData[i];
+      if (s.life <= 0) {
+        if (fires.length && rng() < dt * 8) {
+          const f = fires[(rng() * fires.length) | 0];
+          s.x = f.x + (rng() - 0.5) * 0.25; s.y = f.y + 0.2; s.z = f.z + (rng() - 0.5) * 0.25;
+          s.vy = 1.2 + rng() * 1.4; s.vx = (rng() - 0.5) * 0.5; s.vz = (rng() - 0.5) * 0.5;
+          s.life = 0.6 + rng() * 0.7; s.maxLife = s.life;
+        } else { posA.setXYZ(i, 0, -100, 0); colA.setXYZ(i, 0, 0, 0); continue; }
+      }
+      s.life -= dt;
+      s.vy -= dt * 0.8;
+      s.y += s.vy * dt; s.x += s.vx * dt; s.z += s.vz * dt;
+      const k = Math.max(0, s.life / s.maxLife);
+      posA.setXYZ(i, s.x, s.y, s.z);
+      colA.setXYZ(i, k, k * 0.55, k * 0.15);
+      if (s.life <= 0) { posA.setXYZ(i, 0, -100, 0); colA.setXYZ(i, 0, 0, 0); }
+    }
+    posA.needsUpdate = true; colA.needsUpdate = true;
+  }
+
   // ---- hoofdinterface -------------------------------------------------------------------------
   E.init = function (theScene, seed) {
     scene = theScene;
@@ -660,6 +744,8 @@ window.Entities = (function () {
     initFireflies();
     initButterflies();
     initSmoke();
+    initLeaves();
+    initSparks();
   };
 
   E.reset = function () {
@@ -672,6 +758,8 @@ window.Entities = (function () {
     populatedVillages.clear();
     for (const f of fireflyData) f.alive = false;
     for (const f of butterflyData) f.alive = false;
+    for (const f of leafData) f.alive = false;
+    for (const s of sparkData) s.life = 0;
   };
 
   E.update = function (dt, t, playerPos, sunInfo, camera) {
@@ -715,6 +803,8 @@ window.Entities = (function () {
     updateFireflies(dt, t, playerPos, nightAmt);
     updateButterflies(dt, t, playerPos, nightAmt);
     updateSmoke(dt, t, playerPos);
+    updateLeaves(dt, t, playerPos);
+    updateSparks(dt, t, playerPos);
     updateLightPool(camera.position, t);
   };
 
