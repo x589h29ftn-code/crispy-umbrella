@@ -57,6 +57,7 @@ window.Textures = (function () {
     PLANKS: 8, COBBLE: 9, SNOW: 10, PATH: 11, FARMLAND: 12, GRAVEL: 13, TORCH: 14, TALLGRASS: 15,
     FLOWER_RED: 16, FLOWER_YELLOW: 17, FLOWER_BLUE: 18, FLOWER_WHITE: 19, CROP: 20,
     BIRCH_SIDE: 21, BIRCH_TOP: 22, LEAVES_BIRCH: 23, LEAVES_PINE: 24, FLAME: 25, SNOW_SIDE: 26,
+    STONE_BRICK: 27, STONE_BRICK_MOSSY: 28, GLASS: 29,
   };
 
   function draw() {
@@ -354,6 +355,64 @@ window.Textures = (function () {
         for (let y = 0; y < depth; y++) px(tx, ty, x, y, 236 + (R() - 0.5) * 12, 240, 248);
       }
     }
+
+    // KASTEEL-BAKSTENEN: nette rechthoekige blokken met verzonken voegen
+    function stoneBricks(idx, base, mossy) {
+      const tx = idx % COLS, ty = (idx / COLS) | 0;
+      fill(idx, base, { macroS: 0.09, macro: 0.08, micro: 0.05, grain: 0.05 });
+      const mortar = [base[0] * 0.6, base[1] * 0.6, base[2] * 0.62];
+      const hi = [base[0] * 1.14, base[1] * 1.14, base[2] * 1.14];
+      const rowH = 8;
+      for (let ry = 0; ry < TILE; ry += rowH) {
+        const offset = (((ry / rowH) | 0) % 2) * 8;   // halfsteens verband
+        // horizontale voeg
+        for (let x = 0; x < TILE; x++) { px(tx, ty, x, ry, mortar[0], mortar[1], mortar[2]); px(tx, ty, x, ry + 1, mortar[0] * 1.1, mortar[1] * 1.1, mortar[2] * 1.1, 0.6); }
+        // verticale voegen
+        for (let vx = offset; vx <= TILE; vx += 16) {
+          const xx = ((vx) % TILE);
+          for (let y = ry; y < ry + rowH && y < TILE; y++) px(tx, ty, xx, y, mortar[0], mortar[1], mortar[2]);
+        }
+        // lichtrandje bovenaan elke steen
+        for (let x = 0; x < TILE; x++) if (R() < 0.5) px(tx, ty, x, ry + 2, hi[0], hi[1], hi[2], 0.4);
+      }
+      if (mossy) {
+        for (let i = 0; i < 5; i++) {
+          const cx = R() * TILE, cy = R() * TILE, rr = 2 + R() * 4;
+          for (let y = 0; y < TILE; y++) for (let x = 0; x < TILE; x++) {
+            if ((x - cx) ** 2 + (y - cy) ** 2 < rr * rr && R() < 0.7) {
+              const v = (R() - 0.5) * 26;
+              px(tx, ty, x, y, 72 + v, 104 + v, 54 + v, 0.85);
+            }
+          }
+        }
+        // cracks
+        for (let i = 0; i < 2; i++) {
+          let cx = (R() * TILE) | 0, cy = (R() * TILE) | 0;
+          for (let s = 0; s < 8; s++) { px(tx, ty, cx, cy, mortar[0] * 0.7, mortar[1] * 0.7, mortar[2] * 0.7); cx += (R() * 3 - 1) | 0; cy += 1; if (cy >= TILE) break; }
+        }
+      }
+    }
+    stoneBricks(TI.STONE_BRICK, [148, 148, 150], false);
+    stoneBricks(TI.STONE_BRICK_MOSSY, [138, 140, 136], true);
+
+    // GLAS: doorzichtig met omlijsting en een glansstreep
+    {
+      const idx = TI.GLASS, tx = idx % COLS, ty = (idx / COLS) | 0;
+      clearTile(tx, ty);
+      // interieur licht doorzichtig
+      for (let y = 0; y < TILE; y++) for (let x = 0; x < TILE; x++)
+        px(tx, ty, x, y, 205, 225, 236, 0.16);
+      // rand
+      for (let i = 0; i < TILE; i++) {
+        for (const [x, y] of [[i, 0], [i, 1], [i, TILE - 1], [i, TILE - 2], [0, i], [1, i], [TILE - 1, i], [TILE - 2, i]])
+          px(tx, ty, x, y, 214, 232, 240, 0.72);
+      }
+      // diagonale glansstreep
+      for (let i = 4; i < TILE - 4; i++) {
+        px(tx, ty, i, i - 2, 255, 255, 255, 0.5);
+        px(tx, ty, i, i - 1, 255, 255, 255, 0.35);
+      }
+    }
   }
   draw();
 
@@ -395,6 +454,9 @@ window.Textures = (function () {
       case B.LEAVES_PINE: return TI2.LEAVES_PINE;
       case B.PLANKS: case B.FENCE: return TI2.PLANKS;
       case B.COBBLE: return TI2.COBBLE;
+      case B.STONE_BRICK: return TI2.STONE_BRICK;
+      case B.STONE_BRICK_MOSSY: return TI2.STONE_BRICK_MOSSY;
+      case B.GLASS: return TI2.GLASS;
       case B.SNOW: return face === 2 ? TI2.SNOW : (face === 3 ? TI2.DIRT : TI2.SNOW_SIDE);
       case B.PATH: return face === 2 ? TI2.PATH : (face === 3 ? TI2.DIRT : TI2.PATH);
       case B.FARMLAND: return face === 2 ? TI2.FARMLAND : TI2.DIRT;

@@ -4,7 +4,7 @@ window.G = (function () {
 
   // Wereldafmetingen
   G.CS = 16;          // chunkbreedte (x/z)
-  G.CH = 128;         // wereldhoogte
+  G.CH = 160;         // wereldhoogte (ruimte voor hoge bergketens)
   G.SEA = 30;         // zeeniveau
 
   // Blok-id's
@@ -14,6 +14,7 @@ window.G = (function () {
     FARMLAND: 12, FENCE: 13, TORCH: 14,
     TALLGRASS: 15, FLOWER_RED: 16, FLOWER_YELLOW: 17, FLOWER_BLUE: 18, CROP: 19,
     LEAVES_BIRCH: 20, LOG_BIRCH: 21, LEAVES_PINE: 22, GRAVEL: 23, FLOWER_WHITE: 24,
+    STONE_BRICK: 25, STONE_BRICK_MOSSY: 26, GLASS: 27,
   };
   const B = G.B;
 
@@ -23,7 +24,7 @@ window.G = (function () {
   G.NON_SOLID = new Set([B.AIR, B.WATER, B.TORCH, B.TALLGRASS, B.FLOWER_RED, B.FLOWER_YELLOW, B.FLOWER_BLUE, B.FLOWER_WHITE, B.CROP]);
   // Blokken die het vlak van hun buurman NIET volledig bedekken
   G.NON_OCCLUDING = new Set([B.AIR, B.WATER, B.LEAVES, B.LEAVES_BIRCH, B.LEAVES_PINE, B.TORCH, B.FENCE,
-    B.TALLGRASS, B.FLOWER_RED, B.FLOWER_YELLOW, B.FLOWER_BLUE, B.FLOWER_WHITE, B.CROP]);
+    B.TALLGRASS, B.FLOWER_RED, B.FLOWER_YELLOW, B.FLOWER_BLUE, B.FLOWER_WHITE, B.CROP, B.GLASS]);
 
   G.isSolid = (id) => id !== undefined && !G.NON_SOLID.has(id);
   G.isCross = (id) => G.CROSS_BLOCKS.has(id);
@@ -33,8 +34,11 @@ window.G = (function () {
   G.BLOCK_NAMES = {
     [B.GRASS]: 'Gras', [B.DIRT]: 'Aarde', [B.STONE]: 'Steen', [B.SAND]: 'Zand',
     [B.PLANKS]: 'Planken', [B.LOG]: 'Boomstam', [B.COBBLE]: 'Keien', [B.FENCE]: 'Hekje', [B.TORCH]: 'Fakkel',
+    [B.STONE_BRICK]: 'Bakstenen', [B.STONE_BRICK_MOSSY]: 'Bemoste bakstenen', [B.GLASS]: 'Glas',
   };
-  G.HOTBAR = [B.GRASS, B.DIRT, B.STONE, B.SAND, B.PLANKS, B.LOG, B.COBBLE, B.FENCE, B.TORCH];
+  // Kasteel-set voorop op 1–9; gras/aarde/zand via scrollwiel
+  G.HOTBAR = [B.STONE_BRICK, B.STONE_BRICK_MOSSY, B.COBBLE, B.STONE, B.PLANKS, B.LOG, B.GLASS, B.FENCE, B.TORCH,
+    B.GRASS, B.DIRT, B.SAND];
 
   // Instellingen (met persistentie)
   const DEFAULTS = {

@@ -29,7 +29,12 @@ Open `index.html` in een moderne browser (Chrome, Edge of Firefox). Dat is alles
 - **Natuur** — gevarieerde bomen (eik, berk, den), wuivend gras, bloemen,
   schapen, konijnen, zwermen vogels en 's nachts vuurvliegjes.
 - **Bouwen** — blokken plaatsen en weghalen, hekjes bouwen, fakkels plaatsen
-  (met echt licht) of in de hand houden.
+  (met echt licht) of in de hand houden. Kasteelblokken (bakstenen, bemoste
+  bakstenen en doorzichtig glas) om muren, torens en ramen te bouwen.
+- **Bootjes** — houten roeibootjes drijven langs de oevers; laat er zelf een te
+  water (B) en vaar over rivieren en meren (E om in/uit te stappen).
+- **Hoge bergen** — dramatische, steile kliffen met besneeuwde toppen boven de
+  boomgrens.
 - **Weer** — willekeurige regen, onweer met bliksem en mistige dagen. Regen valt
   niet door daken — ook niet door daken die je zelf bouwt.
 - **Rustige ambient-muziek** en natuurgeluiden (vogels, krekels, wind, regen) —
@@ -49,6 +54,8 @@ Open `index.html` in een moderne browser (Chrome, Edge of Firefox). Dat is alles
 | Rechtermuisknop | Blok plaatsen |
 | 1–9 / scrollwiel | Blok kiezen |
 | F | Fakkel vasthouden |
+| B | Bootje te water laten |
+| E | In-/uitstappen bootje |
 | H | Hulp |
 | Esc | Pauzemenu |
 

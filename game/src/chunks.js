@@ -44,6 +44,11 @@ window.Chunks = (function () {
     blending: THREE.AdditiveBlending, side: THREE.DoubleSide, fog: false,
   });
 
+  const glassMat = new THREE.MeshStandardMaterial({
+    map: Textures.texture, transparent: true, opacity: 1.0,
+    roughness: 0.08, metalness: 0.0, depthWrite: true,
+  });
+
   // ---- water-shader -----------------------------------------------------------------
   const waterUniforms = {
     uTime: sway,
@@ -283,6 +288,7 @@ window.Chunks = (function () {
     const fPos = [], fNrm = [], fUv = [], fCol = [], fSway = [], fIdx = [];
     const wPos = [], wIdx = [];
     const flPos = [], flUv = [], flIdx = [];
+    const gPos = [], gNrm = [], gUv = [], gIdx = [];
     const torches = [];
     const tint = [1, 1, 1];
 
@@ -403,6 +409,23 @@ window.Chunks = (function () {
             continue;
           }
 
+          if (id === B.GLASS) {
+            for (let fi = 0; fi < 6; fi++) {
+              const f = FACES[fi];
+              const nb = get(wx + f.dir[0], y + f.dir[1], wz + f.dir[2]);
+              if (G.occludes(nb) || nb === B.GLASS) continue;   // alleen naar open ruimte
+              const [u0, v0, u1, v1] = Textures.uv(Textures.TI.GLASS);
+              const base = gPos.length / 3;
+              for (const c of f.corners) {
+                gPos.push(wx + c[0], y + c[1], wz + c[2]);
+                gNrm.push(f.dir[0], f.dir[1], f.dir[2]);
+                gUv.push(c[3] ? u1 : u0, c[4] ? v1 : v0);
+              }
+              gIdx.push(base, base + 1, base + 2, base + 2, base + 1, base + 3);
+            }
+            continue;
+          }
+
           // ---- normale blokken --------------------------------------------------
           const isLeaf = (id === B.LEAVES || id === B.LEAVES_BIRCH || id === B.LEAVES_PINE);
           for (let fi = 0; fi < 6; fi++) {
@@ -479,6 +502,8 @@ window.Chunks = (function () {
     if (fm) { fm.receiveShadow = true; }
     makeMesh(wPos, null, null, null, wIdx, waterMat);
     makeMesh(flPos, null, flUv, null, flIdx, flameMat);
+    const gm = makeMesh(gPos, gNrm, gUv, null, gIdx, glassMat);
+    if (gm) gm.renderOrder = 1;
 
     chObj.dirty = false;
     return performance.now() - t0;

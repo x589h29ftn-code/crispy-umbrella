@@ -31,10 +31,12 @@ window.World = (function () {
   function baseHeight(x, z) {
     const c = Noise.fbm2(x * 0.0022 + 31.7, z * 0.0022 - 11.3, 4);        // continenten
     const hills = Noise.fbm2(x * 0.009 + 7.1, z * 0.009 + 3.3, 3) * 5;    // heuveltjes
-    const mMask = Noise.smoothstep(-0.14, 0.36, Noise.fbm2(x * 0.0011 + 100.5, z * 0.0011 - 70.2, 3));
-    const m = Noise.ridge2(x * 0.0045, z * 0.0045, 4);                    // bergkammen
-    // steile, gekartelde bergen tot ver boven de boomgrens
-    let h = SEA + 3.5 + c * 13 + hills + Math.pow(m, 2.2) * mMask * 88;
+    const mMask = Noise.smoothstep(-0.16, 0.32, Noise.fbm2(x * 0.0011 + 100.5, z * 0.0011 - 70.2, 3));
+    const m = Noise.ridge2(x * 0.0040, z * 0.0040, 5);                    // bergkammen
+    // hoge, steile kliffen: sterke exponent + tweede scherpe kam bovenop
+    const cliff = Math.pow(m, 2.7);
+    const spires = Math.pow(Noise.ridge2(x * 0.011 + 9.9, z * 0.011 - 4.4, 3), 3) * 0.35;
+    let h = SEA + 3.5 + c * 13 + hills + (cliff + spires * cliff) * mMask * 128;
 
     // Rivieren uitslijpen — vooral in het laagland, bergen blijven intact
     const rf = riverFactor(x, z);
@@ -347,9 +349,12 @@ window.World = (function () {
 
       // oppervlakteblok kiezen
       let surf = B.GRASS, under = B.DIRT;
-      const snowLine = 98 + surfNoise * 7;
-      const stoneLine = 62 + surfNoise * 12;
+      const snowLine = 92 + surfNoise * 9;
+      const stoneLine = 58 + surfNoise * 12;
       if (h >= snowLine) { surf = B.SNOW; under = B.STONE; }
+      else if (h >= snowLine - 10 && Noise.hash2(wx * 5 + 1, wz * 5 - 3) < (h - (snowLine - 10)) / 10) {
+        surf = B.SNOW; under = B.STONE;    // rafelige sneeuwrand onder de lijn
+      }
       else if (h >= stoneLine) { surf = B.STONE; under = B.STONE; }
       else if (h <= SEA + 1 + surfNoise * 1.5) { surf = B.SAND; under = B.SAND; }
       else if (rf > 0.25 && h <= SEA + 3) { surf = B.SAND; under = B.SAND; }
