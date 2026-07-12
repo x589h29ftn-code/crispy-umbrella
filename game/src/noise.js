@@ -39,6 +39,20 @@ window.Noise = (function () {
     return ((a + (b - a) * u) * (1 - v) + (c + (d - c) * u) * v) * 2 - 1;
   };
 
+  // Value-noise 3D, output -1..1 (voor grotten e.d.)
+  N.noise3 = function (x, y, z) {
+    const xi = Math.floor(x), yi = Math.floor(y), zi = Math.floor(z);
+    const xf = x - xi, yf = y - yi, zf = z - zi;
+    const u = smooth(xf), v = smooth(yf), w = smooth(zf);
+    function corner(dx, dy, dz) { return N.hash3(xi + dx, yi + dy, zi + dz); }
+    const c000 = corner(0, 0, 0), c100 = corner(1, 0, 0), c010 = corner(0, 1, 0), c110 = corner(1, 1, 0);
+    const c001 = corner(0, 0, 1), c101 = corner(1, 0, 1), c011 = corner(0, 1, 1), c111 = corner(1, 1, 1);
+    const x00 = c000 + (c100 - c000) * u, x10 = c010 + (c110 - c010) * u;
+    const x01 = c001 + (c101 - c001) * u, x11 = c011 + (c111 - c011) * u;
+    const y0 = x00 + (x10 - x00) * v, y1 = x01 + (x11 - x01) * v;
+    return (y0 + (y1 - y0) * w) * 2 - 1;
+  };
+
   // Fractale ruis (fbm), output ca. -1..1
   N.fbm2 = function (x, y, oct, lac, gain) {
     lac = lac || 2.0; gain = gain || 0.5;

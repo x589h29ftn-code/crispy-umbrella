@@ -5,6 +5,7 @@ window.Main = (function () {
   let renderer, scene, camera;
   let lastFrame = 0;
   let autosaveTimer = 0;
+  let waterProbeTimer = 0;
   let elapsed = 0;
   let loadingWorld = false;
   let lastSeasonIdx = -1;
@@ -325,6 +326,28 @@ window.Main = (function () {
     // audio-omgeving
     Sfx.updateNature(dt, sunInfo.nightAmt, rainLevel);
     Sfx.setWindLevel(Weather.current === 'storm' ? 0.8 : (Weather.current === 'rain' ? 0.4 : 0.12));
+    // adaptieve muziekstemming (tijd van de dag / seizoen / weer)
+    Sfx.setMood(sunInfo.nightAmt, G.season.idx, rainLevel);
+    // water in de buurt → zacht kabbelend geluid (elke ~0.5 s licht bemonsterd)
+    waterProbeTimer -= dt;
+    if (waterProbeTimer <= 0) {
+      waterProbeTimer = 0.5;
+      let wl = 0;
+      const px = Math.floor(Player.pos.x), pz = Math.floor(Player.pos.z);
+      for (let dz = -6; dz <= 6 && wl < 1; dz += 3) for (let dx = -6; dx <= 6; dx += 3) {
+        for (let dy = -2; dy <= 1; dy++) {
+          if (Chunks.getBlock(px + dx, G.SEA + dy, pz + dz) === G.B.WATER) { wl += 0.09; break; }
+        }
+      }
+      // watervallen in de buurt klinken luider
+      if (World.waterfallBases) {
+        World.waterfallBases.forEach((y, key) => {
+          const p = key.split(','); const ddx = +p[0] - Player.pos.x, ddz = +p[1] - Player.pos.z;
+          if (ddx * ddx + ddz * ddz < 36 * 36) wl = Math.max(wl, 0.8);
+        });
+      }
+      Sfx.setWaterLevel(wl);
+    }
     // kampvuur-nabijheid
     const fires = Chunks.nearbyTorches(Player.pos.x, Player.pos.y, Player.pos.z, 14).filter((o) => o.big);
     let fireLvl = 0;

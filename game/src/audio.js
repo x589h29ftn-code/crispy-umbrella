@@ -4,9 +4,11 @@ window.Sfx = (function () {
   const A = {};
   let ctx = null;
   let master, musicBus, sfxBus, ambBus;
-  let rainGain, rainFilter, windGain, campGain;
+  let rainGain, rainFilter, windGain, campGain, waterGain, waterFilter;
   let started = false;
   let crackleTimer = 0, campLevel = 0;
+  // stemming voor adaptieve muziek (tijd van de dag / seizoen / weer)
+  const mood = { night: 0, season: 1, rain: 0 };
 
   function ensureCtx() {
     if (ctx) return true;
@@ -46,6 +48,15 @@ window.Sfx = (function () {
     campGain = ctx.createGain(); campGain.gain.value = 0;
     fireSrc.connect(fireF); fireF.connect(campGain); campGain.connect(ambBus);
     fireSrc.start();
+
+    // stromend water (bij meren, rivieren en watervallen) — zacht kabbelend geruis
+    const waterSrc = ctx.createBufferSource();
+    waterSrc.buffer = noiseBuf; waterSrc.loop = true;
+    waterFilter = ctx.createBiquadFilter();
+    waterFilter.type = 'bandpass'; waterFilter.frequency.value = 1400; waterFilter.Q.value = 0.5;
+    waterGain = ctx.createGain(); waterGain.gain.value = 0;
+    waterSrc.connect(waterFilter); waterFilter.connect(waterGain); waterGain.connect(ambBus);
+    waterSrc.start();
 
     return true;
   }
@@ -90,6 +101,13 @@ window.Sfx = (function () {
     [110.00, 164.81, 196.00, 261.63],   // Am add
     [130.81, 155.56, 196.00, 233.08],   // rustig kleurakkoord
   ];
+  // Mellere avond-/nachtakkoorden (lager, ingetogener) voor adaptieve stemming
+  const CHORDS_NIGHT = [
+    [98.00, 130.81, 155.56, 196.00],    // Cm-kleur, laag
+    [87.31, 110.00, 146.83, 174.61],    // warm mineur
+    [82.41, 123.47, 164.81, 196.00],    // Em7 laag
+    [92.50, 138.59, 185.00, 220.00],    // avondrust
+  ];
   const PENTA = [261.63, 293.66, 329.63, 392.00, 440.00, 523.25, 587.33];
   let chordIdx = 0;
 
@@ -97,10 +115,13 @@ window.Sfx = (function () {
     const o1 = ctx.createOscillator(); o1.type = 'triangle'; o1.frequency.value = freq;
     const o2 = ctx.createOscillator(); o2.type = 'sine'; o2.frequency.value = freq * 1.005;
     const g = ctx.createGain();
-    const f = ctx.createBiquadFilter(); f.type = 'lowpass'; f.frequency.value = 900; f.Q.value = 0.3;
+    const f = ctx.createBiquadFilter(); f.type = 'lowpass';
+    // 's nachts donkerder (lagere cutoff), overdag helderder
+    f.frequency.value = 1100 - mood.night * 560; f.Q.value = 0.3;
+    const peak = 0.03 - mood.night * 0.006;
     g.gain.setValueAtTime(0, t0);
-    g.gain.linearRampToValueAtTime(0.028, t0 + dur * 0.35);
-    g.gain.setValueAtTime(0.028, t0 + dur * 0.6);
+    g.gain.linearRampToValueAtTime(peak, t0 + dur * 0.35);
+    g.gain.setValueAtTime(peak, t0 + dur * 0.6);
     g.gain.linearRampToValueAtTime(0, t0 + dur);
     o1.connect(f); o2.connect(f); f.connect(g); g.connect(musicBus);
     o1.start(t0); o2.start(t0);
@@ -124,20 +145,37 @@ window.Sfx = (function () {
   function scheduleMusic() {
     if (!ctx) return;
     const now = ctx.currentTime;
-    const dur = 11 + Math.random() * 5;
-    // akkoordkeuze wandelt rustig door de lijst
-    chordIdx = (chordIdx + 1 + ((Math.random() * 2) | 0)) % CHORDS.length;
-    const chord = CHORDS[chordIdx];
+    // adaptief tempo: 's nachts en in de winter langer/rustiger
+    const winter = mood.season === 3 ? 4 : 0;
+    const dur = 11 + Math.random() * 5 + mood.night * 6 + winter;
+    // akkoordbank kiezen op basis van tijd van de dag
+    const bank = mood.night > 0.5 ? CHORDS_NIGHT : CHORDS;
+    chordIdx = (chordIdx + 1 + ((Math.random() * 2) | 0)) % bank.length;
+    const chord = bank[chordIdx];
     for (const f of chord) pad(f, now + 0.05, dur + 2);
-    // af en toe een paar klokjes
-    if (Math.random() < 0.75) {
+    // klokjes: overdag vaker en helderder, 's nachts spaarzaam en een octaaf lager
+    const bellChance = 0.75 - mood.night * 0.4;
+    if (Math.random() < bellChance) {
       const nNotes = 1 + ((Math.random() * 3) | 0);
+      const oct = mood.night > 0.5 ? 0.5 : 1;
       for (let i = 0; i < nNotes; i++) {
-        bell(PENTA[(Math.random() * PENTA.length) | 0], now + 1 + Math.random() * dur * 0.7);
+        bell(PENTA[(Math.random() * PENTA.length) | 0] * oct, now + 1 + Math.random() * dur * 0.7);
       }
     }
     setTimeout(scheduleMusic, dur * 1000);
   }
+
+  // Stemming bijwerken vanuit de hoofdloop (nacht 0..1, seizoen 0..3, regen 0..1)
+  A.setMood = function (nightAmt, seasonIdx, rainLevel) {
+    mood.night = nightAmt;
+    mood.season = seasonIdx;
+    mood.rain = rainLevel;
+  };
+  // Zacht kabbelend water in de buurt (meren/rivieren/watervallen)
+  A.setWaterLevel = function (v) {
+    if (!ctx) return;
+    waterGain.gain.setTargetAtTime(Noise.clamp(v, 0, 1) * 0.05, ctx.currentTime, 0.6);
+  };
 
   // ---- omgevingsparameters ----
   A.setRainLevel = function (v) {
@@ -270,6 +308,26 @@ window.Sfx = (function () {
   };
   A.splash = function () { thud(300, 0.1, 0.25, 'sine'); };
 
+  // zachte uilenroep in de nacht
+  A.owl = function () {
+    if (!ctx) return;
+    const t0 = ctx.currentTime;
+    for (const off of [0, 0.55]) {
+      const t = t0 + off;
+      const o = ctx.createOscillator(); o.type = 'sine';
+      o.frequency.setValueAtTime(300, t);
+      o.frequency.linearRampToValueAtTime(360, t + 0.08);
+      o.frequency.linearRampToValueAtTime(320, t + 0.3);
+      const g = ctx.createGain();
+      g.gain.setValueAtTime(0, t);
+      g.gain.linearRampToValueAtTime(0.03, t + 0.05);
+      g.gain.exponentialRampToValueAtTime(0.0005, t + 0.4);
+      const f = ctx.createBiquadFilter(); f.type = 'lowpass'; f.frequency.value = 700;
+      o.connect(f); f.connect(g); g.connect(ambBus);
+      o.start(t); o.stop(t + 0.45);
+    }
+  };
+
   // periodieke natuurklanken, aangestuurd vanuit de hoofdloop
   let natureTimer = 2;
   A.updateNature = function (dt, nightAmt, rainLevel) {
@@ -278,8 +336,17 @@ window.Sfx = (function () {
     if (natureTimer <= 0) {
       natureTimer = 2.5 + Math.random() * 6;
       if (rainLevel > 0.3) return;
-      if (nightAmt < 0.3 && Math.random() < 0.7) A.chirp();
-      else if (nightAmt > 0.6 && Math.random() < 0.8) A.cricket();
+      if (nightAmt < 0.3) {
+        // dagkoor: meer vogels rond zonsopgang/ochtend
+        if (Math.random() < 0.75) A.chirp();
+        if (Math.random() < 0.25) A.chirp();
+      } else if (nightAmt > 0.6) {
+        if (Math.random() < 0.8) A.cricket();
+        if (Math.random() < 0.12) A.owl();
+      } else {
+        // schemer: mix
+        if (Math.random() < 0.5) A.chirp(); else A.cricket();
+      }
     }
   };
 

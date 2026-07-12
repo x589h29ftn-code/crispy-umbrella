@@ -94,6 +94,19 @@ Firefox). Lokaal serveren kan met `python3 -m http.server` in deze map.
   screenshot (in de Windows-app naar je Afbeeldingen-map).
 - **Groeiende gewassen** — gezaaid graan groeit vanzelf in fasen tot het rijp is.
 - **Hekpoortjes** — open- en dichtklapbaar (rechtermuisknop), passend bij de hekjes.
+- **Meubels & rusten** — stoelen, tafels, bedden en boekenkasten om je huisje in
+  te richten. Rechtsklik op een stoel om te zitten en van het uitzicht te
+  genieten, of op een bed om tot zonsopgang te slapen.
+- **Grotten met kristallen** — onder de bergen kronkelen grotten met
+  zachtblauw gloeiende kristallen die hun eigen koele licht geven.
+- **Lavendelvelden** — zeldzame paarse biome-vlekken vol wuivende lavendel.
+- **Palmstranden** — tropische palmen langs zonnige zandstranden bij zee.
+- **Bergwatervallen** — hier en daar stort een bergbron over een richel naar
+  beneden, met opstijgende nevel en een kabbelend geluid.
+- **Adaptieve muziek** — de ambient-muziek past zich aan het moment aan: overdag
+  helder met klokjes, 's nachts lager en ingetogener, rustiger in de winter.
+- **Rijkere natuurgeluiden** — een vogelkoor overdag, krekels en af en toe een
+  uil 's nachts, en zacht kabbelend water als je bij een meer of waterval bent.
 
 ## Besturing
 

@@ -59,6 +59,7 @@ window.Textures = (function () {
     BIRCH_SIDE: 21, BIRCH_TOP: 22, LEAVES_BIRCH: 23, LEAVES_PINE: 24, FLAME: 25, SNOW_SIDE: 26,
     STONE_BRICK: 27, STONE_BRICK_MOSSY: 28, GLASS: 29, DOOR: 30, EMBER: 31,
     FERN: 32, MUSHROOM: 33, LILYPAD: 34, PEBBLES: 35, LEAVES_CHERRY: 36, LANTERN: 37,
+    BOOKSHELF: 38, CRYSTAL: 39, LAVENDER: 40, PALM_LEAVES: 41, PALM_SIDE: 42, BED: 43,
   };
 
   function draw() {
@@ -532,6 +533,114 @@ window.Textures = (function () {
       px(tx, ty, 13, 4, met[0], met[1], met[2]); px(tx, ty, 18, 4, met[0], met[1], met[2]);
       px(tx, ty, 13, 5, met[0], met[1], met[2]); px(tx, ty, 18, 5, met[0], met[1], met[2]);
     }
+
+    // BOEKENKAST: houten frame met rijen kleurige boekruggen
+    {
+      const idx = TI.BOOKSHELF, tx = idx % COLS, ty = (idx / COLS) | 0;
+      fill(idx, [150, 112, 62], { macroS: 0.1, macro: 0.06, grain: 0.04, warm: 0.4 });
+      // houten rand
+      const wood = [110, 82, 46];
+      for (let i = 0; i < TILE; i++) { for (const [x, y] of [[i, 0], [i, 1], [i, TILE - 1], [i, TILE - 2], [0, i], [1, i], [TILE - 1, i], [TILE - 2, i]]) px(tx, ty, x, y, wood[0], wood[1], wood[2]); }
+      // twee planken → drie boekenrijen
+      for (const sy of [11, 21]) for (let x = 2; x < 30; x++) { px(tx, ty, x, sy, wood[0], wood[1], wood[2]); px(tx, ty, x, sy + 1, wood[0] * 1.15, wood[1] * 1.15, wood[2] * 1.15); }
+      const spineCols = [[168, 60, 54], [70, 104, 150], [86, 140, 82], [196, 168, 74], [140, 88, 150], [200, 120, 60], [90, 120, 130]];
+      for (const [y0, y1] of [[3, 10], [13, 20], [23, 29]]) {
+        let x = 3;
+        while (x < 29) {
+          const w = 2 + ((R() * 3) | 0);
+          const c = spineCols[(R() * spineCols.length) | 0];
+          const v = (R() - 0.5) * 24;
+          for (let xx = x; xx < Math.min(29, x + w); xx++) for (let y = y0; y <= y1; y++) px(tx, ty, xx, y, c[0] + v, c[1] + v, c[2] + v);
+          // titelstreepje
+          px(tx, ty, x, ((y0 + y1) / 2) | 0, 235, 230, 210, 0.7);
+          x += w + 1;
+        }
+      }
+    }
+
+    // KRISTAL: gloeiende paarse/cyaan kristallen op transparant (cross-mesh look, hier volle tegel)
+    {
+      const idx = TI.CRYSTAL, tx = idx % COLS, ty = (idx / COLS) | 0;
+      clearTile(tx, ty);
+      // donkere steenbasis
+      for (let y = 0; y < TILE; y++) for (let x = 0; x < TILE; x++) { const v = (R() - 0.5) * 14; px(tx, ty, x, y, 46 + v, 42 + v, 62 + v); }
+      // kristalpunten
+      const shards = [[16, 30, 5, 20], [10, 30, 3, 14], [22, 30, 3, 15], [6, 30, 2, 9], [26, 30, 2, 10]];
+      for (const [bx, by, w, h] of shards) {
+        for (let y = 0; y < h; y++) {
+          const yy = by - y;
+          const ww = Math.max(0, Math.round(w * (1 - y / h)));
+          const glow = 0.6 + (y / h) * 0.6;
+          for (let x = -ww; x <= ww; x++) {
+            const edge = Math.abs(x) === ww;
+            const r = edge ? 150 : 190, g = edge ? 120 : 180, b = 255;
+            px(tx, ty, Noise.clamp(bx + x, 0, 31), yy, r * glow, g * glow, b, 1);
+          }
+        }
+        // heldere top
+        px(tx, ty, bx, by - h, 235, 235, 255);
+      }
+    }
+
+    // LAVENDEL: hoge groene stelen met paarse bloemtrossen (getint via foliage)
+    {
+      const idx = TI.LAVENDER, tx = idx % COLS, ty = (idx / COLS) | 0;
+      clearTile(tx, ty);
+      for (let s = 0; s < 7; s++) {
+        const bx = 3 + s * 4 + ((R() * 2) | 0);
+        const h = 20 + ((R() * 9) | 0);
+        for (let y = 0; y < h; y++) {
+          const cx = bx + Math.round(Math.sin(y * 0.25 + s) * 1.2);
+          const v = (R() - 0.5) * 24;
+          if (y < h - 8) { px(tx, ty, Noise.clamp(cx, 0, 31), 31 - y, 96 + v, 138 + v, 84 + v); }
+          else {
+            // paarse bloemtros
+            const p = (R() - 0.5) * 30;
+            px(tx, ty, Noise.clamp(cx, 0, 31), 31 - y, 150 + p, 110 + p, 200 + p);
+            if (R() < 0.5) px(tx, ty, Noise.clamp(cx + (R() < 0.5 ? -1 : 1), 0, 31), 31 - y, 168 + p, 128 + p, 214 + p);
+          }
+        }
+      }
+    }
+
+    // PALM-BLAD: helder tropisch groen, gevederde slierten
+    {
+      const idx = TI.PALM_LEAVES, tx = idx % COLS, ty = (idx / COLS) | 0;
+      clearTile(tx, ty);
+      for (let y = 0; y < TILE; y++) for (let x = 0; x < TILE; x++) {
+        const cluster = vn(tx, ty, x, y, 0.26, 70);
+        if (cluster < 0.24) continue;
+        const depth = vn(tx, ty, x, y, 0.5, 90);
+        const shade = 0.7 + depth * 0.55;
+        const v = (R() - 0.5) * 28;
+        px(tx, ty, x, y, 96 * shade + v, 168 * shade + v, 88 * shade + v * 0.6);
+      }
+      for (let i = 0; i < 18; i++) px(tx, ty, (R() * TILE) | 0, (R() * TILE) | 0, 150, 210, 120, 0.7);
+    }
+
+    // PALM-STAM: lichtbruine schors met dwarse ringen
+    {
+      const idx = TI.PALM_SIDE, tx = idx % COLS, ty = (idx / COLS) | 0;
+      fill(idx, [156, 122, 78], { macroS: 0.12, macro: 0.09, grain: 0.05, warm: 0.5 });
+      for (let y = 0; y < TILE; y += 4) for (let x = 0; x < TILE; x++) {
+        const v = (R() - 0.5) * 10;
+        px(tx, ty, x, y, 118 + v, 90 + v, 54 + v);
+        px(tx, ty, x, y + 1, 176 + v, 142 + v, 96 + v, 0.6);
+      }
+    }
+
+    // BED: rode deken met wit kussen (bovenkant)
+    {
+      const idx = TI.BED, tx = idx % COLS, ty = (idx / COLS) | 0;
+      fill(idx, [176, 58, 58], { macroS: 0.1, macro: 0.08, grain: 0.05, warm: 0.3 });
+      // kussen bovenaan
+      for (let y = 2; y < 11; y++) for (let x = 3; x < 29; x++) { const v = (R() - 0.5) * 12; px(tx, ty, x, y, 236 + v, 236 + v, 242 + v); }
+      // dekennaad
+      for (let x = 0; x < TILE; x++) { px(tx, ty, x, 12, 130, 40, 40); px(tx, ty, x, 13, 200, 80, 80, 0.5); }
+      // stiksel-ruit op deken
+      for (let y = 15; y < TILE; y += 6) for (let x = 0; x < TILE; x++) px(tx, ty, x, y, 150, 46, 46, 0.5);
+      for (let x = 6; x < TILE; x += 8) for (let y = 14; y < TILE; y++) px(tx, ty, x, y, 150, 46, 46, 0.5);
+    }
   }
   draw();
 
@@ -582,7 +691,14 @@ window.Textures = (function () {
       case B.CAMPFIRE: return TI2.LOG_SIDE;
       case B.LEAVES_WILLOW: return TI2.LEAVES;
       case B.LEAVES_CHERRY: return TI2.LEAVES_CHERRY;
+      case B.PALM_LEAVES: return TI2.PALM_LEAVES;
+      case B.PALM_LOG: return (face === 2 || face === 3) ? TI2.LOG_TOP : TI2.PALM_SIDE;
       case B.LANTERN: return TI2.LANTERN;
+      case B.BOOKSHELF: return (face === 2 || face === 3) ? TI2.PLANKS : TI2.BOOKSHELF;
+      case B.CHAIR: case B.TABLE: return TI2.PLANKS;
+      case B.BED: return TI2.BED;
+      case B.CRYSTAL: return TI2.CRYSTAL;
+      case B.LAVENDER: return TI2.LAVENDER;
       case B.FERN: return TI2.FERN;
       case B.MUSHROOM: return TI2.MUSHROOM;
       case B.LILYPAD: return TI2.LILYPAD;

@@ -12,6 +12,7 @@ window.World = (function () {
   let heightCache = new Map();
   let villageRawCache = new Map();
   let villageLayoutCache = new Map();
+  W.waterfallBases = new Map();   // "x,z" -> y : voet van een berg-waterval (voor nevel)
 
   W.init = function (seed) {
     G.seed = seed >>> 0;
@@ -19,6 +20,7 @@ window.World = (function () {
     heightCache = new Map();
     villageRawCache = new Map();
     villageLayoutCache = new Map();
+    W.waterfallBases = new Map();
   };
 
   // ---- basis-terreinhoogte (zonder dorpen) -----------------------------------
@@ -29,23 +31,31 @@ window.World = (function () {
   W.riverFactor = riverFactor;
 
   function baseHeight(x, z) {
-    const c = Noise.fbm2(x * 0.0022 + 31.7, z * 0.0022 - 11.3, 4);        // continenten
-    const hills = Noise.fbm2(x * 0.009 + 7.1, z * 0.009 + 3.3, 3) * 5;    // heuveltjes
-    const mMask = Noise.smoothstep(-0.16, 0.32, Noise.fbm2(x * 0.0011 + 100.5, z * 0.0011 - 70.2, 3));
-    const m = Noise.ridge2(x * 0.0040, z * 0.0040, 5);                    // bergkammen
+    // Continenten — flink omhoog gebiast zodat het land duidelijk bóven het
+    // water uitkomt (geen vlakke, half-ondergelopen wereld meer).
+    const cont = Noise.fbm2(x * 0.0018 + 31.7, z * 0.0018 - 11.3, 4);
+    const rolling = Noise.fbm2(x * 0.010 + 7.1, z * 0.010 + 3.3, 3);      // glooiende heuvels
+    const detail = Noise.fbm2(x * 0.032 - 5.5, z * 0.032 + 9.2, 2);       // fijne oneffenheden
+    const mMask = Noise.smoothstep(-0.12, 0.34, Noise.fbm2(x * 0.0012 + 100.5, z * 0.0012 - 70.2, 3));
+    const m = Noise.ridge2(x * 0.0042, z * 0.0042, 5);                    // bergkammen
     // hoge, steile kliffen: sterke exponent + tweede scherpe kam bovenop
-    const cliff = Math.pow(m, 2.7);
-    const spires = Math.pow(Noise.ridge2(x * 0.011 + 9.9, z * 0.011 - 4.4, 3), 3) * 0.35;
-    let h = SEA + 3.5 + c * 13 + hills + (cliff + spires * cliff) * mMask * 128;
+    const cliff = Math.pow(m, 2.4);
+    const spires = Math.pow(Noise.ridge2(x * 0.011 + 9.9, z * 0.011 - 4.4, 3), 3) * 0.4;
+
+    let h = SEA + 8
+          + cont * 26                                   // continentaal reliëf, land boven zee
+          + rolling * 13                                // heuvels
+          + detail * 4                                  // kleine bulten
+          + (cliff + spires * cliff) * mMask * 112;     // dramatische bergen
 
     // Rivieren uitslijpen — vooral in het laagland, bergen blijven intact
     const rf = riverFactor(x, z);
     if (rf > 0.001) {
-      const lowland = Noise.smoothstep(SEA + 34, SEA + 8, h);
-      const target = Math.min(h, SEA - 2.2 - rf * 1.5);
+      const lowland = Noise.smoothstep(SEA + 42, SEA + 10, h);
+      const target = Math.min(h, SEA - 2.5 - rf * 1.6);
       h = Noise.lerp(h, target, rf * rf * lowland);
     }
-    return h;
+    return Math.min(h, CH - 6);
   }
   W.baseHeight = baseHeight;
 
@@ -310,6 +320,18 @@ window.World = (function () {
   // ---- bomen ---------------------------------------------------------------------
   // Deterministisch: bestaat er een boom met voet op kolom (x,z)?
   function treeAt(x, z) {
+    // palmen langs zonnige stranden (zand vlak bij zee) — eigen spawnkans
+    {
+      const hb = W.height(x, z);
+      if (hb >= SEA && hb <= SEA + 2 && riverFactor(x, z) < 0.15) {
+        const beach = Noise.fbm2(x * 0.004 - 300.3, z * 0.004 + 120.7, 2);
+        if (beach > 0.12 && Noise.hash2(x * 7 + 13, z * 7 - 5) < 0.10) {
+          const vv = W.nearestVillage(x, z, VILLAGE_R + 8);
+          if (!(vv && Math.hypot(vv.cx - x, vv.cz - z) < VILLAGE_R + 6) && !W.onVillageRoad(x, z))
+            return { x, z, baseY: hb + 1, type: 'palm', size: Noise.hash2(x * 17 + 5, z * 13 - 3) };
+        }
+      }
+    }
     const forest = Noise.fbm2(x * 0.004 + 900.2, z * 0.004 + 41.9, 3);      // bosdichtheid
     const density = Noise.clamp(0.006 + Noise.smoothstep(-0.15, 0.55, forest) * 0.055, 0, 0.06);
     const roll = Noise.hash2(x * 3 + 71, z * 3 - 29);
@@ -341,54 +363,55 @@ window.World = (function () {
   function placeTree(tree, set) {
     const { x, z, baseY, type, size } = tree;
     if (type === 'oak') {
-      const th = 4 + Math.floor(size * 3);
+      const th = 6 + Math.floor(size * 4);          // hogere, duidelijk zichtbare stam
       for (let y = 0; y < th; y++) set(x, baseY + y, z, B.LOG, false);
       const cy = baseY + th;
       const rad = 2 + (size > 0.6 ? 1 : 0);
-      for (let dy = -2; dy <= 2; dy++) for (let dx = -rad; dx <= rad; dx++) for (let dz = -rad; dz <= rad; dz++) {
-        const dd = dx * dx + dz * dz + dy * dy * 1.6;
+      // kroon bovenop de stam (laagste blad ruim boven de grond)
+      for (let dy = -1; dy <= 3; dy++) for (let dx = -rad; dx <= rad; dx++) for (let dz = -rad; dz <= rad; dz++) {
+        const dd = dx * dx + dz * dz + (dy - 0.5) * (dy - 0.5) * 1.6;
         if (dd > rad * rad + 1) continue;
         if (dd > rad * rad - 1 && Noise.hash3(x + dx, cy + dy, z + dz) < 0.4) continue;
         set(x + dx, cy + dy, z + dz, B.LEAVES, true);
       }
     } else if (type === 'birch') {
-      const th = 5 + Math.floor(size * 3);
+      const th = 7 + Math.floor(size * 4);
       for (let y = 0; y < th; y++) set(x, baseY + y, z, B.LOG_BIRCH, false);
       const cy = baseY + th;
-      for (let dy = -2; dy <= 1; dy++) for (let dx = -2; dx <= 2; dx++) for (let dz = -2; dz <= 2; dz++) {
-        const dd = dx * dx + dz * dz + dy * dy * 1.2;
+      for (let dy = -1; dy <= 3; dy++) for (let dx = -2; dx <= 2; dx++) for (let dz = -2; dz <= 2; dz++) {
+        const dd = dx * dx + dz * dz + (dy - 1) * (dy - 1) * 1.2;
         if (dd > 4.6) continue;
         if (dd > 3.4 && Noise.hash3(x + dx, cy + dy, z + dz) < 0.45) continue;
         set(x + dx, cy + dy, z + dz, B.LEAVES_BIRCH, true);
       }
     } else if (type === 'cherry') {
-      const th = 4 + Math.floor(size * 3);
+      const th = 6 + Math.floor(size * 3);
       for (let y = 0; y < th; y++) {
         set(x, baseY + y, z, B.LOG, false);
         if (y === th - 1) { set(x + 1, baseY + y, z, B.LOG, false); set(x - 1, baseY + y, z, B.LOG, false); }
       }
       const cy = baseY + th, rad = 3;
-      for (let dy = -1; dy <= 2; dy++) for (let dx = -rad; dx <= rad; dx++) for (let dz = -rad; dz <= rad; dz++) {
-        const dd = dx * dx + dz * dz + dy * dy * 1.4;
+      for (let dy = 0; dy <= 3; dy++) for (let dx = -rad; dx <= rad; dx++) for (let dz = -rad; dz <= rad; dz++) {
+        const dd = dx * dx + dz * dz + (dy - 1) * (dy - 1) * 1.4;
         if (dd > rad * rad + 1.5) continue;
         if (dd > rad * rad - 1 && Noise.hash3(x + dx, cy + dy, z + dz) < 0.4) continue;
         set(x + dx, cy + dy, z + dz, B.LEAVES_CHERRY, true);
       }
     } else if (type === 'bigoak') {
-      const th = 6 + Math.floor(size * 4);
+      const th = 9 + Math.floor(size * 5);
       for (let y = 0; y < th; y++) {
         set(x, baseY + y, z, B.LOG, false);
-        if (y > th - 3) { set(x + 1, baseY + y, z, B.LOG, false); set(x, baseY + y, z + 1, B.LOG, false); }
+        if (y > th - 4) { set(x + 1, baseY + y, z, B.LOG, false); set(x, baseY + y, z + 1, B.LOG, false); }
       }
       const cy = baseY + th, rad = 4;
-      for (let dy = -3; dy <= 3; dy++) for (let dx = -rad; dx <= rad; dx++) for (let dz = -rad; dz <= rad; dz++) {
-        const dd = dx * dx + dz * dz + dy * dy * 1.5;
+      for (let dy = -2; dy <= 4; dy++) for (let dx = -rad; dx <= rad; dx++) for (let dz = -rad; dz <= rad; dz++) {
+        const dd = dx * dx + dz * dz + (dy - 1) * (dy - 1) * 1.5;
         if (dd > rad * rad + 2) continue;
         if (dd > rad * rad - 2 && Noise.hash3(x + dx, cy + dy, z + dz) < 0.45) continue;
         set(x + dx, cy + dy, z + dz, B.LEAVES, true);
       }
     } else if (type === 'willow') {
-      const th = 4 + Math.floor(size * 2);
+      const th = 6 + Math.floor(size * 3);
       for (let y = 0; y < th; y++) set(x, baseY + y, z, B.LOG, false);
       const cy = baseY + th, rad = 3;
       for (let dy = -1; dy <= 2; dy++) for (let dx = -rad; dx <= rad; dx++) for (let dz = -rad; dz <= rad; dz++) {
@@ -402,11 +425,39 @@ window.World = (function () {
         const len = 2 + Math.floor(Noise.hash2(x + dx + a, z + dz - a) * 3);
         for (let k = 0; k < len; k++) set(x + dx, cy - 1 - k, z + dz, B.LEAVES_WILLOW, true);
       }
+    } else if (type === 'palm') {
+      // gebogen stam met een kroon van palmbladeren
+      const th = 6 + Math.floor(size * 4);
+      const lean = size > 0.5 ? 1 : -1;
+      let px = x, pz = z;
+      const path = [];
+      for (let y = 0; y < th; y++) {
+        if (y > 2 && y % 3 === 0) { if (Noise.hash2(x + y, z - y) < 0.6) px += lean; }
+        set(px, baseY + y, pz, B.PALM_LOG, false);
+        path.push([px, baseY + y, pz]);
+      }
+      const top = path[path.length - 1];
+      const tx = top[0], tyv = top[1] + 1, tz = top[2];
+      set(tx, tyv, tz, B.PALM_LEAVES, true);
+      // kroon: bladeren die naar buiten en omlaag hangen
+      for (let a = 0; a < 8; a++) {
+        const ang = a / 8 * Math.PI * 2;
+        const dxs = Math.cos(ang), dzs = Math.sin(ang);
+        const len = 3 + Math.floor(Noise.hash2(x + a, z - a) * 2);
+        for (let k = 1; k <= len; k++) {
+          const bx = Math.round(tx + dxs * k);
+          const bz = Math.round(tz + dzs * k);
+          const by = tyv + (k <= 1 ? 1 : -(k - 1));   // eerst iets omhoog, dan afhangend
+          set(bx, by, bz, B.PALM_LEAVES, true);
+        }
+      }
+      // een paar kokosnoten
+      if (Noise.hash2(x * 3, z * 3) < 0.5) set(tx + lean, tyv - 1, tz, B.PALM_LOG, true);
     } else { // pine — kegel
-      const th = 6 + Math.floor(size * 5);
+      const th = 8 + Math.floor(size * 5);
       for (let y = 0; y < th; y++) set(x, baseY + y, z, B.LOG, false);
       for (let layer = 0; layer < th - 1; layer++) {
-        const y = baseY + 2 + layer;
+        const y = baseY + 3 + layer;
         const rad = Math.max(1, Math.round((th - layer) * 0.34));
         for (let dx = -rad; dx <= rad; dx++) for (let dz = -rad; dz <= rad; dz++) {
           if (dx * dx + dz * dz > rad * rad + 0.5) continue;
@@ -463,6 +514,12 @@ window.World = (function () {
         if (y === h) id = surf;
         else if (y >= h - 3) id = under;
         else id = B.STONE;
+        // grotten uithollen in het gesteente (kruisende tunnel-isovlakken)
+        if (id === B.STONE && y > 5 && y < h - 4 && h > SEA + 1) {
+          const c1 = Noise.noise3(wx * 0.055, y * 0.09 + 31.2, wz * 0.055);
+          const c2 = Noise.noise3(wx * 0.055 - 70.5, y * 0.09 - 11.7, wz * 0.055 + 40.3);
+          if (Math.abs(c1) < 0.075 && Math.abs(c2) < 0.10) id = B.AIR;
+        }
         blocks[idx(lx, y, lz)] = id;
       }
       // water opvullen tot zeeniveau
@@ -480,6 +537,17 @@ window.World = (function () {
       if (soft && blocks[i] !== B.AIR) return;   // bladeren overschrijven niets
       blocks[i] = id;
     };
+
+    // 1b. gloeiende kristallen op de bodem van grotten (koel, decoratief licht)
+    for (let lz = 0; lz < CS; lz++) for (let lx = 0; lx < CS; lx++) {
+      const wx = x0 + lx, wz = z0 + lz;
+      for (let y = 7; y < SEA + 6 && y < CH - 2; y++) {
+        if (blocks[idx(lx, y, lz)] !== B.AIR) continue;
+        if (blocks[idx(lx, y - 1, lz)] !== B.STONE) continue;   // op een stenen vloer
+        if (blocks[idx(lx, y + 1, lz)] !== B.AIR) continue;     // met ruimte erboven
+        if (Noise.hash3(wx, y * 3 + 1, wz) < 0.02) blocks[idx(lx, y, lz)] = B.CRYSTAL;
+      }
+    }
 
     // 2. bomen (incl. rand van 3 blokken zodat kronen over chunkgrenzen doorlopen)
     for (let wz = z0 - 3; wz < z0 + CS + 3; wz++) for (let wx = x0 - 3; wx < x0 + CS + 3; wx++) {
@@ -503,6 +571,15 @@ window.World = (function () {
         continue;
       }
       if (surfId !== B.GRASS) continue;
+
+      // lavendelvelden — zeldzame paarse biome-vlekken in het glooiende laagland
+      const lav = Noise.fbm2(wx * 0.0032 + 220.4, wz * 0.0032 - 660.1, 3);
+      if (lav > 0.36 && h > SEA + 2 && h < 58 && !W.onVillageRoad(wx, wz)) {
+        const lr = Noise.hash2(wx * 11 + 2, wz * 11 + 6);
+        if (lr < 0.62) blocks[idx(lx, h + 1, lz)] = B.LAVENDER;
+        else if (lr < 0.72) blocks[idx(lx, h + 1, lz)] = B.TALLGRASS;
+        continue;
+      }
 
       const meadow = Noise.fbm2(wx * 0.012 + 55.5, wz * 0.012 - 88.8, 2);
       const forest = Noise.fbm2(wx * 0.004 + 900.2, wz * 0.004 + 41.9, 3);
@@ -539,6 +616,37 @@ window.World = (function () {
       if (SEA + 1 >= CH) continue;
       if (blocks[idx(lx, SEA + 1, lz)] !== B.AIR) continue;
       if (Noise.hash2(wx * 5 + 3, wz * 5 - 7) < 0.06) blocks[idx(lx, SEA + 1, lz)] = B.LILYPAD;
+    }
+
+    // 3c. bergwatervallen: zeldzame hoge bronnen die over een klif naar beneden storten
+    for (let lz = 0; lz < CS; lz++) for (let lx = 0; lx < CS; lx++) {
+      const wx = x0 + lx, wz = z0 + lz;
+      const h = W.height(wx, wz);
+      if (h < SEA + 22 || h > CH - 12) continue;
+      if (Noise.hash2(wx * 13 + 7, wz * 13 - 9) > 0.02) continue;   // zeldzaam
+      const top = blocks[idx(lx, h, lz)];
+      if (top !== B.STONE && top !== B.SNOW && top !== B.GRASS) continue;
+      // steilste afdaling naar een buur binnen deze chunk zoeken
+      let bestD = 0, bnx = 0, bnz = 0;
+      for (const [dx, dz] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) {
+        const nh = W.height(wx + dx, wz + dz);
+        const d = h - nh;
+        if (d > bestD) { bestD = d; bnx = dx; bnz = dz; }
+      }
+      if (bestD < 3) continue;      // een lichte richel volstaat voor een cascade
+      const nlx = lx + bnx, nlz = lz + bnz;
+      if (nlx < 0 || nlx >= CS || nlz < 0 || nlz >= CS) continue;    // val binnen de chunk
+      const nh = W.height(wx + bnx, wz + bnz);
+      // bronpoeltje bovenaan
+      blocks[idx(lx, h, lz)] = B.WATER;
+      blocks[idx(lx, h - 1, lz)] = B.WATER;
+      // watergordijn in de buurkolom, van de top tot de voet
+      for (let y = h; y > nh && y < CH && y >= 0; y--) {
+        if (blocks[idx(nlx, y, nlz)] === B.AIR) blocks[idx(nlx, y, nlz)] = B.WATER;
+      }
+      // klein poeltje aan de voet + nevelpunt registreren
+      if (nh + 1 < CH && blocks[idx(nlx, nh + 1, nlz)] === B.AIR) blocks[idx(nlx, nh + 1, nlz)] = B.WATER;
+      W.waterfallBases.set((wx + bnx) + ',' + (wz + bnz), nh + 1);
     }
 
     // 4. dorpsbebouwing eroverheen

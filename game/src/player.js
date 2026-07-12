@@ -104,6 +104,7 @@ window.Player = (function () {
     const h = World.height(sx, sz);
     P.pos.set(sx + 0.5, h + 2.5, sz + 0.5);
     P.vel.set(0, 0, 0);
+    P.resting = null;
     P.yaw = Math.PI * 0.25;
     P.pitch = -0.05;
   };
@@ -187,6 +188,29 @@ window.Player = (function () {
     Sfx.dig(hit.block);
   }
 
+  // Zitten op een stoel of uitrusten/slapen op bed.  Het lichaam blijft staan;
+  // alleen de camera zakt naar de zit-/lighoogte tot je weer beweegt.
+  P.resting = null;
+  P.sitOn = function (x, y, z, bed) {
+    P.resting = { x: x + 0.5, z: z + 0.5, eyeY: y + (bed ? 0.5 : 1.05), bed };
+    P.vel.set(0, 0, 0);
+    if (bed) {
+      const el = G.sunElevation();
+      if (el < 0.05) {
+        // doorslapen tot zonsopgang (begin van de volgende dagcyclus)
+        const cyc = G.cycleLen();
+        const tt = ((G.timeSec % cyc) + cyc) % cyc;
+        G.timeSec += (cyc - tt) + 0.5;
+        G.dayNumber++;
+        UI.hint('Je sliep tot zonsopgang ☀️');
+      } else {
+        UI.hint('Je rust wat uit op bed (beweeg om op te staan)');
+      }
+    } else {
+      UI.hint('Even zitten en genieten 🔥 (beweeg om op te staan)');
+    }
+  };
+
   function toggleDoor(hit) {
     const m = Chunks.getMeta(hit.x, hit.y, hit.z);
     const by = (m & 8) ? hit.y - 1 : hit.y;
@@ -208,6 +232,9 @@ window.Player = (function () {
       Sfx.dig(B.PLANKS);
       return;
     }
+    // rechtsklik op stoel = zitten, op bed = uitrusten/slapen
+    if (hit.block === B.CHAIR) { P.sitOn(hit.x, hit.y, hit.z, false); return; }
+    if (hit.block === B.BED) { P.sitOn(hit.x, hit.y, hit.z, true); return; }
 
     const id = G.HOTBAR[P.hotbarSel];
     let tx = hit.x + hit.face[0], ty = hit.y + hit.face[1], tz = hit.z + hit.face[2];
@@ -224,16 +251,20 @@ window.Player = (function () {
           ty + 1 > py && ty < py + SIZE.h) { return; }
     }
 
-    // fakkel/lantaarn/kampvuur/gewas hebben een dragend blok nodig
-    if (id === B.TORCH || id === B.LANTERN || id === B.CAMPFIRE || id === B.CROP) {
+    // fakkel/lantaarn/kampvuur/gewas/meubel/lavendel hebben een dragend blok nodig
+    if (id === B.TORCH || id === B.LANTERN || id === B.CAMPFIRE || id === B.CROP ||
+        id === B.CHAIR || id === B.TABLE || id === B.BED || id === B.LAVENDER) {
       const below = Chunks.getBlock(tx, ty - 1, tz);
       if (!G.occludes(below) && below !== B.FENCE) {
-        UI.hint(id === B.CROP ? 'Graan heeft grond nodig om te groeien.' : 'Dit heeft een stevige ondergrond nodig.');
+        UI.hint(id === B.CROP ? 'Graan heeft grond nodig om te groeien.'
+          : (id === B.LAVENDER ? 'Lavendel heeft grond nodig.' : 'Dit heeft een stevige ondergrond nodig.'));
         return;
       }
     }
 
     if (id === B.STAIRS) {
+      Chunks.setBlock(tx, ty, tz, id, true, facingFromYaw(P.yaw));
+    } else if (id === B.CHAIR) {
       Chunks.setBlock(tx, ty, tz, id, true, facingFromYaw(P.yaw));
     } else if (id === B.FENCE_GATE) {
       Chunks.setBlock(tx, ty, tz, id, true, facingFromYaw(P.yaw) << 1);   // dicht, met richting
@@ -324,6 +355,19 @@ window.Player = (function () {
     camera.rotation.order = 'YXZ';
     camera.rotation.y = P.yaw;
     camera.rotation.x = P.pitch;
+
+    // zittend/rustend: camera op de zithoogte, opstaan bij bewegingsinvoer
+    if (P.resting) {
+      if (keys['KeyW'] || keys['KeyS'] || keys['KeyA'] || keys['KeyD'] || keys['Space']) {
+        P.resting = null;
+      } else {
+        const r = P.resting;
+        camera.position.set(r.x, r.eyeY, r.z);
+        torchModel.visible = false;
+        torchLight.visible = false;
+        return;
+      }
+    }
 
     if (P.ridingBoat && P.ridingBoat.active) { rideBoat(dt, t); return; }
 

@@ -235,6 +235,10 @@ window.Chunks = (function () {
       return fx <= 0.5;
     }
     if (id === B.FENCE_GATE) return (G.getMeta(bx, by, bz) & 1) ? false : true;
+    // meubels: lage vaste vorm zodat je er vanzelf op stapt / tegenaan botst
+    if (id === B.CHAIR) return fy <= 0.5 + 1e-4;
+    if (id === B.TABLE) return fy <= 0.86 + 1e-4;
+    if (id === B.BED) return fy <= 0.36 + 1e-4;
     return true;
   };
 
@@ -536,6 +540,7 @@ window.Chunks = (function () {
             else if (id === B.FERN) { grassTint(wx, wz, tint); tint[0] *= 0.9; tint[2] *= 0.95; emitCross(wx, y, wz, Textures.TI.FERN, tint, 1, 0.9); }
             else if (id === B.CROP) { const mm = C.getMeta(wx, y, wz); const st = mm === 0 ? 4 : mm; emitCross(wx, y, wz, Textures.TI.CROP, [1, 1, 1], 0.6, 0.28 + st * 0.13); }
             else if (id === B.MUSHROOM) { emitCross(wx, y, wz, Textures.TI.MUSHROOM, [1, 1, 1], 0.15, 0.6); }
+            else if (id === B.LAVENDER) { emitCross(wx, y, wz, Textures.TI.LAVENDER, [1, 1, 1], 0.6, 1.15); }
             else { emitCross(wx, y, wz, Textures.texFor(id, 0), [1, 1, 1], 0.5, 0.9); }
             continue;
           }
@@ -576,6 +581,44 @@ window.Chunks = (function () {
           if (id === B.LANTERN) {
             emitBox(wx, y, wz, 0.32, 0.0, 0.32, 0.68, 0.6, 0.68, Textures.TI.LANTERN);
             torches.push({ x: wx + 0.5, y: y + 0.4, z: wz + 0.5, big: false });
+            continue;
+          }
+
+          if (id === B.CRYSTAL) {
+            // gloeiend kristalcluster met eigen (koel) licht
+            emitBox(wx, y, wz, 0.14, 0.0, 0.14, 0.86, 0.9, 0.86, Textures.TI.CRYSTAL);
+            emitBox(wx, y, wz, 0.34, 0.0, 0.34, 0.60, 1.0, 0.60, Textures.TI.CRYSTAL);
+            torches.push({ x: wx + 0.5, y: y + 0.5, z: wz + 0.5, big: false, crystal: true });
+            continue;
+          }
+
+          if (id === B.CHAIR) {
+            const P = Textures.TI.PLANKS;
+            const facing = C.getMeta(wx, y, wz) & 3;
+            // poten
+            for (const [lx0, lz0] of [[0.14, 0.14], [0.72, 0.14], [0.14, 0.72], [0.72, 0.72]])
+              emitBox(wx, y, wz, lx0, 0, lz0, lx0 + 0.14, 0.42, lz0 + 0.14, P);
+            // zitting
+            emitBox(wx, y, wz, 0.1, 0.42, 0.1, 0.9, 0.54, 0.9, P);
+            // rugleuning aan de kant tegenover de kijkrichting
+            if (facing === 0) emitBox(wx, y, wz, 0.1, 0.54, 0.86, 0.9, 1.15, 0.98, P);
+            else if (facing === 2) emitBox(wx, y, wz, 0.1, 0.54, 0.02, 0.9, 1.15, 0.14, P);
+            else if (facing === 1) emitBox(wx, y, wz, 0.02, 0.54, 0.1, 0.14, 1.15, 0.9, P);
+            else emitBox(wx, y, wz, 0.86, 0.54, 0.1, 0.98, 1.15, 0.9, P);
+            continue;
+          }
+
+          if (id === B.TABLE) {
+            const P = Textures.TI.PLANKS;
+            for (const [lx0, lz0] of [[0.08, 0.08], [0.78, 0.08], [0.08, 0.78], [0.78, 0.78]])
+              emitBox(wx, y, wz, lx0, 0, lz0, lx0 + 0.14, 0.74, lz0 + 0.14, P);
+            emitBox(wx, y, wz, 0.02, 0.74, 0.02, 0.98, 0.88, 0.98, P);
+            continue;
+          }
+
+          if (id === B.BED) {
+            emitBox(wx, y, wz, 0.02, 0.0, 0.02, 0.98, 0.16, 0.98, Textures.TI.PLANKS);
+            emitBox(wx, y, wz, 0.0, 0.16, 0.0, 1.0, 0.34, 1.0, Textures.TI.BED);
             continue;
           }
 
@@ -703,6 +746,11 @@ window.Chunks = (function () {
               leafTint(wx, y, wz, tint); tr = tint[0]; tg = tint[1]; tb = tint[2];
               if (id === B.LEAVES_PINE) { tr *= 0.75; tg *= 0.9; tb *= 0.85; }
               else if (id === B.LEAVES_WILLOW) { tr *= 1.05; tg *= 1.02; tb *= 0.7; }
+              else if (id === B.PALM_LEAVES) {
+                // tropisch blad: helder groen, ongevoelig voor seizoen
+                const nn = Noise.hash3(wx | 0, y | 0, wz | 0);
+                tr = 0.78 + nn * 0.08; tg = 1.08 + nn * 0.06; tb = 0.62 + nn * 0.05;
+              }
               else if (id === B.LEAVES_CHERRY) {
                 // roze bloesem: eigen tint, negeer de groene seizoenskleur
                 const nn = Noise.hash3(wx | 0, y | 0, wz | 0);

@@ -67,7 +67,8 @@ window.Entities = (function () {
         l.visible = true;
         l.position.set(c.x, c.y + 0.1, c.z);
         const flick = Math.sin(t * 9 + i * 2.7) * 0.18 + Math.sin(t * 23 + i) * 0.08;
-        if (c.big) { l.intensity = 2.0 + flick; l.distance = 22; l.color.setHex(0xff9a4e); }
+        if (c.crystal) { l.intensity = 1.0 + Math.sin(t * 2 + i) * 0.12; l.distance = 12; l.color.setHex(0x8fb6ff); }
+        else if (c.big) { l.intensity = 2.0 + flick; l.distance = 22; l.color.setHex(0xff9a4e); }
         else { l.intensity = 1.15 + flick; l.distance = 13; l.color.setHex(0xffab5e); }
       } else l.visible = false;
     }
@@ -852,6 +853,58 @@ window.Entities = (function () {
     posA.needsUpdate = true; colA.needsUpdate = true;
   }
 
+  // ---- waterval-nevel ------------------------------------------------------------------------
+  const MIST_N = 80;
+  let mist = null, mistData = [], mistBases = [], mistRefresh = 0;
+  function initMist() {
+    const geo = new THREE.BufferGeometry();
+    geo.setAttribute('position', new THREE.BufferAttribute(new Float32Array(MIST_N * 3), 3));
+    geo.setAttribute('color', new THREE.BufferAttribute(new Float32Array(MIST_N * 3), 3));
+    const mat = new THREE.PointsMaterial({
+      size: 0.9, vertexColors: true, transparent: true, opacity: 0.4,
+      depthWrite: false, sizeAttenuation: true,
+    });
+    mist = new THREE.Points(geo, mat);
+    mist.frustumCulled = false;
+    scene.add(mist);
+    for (let i = 0; i < MIST_N; i++) mistData.push({ x: 0, y: -100, z: 0, life: 0, vx: 0, vz: 0, vy: 0, seed: rng() * 10 });
+  }
+  function updateMist(dt, t, playerPos) {
+    mistRefresh -= dt;
+    if (mistRefresh <= 0) {
+      mistRefresh = 1.0;
+      mistBases.length = 0;
+      if (window.World && World.waterfallBases) {
+        World.waterfallBases.forEach((y, key) => {
+          const p = key.split(','); const x = +p[0], z = +p[1];
+          const dx = x - playerPos.x, dz = z - playerPos.z;
+          if (dx * dx + dz * dz < 64 * 64) mistBases.push({ x: x + 0.5, y, z: z + 0.5 });
+        });
+      }
+    }
+    const posA = mist.geometry.attributes.position, colA = mist.geometry.attributes.color;
+    for (let i = 0; i < MIST_N; i++) {
+      const p = mistData[i];
+      if (p.life <= 0) {
+        if (mistBases.length && rng() < dt * 10) {
+          const b = mistBases[(rng() * mistBases.length) | 0];
+          p.x = b.x + (rng() - 0.5) * 1.6; p.y = b.y + rng() * 1.2; p.z = b.z + (rng() - 0.5) * 1.6;
+          p.vx = (rng() - 0.5) * 0.6; p.vz = (rng() - 0.5) * 0.6; p.vy = 0.4 + rng() * 0.6;
+          p.life = 1.8 + rng() * 1.6; p.maxLife = p.life;
+        } else { posA.setXYZ(i, 0, -100, 0); colA.setXYZ(i, 0, 0, 0); continue; }
+      }
+      p.life -= dt;
+      p.y += p.vy * dt; p.vy -= dt * 0.25;
+      p.x += p.vx * dt + Math.sin(t * 0.8 + p.seed) * dt * 0.2;
+      p.z += p.vz * dt;
+      const f = Math.max(0, p.life / p.maxLife);
+      const g = 0.7 * Math.sin(f * Math.PI);   // in- en uitfaden
+      posA.setXYZ(i, p.x, p.y, p.z);
+      colA.setXYZ(i, g, g * 1.02, g * 1.05);
+    }
+    posA.needsUpdate = true; colA.needsUpdate = true;
+  }
+
   // ---- hoofdinterface -------------------------------------------------------------------------
   E.init = function (theScene, seed) {
     scene = theScene;
@@ -862,6 +915,7 @@ window.Entities = (function () {
     initSmoke();
     initLeaves();
     initSparks();
+    initMist();
   };
 
   E.reset = function () {
@@ -936,6 +990,7 @@ window.Entities = (function () {
     updateSmoke(dt, t, playerPos);
     updateLeaves(dt, t, playerPos);
     updateSparks(dt, t, playerPos);
+    updateMist(dt, t, playerPos);
     updateLightPool(camera.position, t);
   };
 
