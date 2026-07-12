@@ -234,6 +234,7 @@ window.Chunks = (function () {
       if (facing === 1) return fx >= 0.5;
       return fx <= 0.5;
     }
+    if (id === B.FENCE_GATE) return (G.getMeta(bx, by, bz) & 1) ? false : true;
     return true;
   };
 
@@ -533,7 +534,7 @@ window.Chunks = (function () {
           if (G.isCross(id)) {
             if (id === B.TALLGRASS) { grassTint(wx, wz, tint); emitCross(wx, y, wz, Textures.texFor(id, 0), tint, 1, 0.85); }
             else if (id === B.FERN) { grassTint(wx, wz, tint); tint[0] *= 0.9; tint[2] *= 0.95; emitCross(wx, y, wz, Textures.TI.FERN, tint, 1, 0.9); }
-            else if (id === B.CROP) { emitCross(wx, y, wz, Textures.texFor(id, 0), [1, 1, 1], 0.6, 0.8); }
+            else if (id === B.CROP) { const mm = C.getMeta(wx, y, wz); const st = mm === 0 ? 4 : mm; emitCross(wx, y, wz, Textures.TI.CROP, [1, 1, 1], 0.6, 0.28 + st * 0.13); }
             else if (id === B.MUSHROOM) { emitCross(wx, y, wz, Textures.TI.MUSHROOM, [1, 1, 1], 0.15, 0.6); }
             else { emitCross(wx, y, wz, Textures.texFor(id, 0), [1, 1, 1], 0.5, 0.9); }
             continue;
@@ -574,6 +575,35 @@ window.Chunks = (function () {
 
           if (id === B.SLAB) {
             emitBox(wx, y, wz, 0, 0, 0, 1, 0.5, 1, Textures.TI.PLANKS);
+            continue;
+          }
+
+          if (id === B.FENCE_GATE) {
+            const m = C.getMeta(wx, y, wz);
+            const open = m & 1, facing = (m >> 1) & 3;
+            const alongX = (facing === 0 || facing === 2);
+            const T = Textures.TI.PLANKS;
+            if (alongX) {
+              emitBox(wx, y, wz, 0.0, 0, 0.42, 0.16, 1.0, 0.58, T);
+              emitBox(wx, y, wz, 0.84, 0, 0.42, 1.0, 1.0, 0.58, T);
+              if (!open) {
+                emitBox(wx, y, wz, 0.16, 0.32, 0.46, 0.84, 0.46, 0.54, T);
+                emitBox(wx, y, wz, 0.16, 0.60, 0.46, 0.84, 0.74, 0.54, T);
+              } else {
+                emitBox(wx, y, wz, 0.02, 0.32, 0.58, 0.14, 0.74, 0.98, T);
+                emitBox(wx, y, wz, 0.86, 0.32, 0.58, 0.98, 0.74, 0.98, T);
+              }
+            } else {
+              emitBox(wx, y, wz, 0.42, 0, 0.0, 0.58, 1.0, 0.16, T);
+              emitBox(wx, y, wz, 0.42, 0, 0.84, 0.58, 1.0, 1.0, T);
+              if (!open) {
+                emitBox(wx, y, wz, 0.46, 0.32, 0.16, 0.54, 0.46, 0.84, T);
+                emitBox(wx, y, wz, 0.46, 0.60, 0.16, 0.54, 0.74, 0.84, T);
+              } else {
+                emitBox(wx, y, wz, 0.58, 0.32, 0.02, 0.98, 0.74, 0.14, T);
+                emitBox(wx, y, wz, 0.58, 0.32, 0.86, 0.98, 0.74, 0.98, T);
+              }
+            }
             continue;
           }
 

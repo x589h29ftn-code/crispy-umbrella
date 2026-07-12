@@ -548,7 +548,7 @@ window.Textures = (function () {
       case B.LEAVES: return TI2.LEAVES;
       case B.LEAVES_BIRCH: return TI2.LEAVES_BIRCH;
       case B.LEAVES_PINE: return TI2.LEAVES_PINE;
-      case B.PLANKS: case B.FENCE: return TI2.PLANKS;
+      case B.PLANKS: case B.FENCE: case B.FENCE_GATE: return TI2.PLANKS;
       case B.COBBLE: return TI2.COBBLE;
       case B.STONE_BRICK: return TI2.STONE_BRICK;
       case B.STONE_BRICK_MOSSY: return TI2.STONE_BRICK_MOSSY;

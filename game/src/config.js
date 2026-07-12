@@ -17,6 +17,7 @@ window.G = (function () {
     STONE_BRICK: 25, STONE_BRICK_MOSSY: 26, GLASS: 27,
     STAIRS: 28, SLAB: 29, DOOR: 30, CAMPFIRE: 31,
     FERN: 32, MUSHROOM: 33, LILYPAD: 34, PEBBLES: 35, LEAVES_WILLOW: 36,
+    FENCE_GATE: 37,
   };
   const B = G.B;
 
@@ -31,9 +32,9 @@ window.G = (function () {
   // Blokken die het vlak van hun buurman NIET volledig bedekken
   G.NON_OCCLUDING = new Set([B.AIR, B.WATER, B.LEAVES, B.LEAVES_BIRCH, B.LEAVES_PINE, B.LEAVES_WILLOW, B.TORCH, B.FENCE,
     B.TALLGRASS, B.FLOWER_RED, B.FLOWER_YELLOW, B.FLOWER_BLUE, B.FLOWER_WHITE, B.CROP, B.GLASS,
-    B.STAIRS, B.SLAB, B.DOOR, B.CAMPFIRE, B.FERN, B.MUSHROOM, B.LILYPAD, B.PEBBLES]);
+    B.STAIRS, B.SLAB, B.DOOR, B.CAMPFIRE, B.FERN, B.MUSHROOM, B.LILYPAD, B.PEBBLES, B.FENCE_GATE]);
   // Blokken met een eigen vorm (deels gevuld) — collision via Chunks.solidShapeAt
-  G.SHAPED = new Set([B.STAIRS, B.SLAB, B.DOOR]);
+  G.SHAPED = new Set([B.STAIRS, B.SLAB, B.DOOR, B.FENCE_GATE]);
 
   G.isSolid = (id) => id !== undefined && !G.NON_SOLID.has(id);
   G.isCross = (id) => G.CROSS_BLOCKS.has(id);
@@ -45,11 +46,11 @@ window.G = (function () {
     [B.PLANKS]: 'Planken', [B.LOG]: 'Boomstam', [B.COBBLE]: 'Keien', [B.FENCE]: 'Hekje', [B.TORCH]: 'Fakkel',
     [B.STONE_BRICK]: 'Bakstenen', [B.STONE_BRICK_MOSSY]: 'Bemoste bakstenen', [B.GLASS]: 'Glas',
     [B.STAIRS]: 'Trap', [B.SLAB]: 'Plaat / bankje', [B.DOOR]: 'Deur', [B.CAMPFIRE]: 'Kampvuur',
-    [B.FARMLAND]: 'Akkergrond', [B.CROP]: 'Graan (zaaien)', [B.WATER]: 'Water',
+    [B.FARMLAND]: 'Akkergrond', [B.CROP]: 'Graan (zaaien)', [B.WATER]: 'Water', [B.FENCE_GATE]: 'Hekpoort',
   };
   // Bouw-set voorop op 1–9; overige blokken via scrollwiel
   G.HOTBAR = [B.STONE_BRICK, B.STONE_BRICK_MOSSY, B.STAIRS, B.SLAB, B.PLANKS, B.DOOR, B.GLASS, B.FENCE, B.TORCH,
-    B.CAMPFIRE, B.FARMLAND, B.CROP, B.WATER, B.COBBLE, B.LOG, B.GRASS, B.DIRT, B.SAND];
+    B.FENCE_GATE, B.CAMPFIRE, B.FARMLAND, B.CROP, B.WATER, B.COBBLE, B.LOG, B.GRASS, B.DIRT, B.SAND];
 
   // Instellingen (met persistentie)
   const DEFAULTS = {

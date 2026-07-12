@@ -13,7 +13,7 @@ window.Main = (function () {
 
   // ---- opstarten ----
   function boot() {
-    renderer = new THREE.WebGLRenderer({ antialias: true, powerPreference: 'high-performance' });
+    renderer = new THREE.WebGLRenderer({ antialias: true, powerPreference: 'high-performance', preserveDrawingBuffer: true });
     renderer.setSize(window.innerWidth, window.innerHeight);
     applyPixelRatio();
     renderer.shadowMap.enabled = true;
@@ -169,6 +169,7 @@ window.Main = (function () {
     Boats.reset();
     WaterSim.reset();
     if (saveData && saveData.water) WaterSim.deserialize(saveData.water);
+    Crops.reset();
 
     if (saveData && saveData.player) Player.deserialize(saveData.player);
     else Player.spawn();
@@ -213,6 +214,19 @@ window.Main = (function () {
     const data = UI.loadGameData(slot);
     if (!data) { UI.toast('Geen opgeslagen spel gevonden.'); return; }
     initWorld(data.seed, data);
+  };
+
+  M.loadFromData = function (data) {
+    if (!data || data.seed === undefined) { UI.toast('Ongeldig wereldbestand.'); return; }
+    initWorld(data.seed >>> 0, data);
+  };
+
+  // screenshot van het huidige beeld (voor de fotomodus)
+  M.captureScreenshot = function () {
+    try {
+      const dataUrl = renderer.domElement.toDataURL('image/png');
+      UI.takeScreenshot(dataUrl);
+    } catch (e) { UI.toast('Screenshot mislukt.'); }
   };
 
   M.toMainMenu = function () {
@@ -291,6 +305,7 @@ window.Main = (function () {
 
     Player.update(dt, elapsed);
     WaterSim.update(dt);
+    Crops.update(dt);
 
     const sunInfo = Sky.update(dt, Player.pos);
     const rainLevel = Weather.update(dt, Player.pos, sunInfo.nightAmt);

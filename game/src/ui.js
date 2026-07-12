@@ -81,7 +81,7 @@ window.UI = (function () {
     } catch (e) { return null; }
   }
 
-  U.saveGame = function (slot) {
+  function buildSaveData() {
     const edits = [];
     G.worldEdits.forEach((id, k) => {
       const p = k.split(',');
@@ -92,7 +92,8 @@ window.UI = (function () {
       const p = k.split(',');
       metas.push([+p[0], +p[1], +p[2], v]);
     });
-    const data = {
+    return {
+      format: 'blokkenwereld-1',
       savedAt: Date.now(),
       seed: G.seed,
       timeSec: G.timeSec,
@@ -102,12 +103,65 @@ window.UI = (function () {
       water: window.WaterSim ? WaterSim.serialize() : [],
       edits, metas,
     };
+  }
+  U.buildSaveData = buildSaveData;
+
+  U.saveGame = function (slot) {
     try {
-      localStorage.setItem(SAVE_PREFIX + slot, JSON.stringify(data));
+      localStorage.setItem(SAVE_PREFIX + slot, JSON.stringify(buildSaveData()));
       return true;
     } catch (e) {
       U.toast('Opslaan mislukt (opslag vol?)');
       return false;
+    }
+  };
+
+  // ---- wereld naar/uit een bestand ----
+  U.exportToFile = async function () {
+    const data = buildSaveData();
+    const json = JSON.stringify(data);
+    const name = 'Blokkenwereld-dag' + data.dayNumber + '.bw';
+    if (window.desktop && window.desktop.isDesktop) {
+      const res = await window.desktop.saveWorld(name, json);
+      if (res && res.ok) { U.toast('Wereld opgeslagen als bestand 💾'); Main.resume(); }
+    } else {
+      const blob = new Blob([json], { type: 'application/json' });
+      const a = document.createElement('a');
+      a.href = URL.createObjectURL(blob); a.download = name; a.click();
+      setTimeout(() => URL.revokeObjectURL(a.href), 1000);
+      U.toast('Wereld gedownload 💾');
+    }
+  };
+  U.importFromFile = async function () {
+    if (window.desktop && window.desktop.isDesktop) {
+      const res = await window.desktop.openWorld();
+      if (res && res.ok) {
+        try { Main.loadFromData(JSON.parse(res.content)); }
+        catch (e) { U.toast('Kon het bestand niet lezen.'); }
+      }
+    } else {
+      const inp = document.createElement('input');
+      inp.type = 'file'; inp.accept = '.bw,.json,application/json';
+      inp.onchange = () => {
+        const f = inp.files[0]; if (!f) return;
+        const r = new FileReader();
+        r.onload = () => { try { Main.loadFromData(JSON.parse(r.result)); } catch (e) { U.toast('Kon het bestand niet lezen.'); } };
+        r.readAsText(f);
+      };
+      inp.click();
+    }
+  };
+
+  // screenshot / fotomodus
+  U.takeScreenshot = async function (dataUrl) {
+    const name = 'Blokkenwereld-' + Date.now() + '.png';
+    if (window.desktop && window.desktop.isDesktop) {
+      const res = await window.desktop.saveScreenshot(name, dataUrl);
+      if (res && res.ok) U.toast('Foto opgeslagen in Afbeeldingen 📷');
+    } else {
+      const a = document.createElement('a');
+      a.href = dataUrl; a.download = name; a.click();
+      U.toast('Foto gedownload 📷');
     }
   };
 
@@ -251,6 +305,8 @@ window.UI = (function () {
     $('btn-settings-pause').onclick = () => { settingsReturnTo = 'pausemenu'; show('settingsmenu'); };
     $('btn-quit').onclick = () => Main.toMainMenu();
 
+    $('btn-export-file').onclick = () => U.exportToFile();
+    $('btn-import-file').onclick = () => U.importFromFile();
     $('btn-save-back').onclick = () => show('pausemenu');
     $('btn-load-back').onclick = () => show(settingsReturnTo);
     $('btn-settings-back').onclick = () => show(settingsReturnTo);
@@ -279,8 +335,14 @@ window.UI = (function () {
     if (txt) $('load-txt').textContent = txt;
   };
 
+  U._hudHidden = false;
   U.setHud = function (visible) {
-    $('hud').style.display = visible ? 'block' : 'none';
+    $('hud').style.display = (visible && !U._hudHidden) ? 'block' : 'none';
+  };
+  U.toggleHud = function () {
+    U._hudHidden = !U._hudHidden;
+    U.setHud(G.state === 'playing');
+    U.hint(U._hudHidden ? 'Fotomodus — HUD verborgen (F1)' : '');
   };
 
   return U;

@@ -59,6 +59,8 @@ window.Player = (function () {
         P.holdingTorch = !P.holdingTorch;
         UI.hint(P.holdingTorch ? 'Fakkel in de hand 🔥' : 'Fakkel opgeborgen');
       }
+      if (e.code === 'F1') { e.preventDefault(); UI.toggleHud(); }
+      if (e.code === 'F2') { e.preventDefault(); Main.captureScreenshot(); }
       if (e.code === 'KeyE') toggleBoat();
       if (e.code === 'KeyB' && !P.ridingBoat) {
         const boat = Boats.placeInFront(P.pos, P.yaw);
@@ -197,8 +199,14 @@ window.Player = (function () {
   function placeBlock() {
     const hit = P.raycast(6);
     if (!hit) return;
-    // rechtsklik op een deur = openen/sluiten
+    // rechtsklik op een deur/hekpoort = openen/sluiten
     if (hit.block === B.DOOR) { toggleDoor(hit); return; }
+    if (hit.block === B.FENCE_GATE) {
+      const m = Chunks.getMeta(hit.x, hit.y, hit.z);
+      Chunks.setBlock(hit.x, hit.y, hit.z, B.FENCE_GATE, true, m ^ 1);
+      Sfx.dig(B.PLANKS);
+      return;
+    }
 
     const id = G.HOTBAR[P.hotbarSel];
     let tx = hit.x + hit.face[0], ty = hit.y + hit.face[1], tz = hit.z + hit.face[2];
@@ -226,6 +234,8 @@ window.Player = (function () {
 
     if (id === B.STAIRS) {
       Chunks.setBlock(tx, ty, tz, id, true, facingFromYaw(P.yaw));
+    } else if (id === B.FENCE_GATE) {
+      Chunks.setBlock(tx, ty, tz, id, true, facingFromYaw(P.yaw) << 1);   // dicht, met richting
     } else if (id === B.DOOR) {
       const above = Chunks.getBlock(tx, ty + 1, tz);
       if (above !== B.AIR && !G.isCross(above)) { UI.hint('Een deur heeft twee blokken hoogte nodig.'); return; }
@@ -233,11 +243,12 @@ window.Player = (function () {
       Chunks.setBlock(tx, ty, tz, id, true, (facing << 1));           // onderste helft
       Chunks.setBlock(tx, ty + 1, tz, id, true, (facing << 1) | 8);  // bovenste helft
     } else if (id === B.CROP) {
-      // graan zaaien; onder gras/aarde wordt akkergrond
+      // graan zaaien (fase 1); onder gras/aarde wordt akkergrond
       const below = Chunks.getBlock(tx, ty - 1, tz);
       if (below === B.GRASS || below === B.DIRT) Chunks.setBlock(tx, ty - 1, tz, B.FARMLAND);
-      Chunks.setBlock(tx, ty, tz, id);
-      UI.hint('Graan gezaaid 🌾');
+      Chunks.setBlock(tx, ty, tz, id, true, 1);
+      if (window.Crops) Crops.plant(tx, ty, tz);
+      UI.hint('Graan gezaaid 🌾 — het groeit vanzelf');
     } else if (id === B.WATER) {
       // stromend water: plaats een bron
       if (window.WaterSim) WaterSim.placeSource(tx, ty, tz);

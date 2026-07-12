@@ -81,8 +81,14 @@ Firefox). Lokaal serveren kan met `python3 -m http.server` in deze map.
   niet door daken — ook niet door daken die je zelf bouwt.
 - **Rustige ambient-muziek** en natuurgeluiden (vogels, krekels, wind, regen) —
   volledig gesynthetiseerd, geen audiobestanden.
-- **Opslaan & laden** — drie save-slots plus automatische autosave (elke minuut
-  en bij afsluiten naar het hoofdmenu). Alles staat in localStorage.
+- **Opslaan & laden** — drie save-slots plus automatische autosave. Werelden
+  kunnen ook als **bestand** (`.bw`) opgeslagen en geladen worden — in de
+  Windows-app met native dialoogvensters (standaard in Documenten), in de
+  browser als download/upload — zodat je ze kunt back-uppen en delen.
+- **Fotomodus** — <kbd>F1</kbd> verbergt de HUD, <kbd>F2</kbd> maakt een
+  screenshot (in de Windows-app naar je Afbeeldingen-map).
+- **Groeiende gewassen** — gezaaid graan groeit vanzelf in fasen tot het rijp is.
+- **Hekpoortjes** — open- en dichtklapbaar (rechtermuisknop), passend bij de hekjes.
 
 ## Besturing
 
