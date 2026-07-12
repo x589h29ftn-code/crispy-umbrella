@@ -375,12 +375,12 @@ window.Sky = (function () {
     moonLight.intensity = nightAmt * 0.22 * wm.lightMul;
 
     // gedempt omgevingslicht zodat zonlicht en schaduw echt contrast geven
-    hemiLight.color.copy(S.uniforms.uTopColor.value).lerp(cA.setRGB(1, 0.98, 0.92), 0.3);
-    hemiLight.groundColor.setRGB(0.30, 0.32, 0.26).lerp(cA.setRGB(0.04, 0.05, 0.09), nightAmt);
-    hemiLight.intensity = 0.14 + (1 - nightAmt) * 0.42;
+    hemiLight.color.copy(S.uniforms.uTopColor.value).lerp(cA.setRGB(1, 0.98, 0.92), 0.35);
+    hemiLight.groundColor.setRGB(0.34, 0.40, 0.28).lerp(cA.setRGB(0.04, 0.05, 0.09), nightAmt);
+    hemiLight.intensity = 0.22 + (1 - nightAmt) * 0.52;
 
-    ambient.intensity = 0.08 + (1 - nightAmt) * 0.08;
-    ambient.color.setRGB(0.35 + nightAmt * 0.05, 0.38, 0.55);
+    ambient.intensity = 0.12 + (1 - nightAmt) * 0.12;
+    ambient.color.setRGB(0.42 + nightAmt * 0.05, 0.46, 0.5);
 
     renderer.toneMappingExposure = expo * (1 - wm.skyDesat * 0.15);
 

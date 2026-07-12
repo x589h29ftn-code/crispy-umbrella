@@ -351,20 +351,20 @@ window.Chunks = (function () {
   function grassTint(wx, wz, out) {
     const n = Noise.fbm2(wx * 0.015 + 12.3, wz * 0.015 - 7.7, 2);
     const n2 = Noise.hash2(wx | 0, wz | 0) - 0.5;
-    // warm geel-groen met droge plekken, zoals zomerse weides
+    // levendig, warm lime-groen (lichter dan voorheen)
     const s = G.season.grass;
-    out[0] = (0.47 + n * 0.16 + n2 * 0.06) * s[0];
-    out[1] = (0.68 + n * 0.08 + n2 * 0.04) * s[1];
-    out[2] = (0.24 + n * 0.05) * s[2];
+    out[0] = (0.62 + n * 0.16 + n2 * 0.06) * s[0];
+    out[1] = (0.90 + n * 0.09 + n2 * 0.04) * s[1];
+    out[2] = (0.34 + n * 0.06) * s[2];
     frost(out, wx, wz);
   }
   function leafTint(wx, wy, wz, out) {
     const n = Noise.fbm2(wx * 0.02 + 99.1, wz * 0.02 + 3.3, 2);
     const n2 = Noise.hash3(wx | 0, wy | 0, wz | 0) - 0.5;
     const s = G.season.leaf;
-    out[0] = (0.60 + n * 0.14 + n2 * 0.10) * s[0];
-    out[1] = (0.86 + n * 0.10 + n2 * 0.08) * s[1];
-    out[2] = (0.50 + n * 0.10) * s[2];
+    out[0] = (0.72 + n * 0.14 + n2 * 0.10) * s[0];
+    out[1] = (1.02 + n * 0.10 + n2 * 0.08) * s[1];
+    out[2] = (0.56 + n * 0.10) * s[2];
     frost(out, wx, wz);
   }
 
