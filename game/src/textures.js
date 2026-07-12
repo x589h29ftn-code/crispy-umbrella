@@ -61,8 +61,9 @@ window.Textures = (function () {
     fillNoise(TI.DIRT % COLS, (TI.DIRT / COLS) | 0, [134, 96, 67], 20, R);
     speckle(TI.DIRT % COLS, (TI.DIRT / COLS) | 0, [98, 68, 45], 14, R);
 
-    fillNoise(TI.STONE % COLS, (TI.STONE / COLS) | 0, [128, 128, 130], 14, R);
-    speckle(TI.STONE % COLS, (TI.STONE / COLS) | 0, [104, 104, 108], 18, R);
+    // warm getinte rots, zoals zandsteenachtige berghellingen
+    fillNoise(TI.STONE % COLS, (TI.STONE / COLS) | 0, [141, 132, 118], 14, R);
+    speckle(TI.STONE % COLS, (TI.STONE / COLS) | 0, [114, 106, 94], 18, R);
 
     fillNoise(TI.SAND % COLS, (TI.SAND / COLS) | 0, [219, 206, 160], 13, R);
     speckle(TI.SAND % COLS, (TI.SAND / COLS) | 0, [199, 184, 136], 12, R);
@@ -96,9 +97,9 @@ window.Textures = (function () {
         px(tx, ty, x, y, base[0] + v, base[1] + v, base[2] + v);
       }
     }
-    leavesTile(TI.LEAVES, [96, 150, 66], 0.10);
-    leavesTile(TI.LEAVES_BIRCH, [122, 168, 84], 0.13);
-    leavesTile(TI.LEAVES_PINE, [64, 110, 74], 0.07);
+    leavesTile(TI.LEAVES, [96, 150, 66], 0.05);
+    leavesTile(TI.LEAVES_BIRCH, [122, 168, 84], 0.07);
+    leavesTile(TI.LEAVES_PINE, [64, 110, 74], 0.04);
 
     // PLANKEN
     {

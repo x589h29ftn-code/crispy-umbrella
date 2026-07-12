@@ -30,10 +30,11 @@ window.World = (function () {
 
   function baseHeight(x, z) {
     const c = Noise.fbm2(x * 0.0022 + 31.7, z * 0.0022 - 11.3, 4);        // continenten
-    const hills = Noise.fbm2(x * 0.009 + 7.1, z * 0.009 + 3.3, 3) * 4.5;  // heuveltjes
-    const mMask = Noise.smoothstep(0.02, 0.5, Noise.fbm2(x * 0.0011 + 100.5, z * 0.0011 - 70.2, 3));
-    const m = Noise.ridge2(x * 0.0055, z * 0.0055, 4);                    // bergkammen
-    let h = SEA + 3.5 + c * 13 + hills + Math.pow(m, 2.1) * mMask * 46;
+    const hills = Noise.fbm2(x * 0.009 + 7.1, z * 0.009 + 3.3, 3) * 5;    // heuveltjes
+    const mMask = Noise.smoothstep(-0.14, 0.36, Noise.fbm2(x * 0.0011 + 100.5, z * 0.0011 - 70.2, 3));
+    const m = Noise.ridge2(x * 0.0045, z * 0.0045, 4);                    // bergkammen
+    // steile, gekartelde bergen tot ver boven de boomgrens
+    let h = SEA + 3.5 + c * 13 + hills + Math.pow(m, 2.2) * mMask * 88;
 
     // Rivieren uitslijpen — vooral in het laagland, bergen blijven intact
     const rf = riverFactor(x, z);
@@ -274,7 +275,7 @@ window.World = (function () {
     const roll = Noise.hash2(x * 3 + 71, z * 3 - 29);
     if (roll > density) return null;
     const h = W.height(x, z);
-    if (h <= SEA + 1 || h > 72) return null;
+    if (h <= SEA + 1 || h > 76) return null;
     if (riverFactor(x, z) > 0.35) return null;
     const v = W.nearestVillage(x, z, VILLAGE_R + 8);
     if (v && Math.hypot(v.cx - x, v.cz - z) < VILLAGE_R + 6) return null;
@@ -282,7 +283,7 @@ window.World = (function () {
     const r = Noise.hash2(x * 17 + 5, z * 13 - 3);
     const r2 = Noise.hash2(x * 29 - 1, z * 31 + 9);
     let type;
-    if (h > 52) type = 'pine';
+    if (h > 54) type = 'pine';
     else if (r2 < 0.22) type = 'birch';
     else if (r2 < 0.3) type = 'pine';
     else type = 'oak';
@@ -346,8 +347,8 @@ window.World = (function () {
 
       // oppervlakteblok kiezen
       let surf = B.GRASS, under = B.DIRT;
-      const snowLine = 66 + surfNoise * 5;
-      const stoneLine = 56 + surfNoise * 7;
+      const snowLine = 98 + surfNoise * 7;
+      const stoneLine = 62 + surfNoise * 12;
       if (h >= snowLine) { surf = B.SNOW; under = B.STONE; }
       else if (h >= stoneLine) { surf = B.STONE; under = B.STONE; }
       else if (h <= SEA + 1 + surfNoise * 1.5) { surf = B.SAND; under = B.SAND; }
@@ -392,13 +393,23 @@ window.World = (function () {
       if (tr) placeTree(tr, setLocal);
     }
 
-    // 3. gras, bloemen en gewassen op grasoppervlak
+    // 3. gras, bloemen, struiken en riet
     for (let lz = 0; lz < CS; lz++) for (let lx = 0; lx < CS; lx++) {
       const wx = x0 + lx, wz = z0 + lz;
       const h = W.height(wx, wz);
       if (h + 1 >= CH) continue;
-      if (blocks[idx(lx, h, lz)] !== B.GRASS) continue;
+      const surfId = blocks[idx(lx, h, lz)];
       if (blocks[idx(lx, h + 1, lz)] !== B.AIR) continue;
+
+      // riet langs het water
+      if (surfId === B.SAND && h >= SEA && h <= SEA + 2) {
+        if (Noise.hash2(wx * 23 + 9, wz * 19 - 2) < 0.12) {
+          blocks[idx(lx, h + 1, lz)] = B.TALLGRASS;
+        }
+        continue;
+      }
+      if (surfId !== B.GRASS) continue;
+
       const meadow = Noise.fbm2(wx * 0.012 + 55.5, wz * 0.012 - 88.8, 2);
       const roll = Noise.hash2(wx * 11 + 2, wz * 11 + 6);
       const grassP = 0.10 + Noise.smoothstep(-0.3, 0.6, meadow) * 0.38;
@@ -412,6 +423,13 @@ window.World = (function () {
         else if (fpatch < -0.25) fl = B.FLOWER_BLUE;
         else if (fr < 0.3) fl = B.FLOWER_WHITE;
         blocks[idx(lx, h + 1, lz)] = fl;
+      } else if (roll > 0.986 && h < 60) {
+        // losse struik
+        blocks[idx(lx, h + 1, lz)] = B.LEAVES;
+        if (Noise.hash2(wx, wz + 3) < 0.4 && lx + 1 < CS && blocks[idx(lx + 1, h + 1, lz)] === B.AIR &&
+            W.height(wx + 1, wz) === h) {
+          blocks[idx(lx + 1, h + 1, lz)] = B.LEAVES;
+        }
       }
     }
 

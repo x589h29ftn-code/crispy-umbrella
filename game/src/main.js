@@ -85,7 +85,8 @@ window.Main = (function () {
       }
       done++;
       UI.setLoading(true, Math.min(0.95, done / total), 'Wereld wordt opgebouwd…');
-      if (pending > 0 && done < 300) {
+      // alleen de binnenste chunks vooraf laden; de rest streamt tijdens het spelen
+      if (pending > 0 && done < 300 && Chunks.map.size < 150) {
         requestAnimationFrame(step);
       } else {
         finishLoad();

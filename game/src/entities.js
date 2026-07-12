@@ -411,6 +411,62 @@ window.Entities = (function () {
     }
   }
 
+  // ---- vlinders (overdag) --------------------------------------------------------------------
+  const BUTTERFLY_N = 36;
+  let butterflies = null, butterflyData = [];
+  const BF_COLORS = [[1, 0.85, 0.3], [1, 1, 1], [0.95, 0.55, 0.25], [0.6, 0.7, 1]];
+
+  function initButterflies() {
+    const geo = new THREE.BufferGeometry();
+    geo.setAttribute('position', new THREE.BufferAttribute(new Float32Array(BUTTERFLY_N * 3), 3));
+    geo.setAttribute('color', new THREE.BufferAttribute(new Float32Array(BUTTERFLY_N * 3), 3));
+    const bmatP = new THREE.PointsMaterial({
+      size: 0.16, vertexColors: true, transparent: true, opacity: 0.95,
+      depthWrite: false, sizeAttenuation: true,
+    });
+    butterflies = new THREE.Points(geo, bmatP);
+    butterflies.frustumCulled = false;
+    scene.add(butterflies);
+    for (let i = 0; i < BUTTERFLY_N; i++) {
+      butterflyData.push({ x: 0, y: -100, z: 0, phase: Math.random() * 10, c: BF_COLORS[(Math.random() * BF_COLORS.length) | 0], alive: false });
+    }
+  }
+
+  function updateButterflies(dt, t, playerPos, nightAmt) {
+    const posA = butterflies.geometry.attributes.position;
+    const colA = butterflies.geometry.attributes.color;
+    const active = nightAmt < 0.25;
+    for (let i = 0; i < BUTTERFLY_N; i++) {
+      const f = butterflyData[i];
+      if (!f.alive && active && rng() < dt * 0.4) {
+        const a = rng() * Math.PI * 2;
+        const d = 5 + rng() * 26;
+        f.x = playerPos.x + Math.cos(a) * d;
+        f.z = playerPos.z + Math.sin(a) * d;
+        const gy = Chunks.groundY(f.x, f.z);
+        const surf = Chunks.getBlock(Math.floor(f.x), gy, Math.floor(f.z));
+        if (surf === B.GRASS) { f.y = gy + 1.5 + rng(); f.alive = true; }
+      }
+      if (f.alive) {
+        // fladderend, dansend vluchtpatroon
+        f.x += Math.sin(t * 1.4 + f.phase) * dt * 1.1;
+        f.z += Math.cos(t * 1.1 + f.phase * 1.7) * dt * 1.1;
+        f.y += Math.sin(t * 6 + f.phase * 3) * dt * 0.9;
+        const gy = Chunks.groundY(f.x, f.z);
+        f.y = Noise.clamp(f.y, gy + 0.8, gy + 3.2);
+        if (!active || Math.hypot(f.x - playerPos.x, f.z - playerPos.z) > 40) f.alive = false;
+        const flick = 0.65 + 0.35 * Math.abs(Math.sin(t * 9 + f.phase));
+        posA.setXYZ(i, f.x, f.y, f.z);
+        colA.setXYZ(i, f.c[0] * flick, f.c[1] * flick, f.c[2] * flick);
+      } else {
+        posA.setXYZ(i, 0, -100, 0);
+        colA.setXYZ(i, 0, 0, 0);
+      }
+    }
+    posA.needsUpdate = true;
+    colA.needsUpdate = true;
+  }
+
   // ---- vuurvliegjes ------------------------------------------------------------------------
   const FIREFLY_N = 90;
   function initFireflies() {
@@ -472,6 +528,7 @@ window.Entities = (function () {
     rng = Noise.rng((seed ^ 0x51ab3e) >>> 0);
     initLightPool();
     initFireflies();
+    initButterflies();
   };
 
   E.reset = function () {
@@ -483,6 +540,7 @@ window.Entities = (function () {
     flocks.length = 0;
     populatedVillages.clear();
     for (const f of fireflyData) f.alive = false;
+    for (const f of butterflyData) f.alive = false;
   };
 
   E.update = function (dt, t, playerPos, sunInfo, camera) {
@@ -524,6 +582,7 @@ window.Entities = (function () {
 
     updateFlocks(dt, t, playerPos, nightAmt);
     updateFireflies(dt, t, playerPos, nightAmt);
+    updateButterflies(dt, t, playerPos, nightAmt);
     updateLightPool(camera.position, t);
   };
 

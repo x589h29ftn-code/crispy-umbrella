@@ -10,14 +10,14 @@ window.Sky = (function () {
   // Kleur-keyframes op zonhoogte (-1 .. 1)
   // [elevatie, top, horizon, zonlichtkleur, intensiteit, belichting]
   const KEYS = [
-    [-1.00, 0x070a18, 0x0d1326, 0x223355, 0.00, 0.62],
-    [-0.35, 0x081020, 0x101a30, 0x223355, 0.00, 0.66],
-    [-0.08, 0x18203c, 0x4a3550, 0xff9a55, 0.05, 0.74],
-    [0.00, 0x3a4a74, 0xe8926a, 0xffb070, 0.25, 0.86],
-    [0.10, 0x6f95c8, 0xf2b891, 0xffcf9a, 0.75, 1.00],
-    [0.30, 0x87b3e2, 0xdfd3c2, 0xfff0d8, 1.05, 1.06],
-    [0.70, 0x7fb0e8, 0xd5e2ea, 0xfff6e8, 1.25, 1.10],
-    [1.00, 0x77ace8, 0xd0e0ec, 0xfffaf0, 1.30, 1.10],
+    [-1.00, 0x05070f, 0x0a0e1c, 0x223355, 0.00, 0.52],
+    [-0.35, 0x070c1a, 0x0f1628, 0x223355, 0.00, 0.56],
+    [-0.08, 0x141c36, 0x4f3348, 0xff8a48, 0.06, 0.66],
+    [0.00, 0x39406e, 0xdd7f66, 0xffa055, 0.35, 0.76],
+    [0.08, 0x5c7aa8, 0xeeae88, 0xffc084, 1.00, 0.86],
+    [0.22, 0x6491c4, 0xe8bfa2, 0xffddac, 1.45, 0.92],
+    [0.60, 0x5d92d2, 0xd8c4ae, 0xfff0d0, 1.65, 0.95],
+    [1.00, 0x5890d2, 0xd0c8b6, 0xfff4dc, 1.70, 0.95],
   ];
   const cA = new THREE.Color(), cB = new THREE.Color();
   function keyLerp(e, idx, target) {
@@ -82,11 +82,12 @@ window.Sky = (function () {
           // nevel dichter bij de horizon (zoals op warme avonden)
           col = mix(col, uHorizonColor, uHaze * pow(1.0 - clamp(abs(h), 0.0, 1.0), 2.0) * 0.5);
 
-          // zon
+          // zon, met brede warme gloed als hij laag staat (gouden uur)
           float sd = dot(dir, normalize(uSunDir));
+          float lowSun = 1.0 - clamp(uSunDir.y * 2.2, 0.0, 1.0);
           col += uSunColor * pow(clamp(sd, 0.0, 1.0), 900.0) * 1.6;
-          col += uSunColor * pow(clamp(sd, 0.0, 1.0), 24.0) * 0.30;
-          col += uSunColor * pow(clamp(sd, 0.0, 1.0), 5.0) * 0.12;
+          col += uSunColor * pow(clamp(sd, 0.0, 1.0), 24.0) * (0.28 + lowSun * 0.35);
+          col += uSunColor * pow(clamp(sd, 0.0, 1.0), 4.0) * (0.10 + lowSun * 0.30);
 
           // maan
           float md = dot(dir, normalize(uMoonDir));
@@ -124,8 +125,9 @@ window.Sky = (function () {
     const ext = 90;
     sunLight.shadow.camera.left = -ext; sunLight.shadow.camera.right = ext;
     sunLight.shadow.camera.top = ext; sunLight.shadow.camera.bottom = -ext;
-    sunLight.shadow.bias = -0.0006;
-    sunLight.shadow.normalBias = 0.5;
+    sunLight.shadow.camera.updateProjectionMatrix();
+    sunLight.shadow.bias = -0.0004;
+    sunLight.shadow.normalBias = 0.08;
     scene.add(sunLight);
     scene.add(sunLight.target);
 
@@ -233,11 +235,12 @@ window.Sky = (function () {
     moonLight.target.position.copy(playerPos);
     moonLight.intensity = nightAmt * 0.22 * wm.lightMul;
 
-    hemiLight.color.copy(S.uniforms.uTopColor.value).lerp(cA.setRGB(1, 1, 1), 0.35);
-    hemiLight.groundColor.setRGB(0.32, 0.36, 0.28).lerp(cA.setRGB(0.04, 0.05, 0.09), nightAmt);
-    hemiLight.intensity = 0.16 + (1 - nightAmt) * 0.62;
+    // gedempt omgevingslicht zodat zonlicht en schaduw echt contrast geven
+    hemiLight.color.copy(S.uniforms.uTopColor.value).lerp(cA.setRGB(1, 0.98, 0.92), 0.3);
+    hemiLight.groundColor.setRGB(0.30, 0.32, 0.26).lerp(cA.setRGB(0.04, 0.05, 0.09), nightAmt);
+    hemiLight.intensity = 0.14 + (1 - nightAmt) * 0.42;
 
-    ambient.intensity = 0.10 + (1 - nightAmt) * 0.14;
+    ambient.intensity = 0.08 + (1 - nightAmt) * 0.08;
     ambient.color.setRGB(0.35 + nightAmt * 0.05, 0.38, 0.55);
 
     renderer.toneMappingExposure = expo * (1 - wm.skyDesat * 0.15);

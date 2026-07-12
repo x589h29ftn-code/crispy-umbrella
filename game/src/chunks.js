@@ -134,7 +134,7 @@ window.Chunks = (function () {
     { dir: [0, 0, -1], texFace: 5, corners: [[1, 0, 0, 0, 0], [0, 0, 0, 1, 0], [1, 1, 0, 0, 1], [0, 1, 0, 1, 1]] },
     { dir: [0, 0, 1], texFace: 4, corners: [[0, 0, 1, 0, 0], [1, 0, 1, 1, 0], [0, 1, 1, 0, 1], [1, 1, 1, 1, 1]] },
   ];
-  const AO_CURVE = [1.0, 0.72, 0.58, 0.45];
+  const AO_CURVE = [1.0, 0.66, 0.50, 0.36];
 
   // ---- blok-toegang -------------------------------------------------------------------
   C.getChunk = function (cx, cz) { return chunks.get(ck(cx, cz)); };
@@ -251,9 +251,10 @@ window.Chunks = (function () {
   function grassTint(wx, wz, out) {
     const n = Noise.fbm2(wx * 0.015 + 12.3, wz * 0.015 - 7.7, 2);
     const n2 = Noise.hash2(wx | 0, wz | 0) - 0.5;
-    out[0] = 0.42 + n * 0.10 + n2 * 0.05;
-    out[1] = 0.72 + n * 0.09 + n2 * 0.04;
-    out[2] = 0.28 + n * 0.06;
+    // warm geel-groen met droge plekken, zoals zomerse weides
+    out[0] = 0.47 + n * 0.16 + n2 * 0.06;
+    out[1] = 0.68 + n * 0.08 + n2 * 0.04;
+    out[2] = 0.24 + n * 0.05;
   }
   function leafTint(wx, wy, wz, out) {
     const n = Noise.fbm2(wx * 0.02 + 99.1, wz * 0.02 + 3.3, 2);

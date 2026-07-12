@@ -4,7 +4,7 @@ window.G = (function () {
 
   // Wereldafmetingen
   G.CS = 16;          // chunkbreedte (x/z)
-  G.CH = 96;          // wereldhoogte
+  G.CH = 128;         // wereldhoogte
   G.SEA = 30;         // zeeniveau
 
   // Blok-id's
@@ -38,7 +38,7 @@ window.G = (function () {
 
   // Instellingen (met persistentie)
   const DEFAULTS = {
-    dayMinutes: 15, renderDist: 8, fogMul: 1.0, fov: 75,
+    dayMinutes: 15, renderDist: 10, fogMul: 1.0, fov: 75,
     musicVol: 0.55, sfxVol: 0.8, shadows: true, clouds: true,
   };
   G.settings = Object.assign({}, DEFAULTS);
