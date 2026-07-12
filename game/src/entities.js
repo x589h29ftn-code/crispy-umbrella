@@ -127,12 +127,12 @@ window.Entities = (function () {
         const vr = Noise.rng(seedN + 7);
         const vil = {
           type: 'villager', parts, mesh: parts.group,
-          village: layout.v, home: sp.home, door: sp.door,
+          village: layout.v, home: sp.home, door: sp.door, campfire: layout.campfire,
           x: sp.door.x + (vr() - 0.5) * 4, z: sp.door.z + (vr() - 0.5) * 4, y: 0,
           tx: 0, tz: 0, speed: 1.15 + vr() * 0.5,
           state: 'idle', timer: vr() * 3, phase: vr() * 10,
           carriesTorch: vr() < 0.4,           // loopt 's avonds met fakkel
-          workBob: 0, heading: vr() * Math.PI * 2,
+          workBob: 0, heading: vr() * Math.PI * 2, willSleep: false,
         };
         vil.y = Chunks.walkGroundY(vil.x, vil.z, sp.door.y + 1) + 1;
         vil.mesh.position.set(vil.x, vil.y, vil.z);
@@ -177,25 +177,30 @@ window.Entities = (function () {
       } else if (isDusk) {
         v.state = 'gohome'; v.tx = v.door.x; v.tz = v.door.z; v.timer = 20;
       } else if (isNight) {
-        if (v.carriesTorch && nightAmt < 0.85) {
-          // avondwandeling met fakkel
-          const p = villagePoint(v.village, 14);
-          if (walkable(p[0], p[1])) { v.tx = p[0]; v.tz = p[1]; v.state = 'torchwalk'; }
-          v.timer = 5 + rng() * 6;
+        const r = rng();
+        if (v.campfire && r < 0.55 && nightAmt < 0.92) {
+          // verzamelen bij het kampvuur om te praten
+          const a = rng() * Math.PI * 2, rr = 1.5 + rng() * 0.9;
+          v.tx = v.campfire.x + Math.cos(a) * rr;
+          v.tz = v.campfire.z + Math.sin(a) * rr;
+          v.state = 'tocampfire'; v.timer = 10 + rng() * 10;
         } else {
-          v.state = 'inside'; v.tx = v.home.x; v.tz = v.home.z; v.timer = 6 + rng() * 8;
+          // naar huis om te slapen
+          v.state = 'gohome'; v.tx = v.door.x; v.tz = v.door.z; v.timer = 20;
+          v.willSleep = true;
         }
       }
     }
 
     // ---- beweging ----
-    const walking = (v.state === 'walk' || v.state === 'gohome' || v.state === 'torchwalk' ||
+    const walking = (v.state === 'walk' || v.state === 'gohome' || v.state === 'torchwalk' || v.state === 'tocampfire' ||
       (v.state === 'inside' && Math.hypot(v.tx - v.x, v.tz - v.z) > 0.8));
     if (walking) {
       const dx = v.tx - v.x, dz = v.tz - v.z;
       const d = Math.hypot(dx, dz);
       if (d < 0.5) {
         if (v.state === 'gohome') { v.state = 'inside'; v.tx = v.home.x; v.tz = v.home.z; }
+        else if (v.state === 'tocampfire') { v.state = 'talk'; v.heading = Math.atan2(v.campfire.x - v.x, v.campfire.z - v.z); }
         else v.state = 'idle';
         v.timer = Math.min(v.timer, 1 + rng() * 3);
       } else {
@@ -230,8 +235,24 @@ window.Entities = (function () {
     }
     v.parts.head.rotation.y = Math.sin(t * 0.6 + v.phase) * 0.3;
 
+    if (v.state === 'talk') {
+      // pratend bij het kampvuur: levendiger hoofd + af en toe een handgebaar
+      v.parts.head.rotation.y = Math.sin(t * 2.5 + v.phase) * 0.5;
+      const gest = Math.max(0, Math.sin(t * 2.0 + v.phase * 2.0));
+      v.parts.armR.rotation.x = -gest * 0.9;
+      m.position.y = v.y + Math.abs(Math.sin(t * 2.0 + v.phase)) * 0.02;
+    } else if (v.state === 'inside' && v.willSleep && Math.hypot(v.tx - v.x, v.tz - v.z) < 0.8) {
+      // slapen: gebukt, stil, hoofd omlaag
+      m.position.y = v.y - 0.15;
+      v.parts.head.rotation.x = 0.4;
+      v.parts.head.rotation.y = 0;
+    } else {
+      v.parts.head.rotation.x = 0;
+    }
+
     // ---- fakkel 's nachts ----
-    const showTorch = v.carriesTorch && (isNight || (isDusk && v.state !== 'inside')) && v.state !== 'inside';
+    const showTorch = v.carriesTorch && (isNight || (isDusk && v.state !== 'inside')) &&
+      v.state !== 'inside' && v.state !== 'talk';
     v.parts.torch.visible = showTorch;
     if (showTorch) {
       E.extraTorches.push({ x: v.x + Math.sin(v.heading) * 0.3, y: v.y + 1.35, z: v.z + Math.cos(v.heading) * 0.3 });
@@ -239,6 +260,101 @@ window.Entities = (function () {
     }
 
     // binnen: verstop bewoners half onder het maaiveld van hun huis? Nee — gewoon binnen laten staan.
+  }
+
+  // ---- reizigers: lopen over de paden naar dorpen -------------------------------------
+  const travelers = [];
+  let travelerTimer = 6;
+
+  function buildTraveler(seedN) {
+    const parts = buildVillagerMesh(seedN);
+    // reispet zodat je ze herkent
+    const r = Noise.rng(seedN + 99);
+    const hat = new THREE.Mesh(box(0.5, 0.14, 0.5), mat([0x6b4a2f, 0x7a5a3a, 0x8a5a4a][(r() * 3) | 0]));
+    hat.position.y = 1.62; parts.group.add(hat);
+    hat.castShadow = true;
+    return parts;
+  }
+
+  function trySpawnTraveler(playerPos) {
+    if (travelers.length >= 4) return;
+    for (let attempt = 0; attempt < 8; attempt++) {
+      const a = rng() * Math.PI * 2;
+      const d = 34 + rng() * 40;
+      const x = Math.floor(playerPos.x + Math.cos(a) * d) + 0.5;
+      const z = Math.floor(playerPos.z + Math.sin(a) * d) + 0.5;
+      if (!World.onVillageRoad(x, z)) continue;
+      const gy = Chunks.groundY(x, z);
+      const surf = Chunks.getBlock(Math.floor(x), gy, Math.floor(z));
+      if (surf === undefined || surf === B.WATER) continue;
+      const seedN = (Math.floor(x) * 6151 ^ Math.floor(z) * 2749 ^ (Date.now() & 0xffff)) >>> 0;
+      const parts = buildTraveler(seedN);
+      const vil = World.nearestVillage(x, z, 400);
+      const tr = {
+        parts, mesh: parts.group, x, z, y: gy + 1,
+        tx: vil ? vil.cx : x, tz: vil ? vil.cz : z,
+        target: vil, speed: 1.1 + rng() * 0.4, phase: rng() * 10,
+        state: 'travel', timer: 6 + rng() * 8, heading: rng() * 6.28,
+        life: 60 + rng() * 60,
+      };
+      parts.group.position.set(x, tr.y, z);
+      scene.add(parts.group);
+      travelers.push(tr);
+      return;
+    }
+  }
+
+  function updateTraveler(tr, dt, t, nightAmt) {
+    tr.life -= dt;
+    tr.timer -= dt;
+    if (tr.state === 'travel') {
+      // volg globaal de weg richting het dorp, met wat wiebel
+      const dx = tr.tx - tr.x, dz = tr.tz - tr.z, d = Math.hypot(dx, dz);
+      if (d < 6) { tr.state = 'arrived'; tr.timer = 8 + rng() * 8; }
+      else {
+        // zoek een naburig wegpunt in de globale richting
+        const baseAng = Math.atan2(dx, dz);
+        let moved = false;
+        for (const da of [0, 0.4, -0.4, 0.8, -0.8]) {
+          const ang = baseAng + da;
+          const nx = tr.x + Math.sin(ang) * tr.speed * dt * 3;
+          const nz = tr.z + Math.cos(ang) * tr.speed * dt * 3;
+          const gy = Chunks.groundY(nx, nz);
+          const bl = Chunks.getBlock(Math.floor(nx), gy, Math.floor(nz));
+          if (bl !== B.WATER && bl !== undefined && Math.abs((gy + 1) - tr.y) < 1.6 &&
+              (World.onVillageRoad(nx, nz) || da === 0)) {
+            tr.x += Math.sin(ang) * tr.speed * dt;
+            tr.z += Math.cos(ang) * tr.speed * dt;
+            tr.y += ((gy + 1) - tr.y) * Math.min(1, dt * 10);
+            tr.heading = ang; moved = true; break;
+          }
+        }
+        if (!moved) { tr.x += Math.sin(baseAng) * tr.speed * dt; tr.z += Math.cos(baseAng) * tr.speed * dt; tr.heading = baseAng; }
+      }
+    } else if (tr.state === 'arrived') {
+      // even rondkijken/praten in het dorp, dan verder reizen
+      if (tr.timer <= 0) {
+        const a = rng() * Math.PI * 2, d = 120 + rng() * 80;
+        tr.tx = tr.x + Math.cos(a) * d; tr.tz = tr.z + Math.sin(a) * d;
+        tr.state = 'travel'; tr.timer = 20;
+      }
+    }
+    // animatie
+    const m = tr.mesh;
+    m.position.set(tr.x, tr.y, tr.z);
+    m.rotation.y += (tr.heading - m.rotation.y) * Math.min(1, dt * 8);
+    const walking = tr.state === 'travel';
+    const swing = walking ? Math.sin(t * 7 + tr.phase) * 0.5 : 0;
+    tr.parts.legs.rotation.x = swing * 0.8;
+    tr.parts.armL.rotation.x = -swing;
+    tr.parts.armR.rotation.x = swing;
+    tr.parts.head.rotation.y = Math.sin(t * (walking ? 0.6 : 2.2) + tr.phase) * (walking ? 0.3 : 0.5);
+    // 's nachts een fakkel
+    if (nightAmt > 0.4) {
+      tr.parts.torch.visible = true;
+      E.extraTorches.push({ x: tr.x + Math.sin(tr.heading) * 0.3, y: tr.y + 1.35, z: tr.z + Math.cos(tr.heading) * 0.3 });
+      tr.parts.glowPlane.lookAt(window.__cam ? __cam.position : m.position);
+    } else tr.parts.torch.visible = false;
   }
 
   // ---- dieren --------------------------------------------------------------------------
@@ -753,6 +869,8 @@ window.Entities = (function () {
     villagers.length = 0;
     for (const a of animals) scene.remove(a.mesh);
     animals.length = 0;
+    for (const tr of travelers) scene.remove(tr.mesh);
+    travelers.length = 0;
     for (const f of flocks) for (const b of f.birds) scene.remove(b.parts.g);
     flocks.length = 0;
     populatedVillages.clear();
@@ -784,6 +902,19 @@ window.Entities = (function () {
         continue;
       }
       if (d < 110) updateVillager(vil, dt, e, nightAmt, t);
+    }
+
+    // reizigers over de paden
+    travelerTimer -= dt;
+    if (travelerTimer <= 0) { travelerTimer = 12 + Math.random() * 18; trySpawnTraveler(playerPos); }
+    for (let i = travelers.length - 1; i >= 0; i--) {
+      const tr = travelers[i];
+      if (tr.life <= 0 || Math.hypot(tr.x - playerPos.x, tr.z - playerPos.z) > 150) {
+        scene.remove(tr.mesh);
+        travelers.splice(i, 1);
+        continue;
+      }
+      updateTraveler(tr, dt, t, nightAmt);
     }
 
     // dieren

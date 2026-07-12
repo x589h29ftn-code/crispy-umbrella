@@ -244,6 +244,7 @@ window.World = (function () {
     buildWell(bm, v.cx, v.cz, gy);
 
     // gezellig kampvuurtje met plankbankjes op het plein
+    let campfire = null;
     {
       const ang = rng() * Math.PI * 2;
       const fx = Math.round(v.cx + Math.cos(ang) * 6);
@@ -254,6 +255,7 @@ window.World = (function () {
         bmSet(bm, bx, gy, bz, B.DIRT);
         bmSet(bm, bx, gy + 1, bz, B.SLAB);
       }
+      campfire = { x: fx + 0.5, y: gy + 1, z: fz + 0.5 };
     }
 
     const nHouses = 3 + ((rng() * 4) | 0);
@@ -299,7 +301,7 @@ window.World = (function () {
       }
     }
 
-    const layout = { blocks: bm, spawns, v };
+    const layout = { blocks: bm, spawns, v, campfire };
     villageLayoutCache.set(v.key, layout);
     return layout;
   }

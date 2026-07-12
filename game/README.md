@@ -34,8 +34,10 @@ Open `index.html` in een moderne browser (Chrome, Edge of Firefox). Dat is alles
   (1–60 min) via Instellingen.
 - **Dorpjes met bewoners** — willekeurig geplaatste dorpen met huisjes, een
   waterput, paden en omheinde akkers met gewassen. Bewoners leven hun eigen
-  leven: overdag wandelen en werken ze, 's avonds lopen sommigen met een
-  fakkel rond en gaan ze hun huisje in.
+  leven: overdag wandelen en werken ze; 's avonds verzamelen sommigen zich bij
+  het dorpskampvuur om te praten, anderen gaan slapen in hun huisje.
+- **Reizigers** — af en toe trekken reizigers met een reispet over de paden
+  naar de dorpen, 's nachts met een fakkel.
 - **Natuur** — gevarieerde bomen (eik, berk, den), wuivend gras, bloemen,
   struiken en riet. Schapen, konijnen, herten, vossen en eenden op het water,
   zwermen vogels, overdag vlinders en 's nachts vuurvliegjes.

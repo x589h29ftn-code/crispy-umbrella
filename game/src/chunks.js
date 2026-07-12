@@ -503,7 +503,8 @@ window.Chunks = (function () {
             };
             const above = get(wx, y + 1, wz);
             const aboveWater = above === B.WATER;
-            const topH = 0.86 * C.waterFactor(wx, y, wz, aboveWater);
+            // vlak, verbonden wateroppervlak: alle water op dezelfde hoogte
+            const topH = 0.9;
             if (!aboveWater && G.occludes(above) === false) {
               // bovenvlak, met schuim-hoekwaarden
               const base = wPos.length / 3;
