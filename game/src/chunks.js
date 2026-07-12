@@ -309,6 +309,33 @@ window.Chunks = (function () {
     if (chObj) remesh(chObj);
   }
 
+  // Lichte set voor de watersimulatie: werkt data + meta bij, markeert de chunk
+  // vuil en zet 'm in de mesh-wachtrij (geen directe remesh voor snelheid).
+  function markDirtyQ(chObj) { chObj.dirty = true; queueMesh(chObj); }
+  C.setWaterCell = function (wx, wy, wz, id, meta) {
+    if (wy < 0 || wy >= CH) return false;
+    const cx = Math.floor(wx / CS), cz = Math.floor(wz / CS);
+    const chObj = chunks.get(ck(cx, cz));
+    if (!chObj) return false;
+    const lx = wx - cx * CS, lz = wz - cz * CS;
+    chObj.blocks[lidx(lx, wy, lz)] = id;
+    G.setMeta(wx, wy, wz, meta || 0);
+    G.recordEdit(wx, wy, wz, id);
+    markDirtyQ(chObj);
+    if (lx === 0) { const n = chunks.get(ck(cx - 1, cz)); if (n) markDirtyQ(n); }
+    if (lx === CS - 1) { const n = chunks.get(ck(cx + 1, cz)); if (n) markDirtyQ(n); }
+    if (lz === 0) { const n = chunks.get(ck(cx, cz - 1)); if (n) markDirtyQ(n); }
+    if (lz === CS - 1) { const n = chunks.get(ck(cx, cz + 1)); if (n) markDirtyQ(n); }
+    return true;
+  };
+  // Waterniveau-factor (1 = vol) op basis van meta en of er water boven staat
+  C.waterFactor = function (wx, wy, wz, aboveIsWater) {
+    if (aboveIsWater) return 1;
+    const m = G.getMeta(wx, wy, wz);
+    if (m === 0 || m >= 8) return 1;
+    return m / 8;
+  };
+
   // ---- chunk genereren -------------------------------------------------------------------
   function createChunk(cx, cz) {
     const key = ck(cx, cz);
@@ -475,10 +502,12 @@ window.Chunks = (function () {
               return 0;
             };
             const above = get(wx, y + 1, wz);
-            if (above !== B.WATER && G.occludes(above) === false) {
+            const aboveWater = above === B.WATER;
+            const topH = 0.86 * C.waterFactor(wx, y, wz, aboveWater);
+            if (!aboveWater && G.occludes(above) === false) {
               // bovenvlak, met schuim-hoekwaarden
               const base = wPos.length / 3;
-              const wy = y + 0.86;
+              const wy = y + topH;
               wPos.push(wx, wy, wz, wx + 1, wy, wz, wx, wy, wz + 1, wx + 1, wy, wz + 1);
               wEdge.push(edgeCorner(0, 0), edgeCorner(1, 0), edgeCorner(0, 1), edgeCorner(1, 1));
               wFlow.push(flx, flz, flx, flz, flx, flz, flx, flz);
@@ -491,7 +520,7 @@ window.Chunks = (function () {
               if (nb === B.AIR) {
                 const base = wPos.length / 3;
                 for (const c of f.corners) {
-                  wPos.push(wx + c[0], y + c[1] * 0.86, wz + c[2]);
+                  wPos.push(wx + c[0], y + c[1] * topH, wz + c[2]);
                   wEdge.push(1); wFlow.push(flx, flz);
                 }
                 wIdx.push(base, base + 1, base + 2, base + 2, base + 1, base + 3);

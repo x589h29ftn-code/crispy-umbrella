@@ -167,6 +167,8 @@ window.Main = (function () {
     Chunks.init(scene);
     Entities.reset();
     Boats.reset();
+    WaterSim.reset();
+    if (saveData && saveData.water) WaterSim.deserialize(saveData.water);
 
     if (saveData && saveData.player) Player.deserialize(saveData.player);
     else Player.spawn();
@@ -288,6 +290,7 @@ window.Main = (function () {
     Chunks.update(Player.pos.x, Player.pos.z, 5);
 
     Player.update(dt, elapsed);
+    WaterSim.update(dt);
 
     const sunInfo = Sky.update(dt, Player.pos);
     const rainLevel = Weather.update(dt, Player.pos, sunInfo.nightAmt);

@@ -180,6 +180,7 @@ window.Player = (function () {
     if (above !== undefined && (G.isCross(above) || above === B.TORCH || above === B.CAMPFIRE)) {
       Chunks.setBlock(hit.x, hit.y + 1, hit.z, B.AIR);
     }
+    if (window.WaterSim) WaterSim.onEdit(hit.x, hit.y, hit.z);
     Sfx.dig(hit.block);
   }
 
@@ -214,10 +215,13 @@ window.Player = (function () {
           ty + 1 > py && ty < py + SIZE.h) { return; }
     }
 
-    // fakkel/kampvuur hebben een dragend blok nodig
-    if (id === B.TORCH || id === B.CAMPFIRE) {
+    // fakkel/kampvuur/gewas hebben een dragend blok nodig
+    if (id === B.TORCH || id === B.CAMPFIRE || id === B.CROP) {
       const below = Chunks.getBlock(tx, ty - 1, tz);
-      if (!G.occludes(below) && below !== B.FENCE) { UI.hint('Dit heeft een stevige ondergrond nodig.'); return; }
+      if (!G.occludes(below) && below !== B.FENCE) {
+        UI.hint(id === B.CROP ? 'Graan heeft grond nodig om te groeien.' : 'Dit heeft een stevige ondergrond nodig.');
+        return;
+      }
     }
 
     if (id === B.STAIRS) {
@@ -228,9 +232,20 @@ window.Player = (function () {
       const facing = facingFromYaw(P.yaw);
       Chunks.setBlock(tx, ty, tz, id, true, (facing << 1));           // onderste helft
       Chunks.setBlock(tx, ty + 1, tz, id, true, (facing << 1) | 8);  // bovenste helft
+    } else if (id === B.CROP) {
+      // graan zaaien; onder gras/aarde wordt akkergrond
+      const below = Chunks.getBlock(tx, ty - 1, tz);
+      if (below === B.GRASS || below === B.DIRT) Chunks.setBlock(tx, ty - 1, tz, B.FARMLAND);
+      Chunks.setBlock(tx, ty, tz, id);
+      UI.hint('Graan gezaaid 🌾');
+    } else if (id === B.WATER) {
+      // stromend water: plaats een bron
+      if (window.WaterSim) WaterSim.placeSource(tx, ty, tz);
+      else Chunks.setBlock(tx, ty, tz, B.WATER);
     } else {
       Chunks.setBlock(tx, ty, tz, id);
     }
+    if (window.WaterSim && id !== B.WATER) WaterSim.onEdit(tx, ty, tz);
     Sfx.place(id);
   }
 

@@ -45,10 +45,11 @@ window.G = (function () {
     [B.PLANKS]: 'Planken', [B.LOG]: 'Boomstam', [B.COBBLE]: 'Keien', [B.FENCE]: 'Hekje', [B.TORCH]: 'Fakkel',
     [B.STONE_BRICK]: 'Bakstenen', [B.STONE_BRICK_MOSSY]: 'Bemoste bakstenen', [B.GLASS]: 'Glas',
     [B.STAIRS]: 'Trap', [B.SLAB]: 'Plaat / bankje', [B.DOOR]: 'Deur', [B.CAMPFIRE]: 'Kampvuur',
+    [B.FARMLAND]: 'Akkergrond', [B.CROP]: 'Graan (zaaien)', [B.WATER]: 'Water',
   };
   // Bouw-set voorop op 1–9; overige blokken via scrollwiel
   G.HOTBAR = [B.STONE_BRICK, B.STONE_BRICK_MOSSY, B.STAIRS, B.SLAB, B.PLANKS, B.DOOR, B.GLASS, B.FENCE, B.TORCH,
-    B.CAMPFIRE, B.COBBLE, B.LOG, B.GRASS, B.DIRT, B.SAND];
+    B.CAMPFIRE, B.FARMLAND, B.CROP, B.WATER, B.COBBLE, B.LOG, B.GRASS, B.DIRT, B.SAND];
 
   // Instellingen (met persistentie)
   const DEFAULTS = {

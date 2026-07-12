@@ -99,6 +99,7 @@ window.UI = (function () {
       dayNumber: G.dayNumber,
       player: Player.serialize(),
       weather: Weather.serialize(),
+      water: window.WaterSim ? WaterSim.serialize() : [],
       edits, metas,
     };
     try {
