@@ -197,13 +197,37 @@ window.UI = (function () {
     };
     bindCheck('set-postfx', 'postFX', () => Main.applyGraphics());
     bindCheck('set-bloom', 'bloom', () => Main.applyGraphics());
+    bindCheck('set-godrays', 'godrays', () => Main.applyGraphics());
     bindCheck('set-vignette', 'vignette', () => Main.applyGraphics());
+    bindCheck('set-fps', 'showFps', () => U.applyFps());
+  }
+
+  U.applyFps = function () {
+    $('fps').style.display = G.settings.showFps ? 'block' : 'none';
+  };
+  U.updateFps = function (v) {
+    if (G.settings.showFps) $('fps').textContent = v + ' fps';
+  };
+
+  function applyPreset(name) {
+    Object.assign(G.settings, G.QUALITY_PRESETS[name]);
+    G.saveSettings();
+    bindSettings();                 // invoervelden verversen
+    Main.applyGraphics();
+    Main.onRenderDistChanged();
+    Sky.rebuildClouds();
+    U.applyFps();
+    U.toast('Kwaliteit ingesteld op ' + (name === 'low' ? 'Laag' : name === 'med' ? 'Middel' : 'Hoog'));
   }
 
   // ---- events ----
   U.init = function () {
     U.buildHotbar();
     bindSettings();
+    U.applyFps();
+    $('preset-low').onclick = () => applyPreset('low');
+    $('preset-med').onclick = () => applyPreset('med');
+    $('preset-high').onclick = () => applyPreset('high');
 
     $('btn-new').onclick = () => {
       const txt = $('seed-input').value.trim();

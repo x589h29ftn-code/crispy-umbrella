@@ -8,6 +8,8 @@ window.Main = (function () {
   let elapsed = 0;
   let loadingWorld = false;
   let lastSeasonIdx = -1;
+  let frames = 0, fpsTime = 0;
+  const _sunV = new THREE.Vector3();
 
   // ---- opstarten ----
   function boot() {
@@ -71,6 +73,7 @@ window.Main = (function () {
     Post.enabled = !!G.settings.postFX;
     Post.bloom = !!G.settings.bloom;
     Post.vignette = !!G.settings.vignette;
+    Post.godrays = !!G.settings.godrays;
     applyPixelRatio();
     Post.resize();
   }
@@ -259,6 +262,16 @@ window.Main = (function () {
       autosaveTimer = 0;
       UI.saveGame('auto');
     }
+
+    // zon-schermpositie voor de zonnestralen
+    _sunV.copy(camera.position).addScaledVector(sunInfo.sunDir, 500).project(camera);
+    const sunVis = sunInfo.sunDir.y > 0.03 && _sunV.z < 1 &&
+      _sunV.x > -1.35 && _sunV.x < 1.35 && _sunV.y > -1.35 && _sunV.y < 1.35;
+    Post.setSun(_sunV.x * 0.5 + 0.5, _sunV.y * 0.5 + 0.5, sunVis);
+
+    // FPS-teller
+    frames++; fpsTime += dt;
+    if (fpsTime >= 0.5) { UI.updateFps(Math.round(frames / fpsTime)); frames = 0; fpsTime = 0; }
 
     present();
   }

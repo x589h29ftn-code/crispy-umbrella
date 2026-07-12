@@ -47,6 +47,11 @@
   #helphint{position:absolute;left:16px;top:14px;font-size:12px;color:var(--ui-dim);
     background:rgba(10,12,18,.5);border:1px solid rgba(255,255,255,.1);
     padding:6px 10px;border-radius:8px;}
+  #fps{position:absolute;left:16px;top:46px;font-size:12px;color:var(--ui-accent);
+    background:rgba(10,12,18,.5);border:1px solid rgba(255,255,255,.1);
+    padding:4px 9px;border-radius:8px;display:none;font-variant-numeric:tabular-nums;}
+  .preset-row{display:flex;gap:8px;margin-bottom:6px;}
+  .preset-row .btn{margin:0;text-align:center;padding:9px 6px;}
   #toast{position:absolute;left:50%;top:18%;transform:translateX(-50%);
     background:var(--ui-bg2);border:1px solid rgba(255,255,255,.15);
     padding:10px 18px;border-radius:10px;font-size:14px;opacity:0;transition:opacity .35s;}
@@ -101,6 +106,7 @@
   <div id="hotbar"></div>
   <div id="clockwrap"><span id="clockicon">☀️</span><span id="clocktxt">Dag 1 — 08:00</span><span id="weathericon"></span></div>
   <div id="helphint"><kbd>H</kbd> hulp &nbsp; <kbd>Esc</kbd> menu</div>
+  <div id="fps">– fps</div>
   <div id="hint"></div>
   <div id="toast"></div>
 </div>
@@ -156,6 +162,13 @@
 <div id="settingsmenu" class="overlay">
   <div class="panel">
     <h2>Instellingen</h2>
+    <div class="sub" style="margin-bottom:8px">Snelle kwaliteit</div>
+    <div class="preset-row">
+      <button class="btn" id="preset-low">Laag</button>
+      <button class="btn" id="preset-med">Middel</button>
+      <button class="btn" id="preset-high">Hoog</button>
+    </div>
+    <div class="divider"></div>
     <div class="row"><label>Daglengte (minuten)</label>
       <input type="range" id="set-daymin" min="1" max="60" step="1"><span class="val" id="val-daymin"></span></div>
     <div class="row"><label>Seizoenslengte (dagen)</label>
@@ -176,7 +189,9 @@
     <div class="row"><label>Wolken</label><input type="checkbox" id="set-clouds"></div>
     <div class="row"><label>Beeldeffecten (AA + bloom)</label><input type="checkbox" id="set-postfx"></div>
     <div class="row"><label>Gloed (bloom)</label><input type="checkbox" id="set-bloom"></div>
+    <div class="row"><label>Zonnestralen</label><input type="checkbox" id="set-godrays"></div>
     <div class="row"><label>Vignet</label><input type="checkbox" id="set-vignette"></div>
+    <div class="row"><label>FPS-teller tonen</label><input type="checkbox" id="set-fps"></div>
     <div class="divider"></div>
     <button class="btn" id="btn-settings-back">← Terug</button>
   </div>

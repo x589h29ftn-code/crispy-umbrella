@@ -12,7 +12,13 @@ window.Post = (function () {
   P.enabled = true;
   P.bloom = true;
   P.vignette = true;
+  P.godrays = true;
   P.bloomStrength = 0.55;
+  P.godStrength = 0.8;
+  const sunUV = new THREE.Vector2(0.5, 0.5);
+  let sunVisible = false;
+  let godMat;
+  P.setSun = function (x, y, visible) { sunUV.set(x, y); sunVisible = visible; };
 
   const FXAA = `
     vec3 fxaa(sampler2D tex, vec2 uv, vec2 res) {
@@ -96,21 +102,45 @@ window.Post = (function () {
         }`,
     });
 
+    // zonnestralen (radiaal uitvegen van de felle plekken naar de zon toe)
+    godMat = new THREE.ShaderMaterial({
+      uniforms: { tBright: { value: null }, sunUV: { value: sunUV }, aspect: { value: 1 } },
+      vertexShader: VERT,
+      fragmentShader: `
+        uniform sampler2D tBright; uniform vec2 sunUV; uniform float aspect; varying vec2 vUv;
+        void main(){
+          const int STEPS = 28;
+          float density = 0.85, decay = 0.95, weight = 0.5;
+          vec2 delta = (vUv - sunUV) * (density / float(STEPS));
+          vec2 c = vUv;
+          vec3 col = vec3(0.0);
+          float illum = 1.0;
+          for (int i = 0; i < STEPS; i++) {
+            c -= delta;
+            vec3 s = texture2D(tBright, c).rgb;
+            col += s * illum * weight;
+            illum *= decay;
+          }
+          gl_FragColor = vec4(col, 1.0);
+        }`,
+    });
+
     compMat = new THREE.ShaderMaterial({
       uniforms: {
-        tDiffuse: { value: null }, tBloom: { value: null },
+        tDiffuse: { value: null }, tBloom: { value: null }, tGod: { value: null },
         res: { value: new THREE.Vector2() },
-        bloomStr: { value: 0.65 }, vig: { value: 0.9 }, sat: { value: 1.08 }, fxaaOn: { value: 1 },
+        bloomStr: { value: 0.65 }, godStr: { value: 0.0 }, vig: { value: 0.9 }, sat: { value: 1.08 }, fxaaOn: { value: 1 },
       },
       vertexShader: VERT,
       fragmentShader: `
-        uniform sampler2D tDiffuse, tBloom; uniform vec2 res;
-        uniform float bloomStr, vig, sat, fxaaOn; varying vec2 vUv;
+        uniform sampler2D tDiffuse, tBloom, tGod; uniform vec2 res;
+        uniform float bloomStr, godStr, vig, sat, fxaaOn; varying vec2 vUv;
         ${FXAA}
         void main(){
           vec3 base = fxaaOn > 0.5 ? fxaa(tDiffuse, vUv, res) : texture2D(tDiffuse, vUv).rgb;
           vec3 bloom = texture2D(tBloom, vUv).rgb;
-          vec3 c = base + bloom * bloomStr;
+          vec3 god = texture2D(tGod, vUv).rgb;
+          vec3 c = base + bloom * bloomStr + god * godStr * vec3(1.0, 0.92, 0.78);
           float l = dot(c, vec3(0.299,0.587,0.114));
           c = mix(vec3(l), c, sat);              // lichte verzadiging
           vec2 q = vUv - 0.5;
@@ -137,9 +167,11 @@ window.Post = (function () {
     renderer.clear();
     renderer.render(scene, camera);
 
-    // 2. bloom (alleen als aan)
-    let bloomTex = null;
-    if (P.bloom) {
+    const doGod = P.godrays && sunVisible;
+    const needBright = P.bloom || doGod;
+
+    // 2. felle plekken isoleren + blurren (voor bloom en/of zonnestralen)
+    if (needBright) {
       brightMat.uniforms.tDiffuse.value = rtScene.texture;
       pass(brightMat, rtBrightA);
       const bw = rtBrightA.width, bh = rtBrightA.height;
@@ -151,14 +183,21 @@ window.Post = (function () {
         blurMat.uniforms.dir.value.set(0, 1.4 / bh);
         pass(blurMat, rtBrightA);
       }
-      bloomTex = rtBrightA.texture;
     }
 
-    // 3. compositie naar scherm
+    // 3. zonnestralen (radiaal uitvegen naar de zon)
+    if (doGod) {
+      godMat.uniforms.tBright.value = rtBrightA.texture;
+      pass(godMat, rtBrightB);   // resultaat in rtBrightB
+    }
+
+    // 4. compositie naar scherm
     compMat.uniforms.tDiffuse.value = rtScene.texture;
-    compMat.uniforms.tBloom.value = bloomTex || rtBrightA.texture;
+    compMat.uniforms.tBloom.value = rtBrightA.texture;
+    compMat.uniforms.tGod.value = rtBrightB.texture;
     compMat.uniforms.res.value.set(rtScene.width, rtScene.height);
     compMat.uniforms.bloomStr.value = P.bloom ? P.bloomStrength : 0.0;
+    compMat.uniforms.godStr.value = doGod ? P.godStrength : 0.0;
     compMat.uniforms.vig.value = P.vignette ? 0.72 : 0.0;
     quad.material = compMat;
     renderer.setRenderTarget(null);
