@@ -107,6 +107,12 @@ Firefox). Lokaal serveren kan met `python3 -m http.server` in deze map.
   helder met klokjes, 's nachts lager en ingetogener, rustiger in de winter.
 - **Rijkere natuurgeluiden** — een vogelkoor overdag, krekels en af en toe een
   uil 's nachts, en zacht kabbelend water als je bij een meer of waterval bent.
+- **Stoomtrein** — over de rails die de dorpen met elkaar verbinden rijdt af en
+  toe een stoomtreintje met dampende schoorsteen van dorp naar dorp.
+- **Beekjes** — een fijn net van smalle, kronkelende stroompjes door het
+  landschap, en elk dorp heeft een vijvertje met een beekje en een bruggetje.
+- **Grote kijkafstand** — de kijkafstand is instelbaar tot 28 chunks voor weidse
+  vergezichten (kost meer rekenkracht).
 
 ## Besturing
 

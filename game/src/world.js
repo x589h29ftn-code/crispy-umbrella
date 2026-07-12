@@ -30,6 +30,15 @@ window.World = (function () {
   }
   W.riverFactor = riverFactor;
 
+  // Fijner, dichter net van smalle beekjes (kronkelend door het laagland)
+  function brookFactor(x, z) {
+    const bv = Math.abs(Noise.fbm2(x * 0.0052 + 812.4, z * 0.0052 - 217.9, 3));
+    return 1 - Noise.smoothstep(0.0, 0.022, bv);   // dunner dan een rivier
+  }
+  W.brookFactor = brookFactor;
+  // Gecombineerde "hoeveel water op dit punt" voor collision/lelie-checks
+  W.waterFactor = function (x, z) { return Math.max(riverFactor(x, z), brookFactor(x, z) * 0.85); };
+
   function baseHeight(x, z) {
     // Continenten — flink omhoog gebiast zodat het land duidelijk bóven het
     // water uitkomt (geen vlakke, half-ondergelopen wereld meer).
@@ -54,6 +63,13 @@ window.World = (function () {
       const lowland = Noise.smoothstep(SEA + 42, SEA + 10, h);
       const target = Math.min(h, SEA - 2.5 - rf * 1.6);
       h = Noise.lerp(h, target, rf * rf * lowland);
+    }
+    // Beekjes: smalle, ondiepe geultjes die kronkelen door heuvels en vlakten
+    const bf = brookFactor(x, z);
+    if (bf > 0.02) {
+      const lowland = Noise.smoothstep(SEA + 48, SEA + 4, h);
+      const target = Math.min(h, SEA - 0.6);          // ondiep, net onder zeeniveau
+      h = Noise.lerp(h, target, bf * bf * lowland * 0.9);
     }
     return Math.min(h, CH - 6);
   }
@@ -97,9 +113,45 @@ window.World = (function () {
     return best;
   };
 
-  // Ligt (x,z) op een verbindingsweg tussen twee naburige dorpen?
-  W.onVillageRoad = function (x, z) {
+  // Wobbelend punt op een dorpsweg-segment bij parameter t (0..1).
+  function roadPoint(v, n, ox, t) {
+    const dcx = n.cx - v.cx, dcz = n.cz - v.cz;
+    const len = Math.hypot(dcx, dcz) || 1;
+    const wob = Noise.noise2(t * 4 + v.cellX * 3.1, v.cellZ * 2.7 + ox) * (len * 0.07);
+    return {
+      x: v.cx + dcx * t - dcz / len * wob,
+      z: v.cz + dcz * t + dcx / len * wob,
+      len,
+    };
+  }
+  W.roadPoint = roadPoint;
+
+  // Alle dorpsweg-segmenten in de buurt van (x,z) verzamelen (uniek per paar).
+  W.roadSegmentsNear = function (x, z, cellRange) {
     const cX = Math.floor(x / VILLAGE_CELL), cZ = Math.floor(z / VILLAGE_CELL);
+    const rr = cellRange || 1;
+    const segs = [], seen = new Set();
+    for (let dx = -rr; dx <= rr; dx++) for (let dz = -rr; dz <= rr; dz++) {
+      const v = villageRaw(cX + dx, cZ + dz);
+      if (!v) continue;
+      for (const [ox, oz] of [[1, 0], [0, 1], [1, 1], [1, -1]]) {
+        const n = villageRaw(v.cellX + ox, v.cellZ + oz);
+        if (!n) continue;
+        const len = Math.hypot(n.cx - v.cx, n.cz - v.cz);
+        if (len < 1 || len > VILLAGE_CELL * 2.1) continue;
+        const key = Math.min(v.key, n.key) + '|' + Math.max(v.key, n.key);
+        if (seen.has(key)) continue;
+        seen.add(key);
+        segs.push({ v, n, ox, len, key });
+      }
+    }
+    return segs;
+  };
+
+  // Info over de dichtstbijzijnde dorpsweg door (x,z): afstand tot het hart + richting.
+  W.roadInfo = function (x, z) {
+    const cX = Math.floor(x / VILLAGE_CELL), cZ = Math.floor(z / VILLAGE_CELL);
+    let best = null, bestD = 1e9;
     for (let dx = -1; dx <= 1; dx++) for (let dz = -1; dz <= 1; dz++) {
       const v = villageRaw(cX + dx, cZ + dz);
       if (!v) continue;
@@ -111,13 +163,23 @@ window.World = (function () {
         if (len < 1 || len > VILLAGE_CELL * 2.1) continue;
         let tPar = ((x - v.cx) * dcx + (z - v.cz) * dcz) / (len * len);
         tPar = Noise.clamp(tPar, 0, 1);
-        const wob = Noise.noise2(tPar * 4 + v.cellX * 3.1, v.cellZ * 2.7 + ox) * (len * 0.07);
-        const px = v.cx + dcx * tPar - dcz / len * wob;
-        const pz = v.cz + dcz * tPar + dcx / len * wob;
-        if (Math.hypot(x - px, z - pz) < 1.8) return true;
+        const p = roadPoint(v, n, ox, tPar);
+        const d = Math.hypot(x - p.x, z - p.z);
+        if (d < bestD) { bestD = d; best = { dist: d, t: tPar, px: p.x, pz: p.z, v, n, ox, len }; }
       }
     }
-    return false;
+    return best;
+  };
+
+  // Ligt (x,z) op een verbindingsweg tussen twee naburige dorpen?
+  W.onVillageRoad = function (x, z) {
+    const info = W.roadInfo(x, z);
+    return !!info && info.dist < 1.8;
+  };
+  // Ligt (x,z) op het spoor (het hart van de weg)?
+  W.onRail = function (x, z) {
+    const info = W.roadInfo(x, z);
+    return !!info && info.dist < 0.8;
   };
 
   // ---- uiteindelijke hoogte (terrein + dorps-afvlakking) ------------------------
@@ -266,6 +328,46 @@ window.World = (function () {
         bmSet(bm, bx, gy + 1, bz, B.SLAB);
       }
       campfire = { x: fx + 0.5, y: gy + 1, z: fz + 0.5 };
+    }
+
+    // een gezellig vijvertje met een beekje aan de rand van het plein
+    {
+      const ang = rng() * Math.PI * 2;
+      const px = Math.round(v.cx + Math.cos(ang) * (9 + rng() * 4));
+      const pz = Math.round(v.cz + Math.sin(ang) * (9 + rng() * 4));
+      const rad = 2 + ((rng() * 2) | 0);
+      for (let dx = -rad - 1; dx <= rad + 1; dx++) for (let dz = -rad - 1; dz <= rad + 1; dz++) {
+        const d = Math.hypot(dx, dz);
+        const x = px + dx, z = pz + dz;
+        if (d <= rad) {
+          // waterkom (1 diep), zandbodem
+          bmSet(bm, x, gy, z, B.WATER);
+          bmSet(bm, x, gy - 1, z, B.SAND);
+          bmSet(bm, x, gy + 1, z, B.AIR);
+          if (d < rad - 1 && rng() < 0.18) bmSet(bm, x, gy + 1, z, B.LILYPAD);
+        } else if (d <= rad + 1) {
+          // zandige oever + wat riet
+          bmSet(bm, x, gy, z, B.SAND);
+          if (rng() < 0.25) bmSet(bm, x, gy + 1, z, B.TALLGRASS);
+        }
+      }
+      // een kort beekje dat van de vijver wegkronkelt
+      let bx = px, bz = pz;
+      const bdir = rng() * Math.PI * 2;
+      const blen = 5 + ((rng() * 5) | 0);
+      for (let s = 0; s < blen; s++) {
+        bx = Math.round(px + Math.cos(bdir) * s + Math.sin(s * 0.9) * 1.2);
+        bz = Math.round(pz + Math.sin(bdir) * s - Math.cos(s * 0.9) * 1.2);
+        bmSet(bm, bx, gy, bz, B.WATER);
+        bmSet(bm, bx, gy - 1, bz, B.SAND);
+        bmSet(bm, bx, gy + 1, bz, B.AIR);
+        // klein bruggetje halverwege
+        if (s === (blen >> 1)) {
+          bmSet(bm, bx, gy + 1, bz - 1, B.SLAB);
+          bmSet(bm, bx, gy + 1, bz + 1, B.SLAB);
+          bmSet(bm, bx, gy + 1, bz, B.SLAB);
+        }
+      }
     }
 
     const nHouses = 3 + ((rng() * 4) | 0);
@@ -562,6 +664,15 @@ window.World = (function () {
       if (h + 1 >= CH) continue;
       const surfId = blocks[idx(lx, h, lz)];
       if (blocks[idx(lx, h + 1, lz)] !== B.AIR) continue;
+
+      // spoorrails op het hart van de dorpsweg
+      if ((surfId === B.PATH || surfId === B.GRAVEL) && h > SEA) {
+        const ri = W.roadInfo(wx, wz);
+        if (ri && ri.dist < 0.75) {
+          blocks[idx(lx, h + 1, lz)] = B.RAIL;
+          continue;
+        }
+      }
 
       // riet langs het water
       if (surfId === B.SAND && h >= SEA && h <= SEA + 2) {

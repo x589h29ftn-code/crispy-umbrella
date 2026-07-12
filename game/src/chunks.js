@@ -280,7 +280,7 @@ window.Chunks = (function () {
     let top = 0;
     for (let y = CH - 1; y >= 0; y--) {
       const id = chObj.blocks[lidx(lx, y, lz)];
-      if (id !== B.AIR && !G.isCross(id) && id !== B.TORCH && id !== B.LILYPAD && id !== B.PEBBLES) { top = y; break; }
+      if (id !== B.AIR && !G.isCross(id) && id !== B.TORCH && id !== B.LILYPAD && id !== B.PEBBLES && id !== B.RAIL) { top = y; break; }
     }
     chObj.heightmap[lx + lz * CS] = top;
   }
@@ -565,6 +565,23 @@ window.Chunks = (function () {
             fPos.push(wx, yy, wz, wx + 1, yy, wz, wx, yy, wz + 1, wx + 1, yy, wz + 1);
             fNrm.push(0, 1, 0, 0, 1, 0, 0, 1, 0, 0, 1, 0);
             fUv.push(u0, v0, u1, v0, u0, v1, u1, v1);
+            for (let i = 0; i < 4; i++) fCol.push(1, 1, 1);
+            fSway.push(0, 0, 0, 0);
+            fIdx.push(base, base + 1, base + 2, base + 2, base + 1, base + 3);
+            continue;
+          }
+
+          if (id === B.RAIL) {
+            const [u0, v0, u1, v1] = Textures.uv(Textures.TI.RAIL);
+            const yy = y + 0.08;
+            const base = fPos.length / 3;
+            fPos.push(wx, yy, wz, wx + 1, yy, wz, wx, yy, wz + 1, wx + 1, yy, wz + 1);
+            fNrm.push(0, 1, 0, 0, 1, 0, 0, 1, 0, 0, 1, 0);
+            // UV draaien afhankelijk van de spoorrichting
+            const ri = (window.World && World.roadInfo) ? World.roadInfo(wx, wz) : null;
+            const alongX = ri ? Math.abs(ri.n.cx - ri.v.cx) >= Math.abs(ri.n.cz - ri.v.cz) : false;
+            if (alongX) fUv.push(u0, v0, u0, v1, u1, v0, u1, v1);
+            else fUv.push(u0, v0, u1, v0, u0, v1, u1, v1);
             for (let i = 0; i < 4; i++) fCol.push(1, 1, 1);
             fSway.push(0, 0, 0, 0);
             fIdx.push(base, base + 1, base + 2, base + 2, base + 1, base + 3);

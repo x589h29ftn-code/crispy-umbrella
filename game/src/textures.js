@@ -60,6 +60,7 @@ window.Textures = (function () {
     STONE_BRICK: 27, STONE_BRICK_MOSSY: 28, GLASS: 29, DOOR: 30, EMBER: 31,
     FERN: 32, MUSHROOM: 33, LILYPAD: 34, PEBBLES: 35, LEAVES_CHERRY: 36, LANTERN: 37,
     BOOKSHELF: 38, CRYSTAL: 39, LAVENDER: 40, PALM_LEAVES: 41, PALM_SIDE: 42, BED: 43,
+    RAIL: 44,
   };
 
   function draw() {
@@ -641,6 +642,24 @@ window.Textures = (function () {
       for (let y = 15; y < TILE; y += 6) for (let x = 0; x < TILE; x++) px(tx, ty, x, y, 150, 46, 46, 0.5);
       for (let x = 6; x < TILE; x += 8) for (let y = 14; y < TILE; y++) px(tx, ty, x, y, 150, 46, 46, 0.5);
     }
+
+    // RAILS: houten dwarsliggers met twee glimmende metalen staven (bovenaanzicht)
+    {
+      const idx = TI.RAIL, tx = idx % COLS, ty = (idx / COLS) | 0;
+      clearTile(tx, ty);
+      // grindbed
+      for (let y = 0; y < TILE; y++) for (let x = 0; x < TILE; x++) { const v = (R() - 0.5) * 24; px(tx, ty, x, y, 120 + v, 112 + v, 100 + v, 0.9); }
+      // dwarsliggers (horizontaal, om de 6 px)
+      for (let y = 1; y < TILE; y += 6) for (let x = 0; x < TILE; x++) {
+        const v = (R() - 0.5) * 16;
+        px(tx, ty, x, y, 96 + v, 68 + v, 40 + v); px(tx, ty, x, y + 1, 110 + v, 80 + v, 48 + v); px(tx, ty, x, y + 2, 84 + v, 58 + v, 34 + v);
+      }
+      // twee metalen staven (verticaal)
+      for (const rx of [10, 21]) for (let y = 0; y < TILE; y++) {
+        px(tx, ty, rx, y, 210, 214, 222); px(tx, ty, rx + 1, y, 170, 176, 186);
+        px(tx, ty, rx - 1, y, 120, 124, 132, 0.6);
+      }
+    }
   }
   draw();
 
@@ -699,6 +718,7 @@ window.Textures = (function () {
       case B.BED: return TI2.BED;
       case B.CRYSTAL: return TI2.CRYSTAL;
       case B.LAVENDER: return TI2.LAVENDER;
+      case B.RAIL: return TI2.RAIL;
       case B.FERN: return TI2.FERN;
       case B.MUSHROOM: return TI2.MUSHROOM;
       case B.LILYPAD: return TI2.LILYPAD;

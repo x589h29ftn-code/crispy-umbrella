@@ -358,6 +358,95 @@ window.Entities = (function () {
     } else tr.parts.torch.visible = false;
   }
 
+  // ---- stoomtrein op de rails tussen dorpen -----------------------------------------
+  const trains = [];
+  let trainTimer = 8;
+
+  function buildWagon(color, len) {
+    const g = new THREE.Group();
+    const body = new THREE.Mesh(box(1.5, 1.0, len), mat(color));
+    body.position.y = 1.15; body.castShadow = true; g.add(body);
+    const roof = new THREE.Mesh(box(1.6, 0.16, len + 0.1), mat(0x3b2f26));
+    roof.position.y = 1.72; g.add(roof);
+    // wielen
+    for (const lz of [-len * 0.3, len * 0.3]) for (const lx of [-0.72, 0.72]) {
+      const w = new THREE.Mesh(box(0.16, 0.5, 0.5), mat(0x1f1f24));
+      w.position.set(lx, 0.4, lz); g.add(w);
+    }
+    return g;
+  }
+
+  function buildTrain() {
+    const g = new THREE.Group();
+    // locomotief
+    const loco = new THREE.Group();
+    const boiler = new THREE.Mesh(box(1.5, 1.1, 2.4), mat(0x7a2530));
+    boiler.position.set(0, 1.2, 0.3); boiler.castShadow = true; loco.add(boiler);
+    const cab = new THREE.Mesh(box(1.6, 1.3, 1.2), mat(0x5a1a22));
+    cab.position.set(0, 1.4, -1.1); cab.castShadow = true; loco.add(cab);
+    const cabRoof = new THREE.Mesh(box(1.7, 0.16, 1.35), mat(0x2b2b30));
+    cabRoof.position.set(0, 2.12, -1.1); loco.add(cabRoof);
+    // schoorsteen
+    const chimney = new THREE.Mesh(box(0.5, 0.7, 0.5), mat(0x2b2b30));
+    chimney.position.set(0, 2.05, 1.1); loco.add(chimney);
+    const cap = new THREE.Mesh(box(0.66, 0.16, 0.66), mat(0x1f1f24));
+    cap.position.set(0, 2.42, 1.1); loco.add(cap);
+    // koeienvanger
+    const nose = new THREE.Mesh(box(1.2, 0.5, 0.5), mat(0x3b2f26));
+    nose.position.set(0, 0.6, 1.6); loco.add(nose);
+    // wielen
+    for (const lz of [-0.6, 0.4, 1.2]) for (const lx of [-0.72, 0.72]) {
+      const w = new THREE.Mesh(box(0.18, 0.62, 0.62), mat(0x1f1f24));
+      w.position.set(lx, 0.44, lz); loco.add(w);
+    }
+    // lampje voorop
+    const lamp = new THREE.Mesh(box(0.3, 0.3, 0.2), mat(0xffe9a8));
+    lamp.position.set(0, 1.1, 1.75); loco.add(lamp);
+    g.add(loco);
+    // twee wagons erachter
+    const w1 = buildWagon(0x6f8a5a, 2.0); w1.position.z = -3.0; g.add(w1);
+    const w2 = buildWagon(0x5a708a, 2.0); w2.position.z = -5.4; g.add(w2);
+    g.userData.chimney = chimney;
+    return g;
+  }
+
+  function trySpawnTrain(playerPos) {
+    if (trains.length >= 1) return;
+    // dichtstbijzijnde dorpsweg die dóór de buurt van de speler loopt
+    const info = World.roadInfo(playerPos.x, playerPos.z);
+    if (!info || info.dist > 70) return;
+    const seg = { v: info.v, n: info.n, ox: info.ox, len: info.len };
+    const dir = rng() < 0.5 ? 1 : -1;
+    // start iets áchter de speler langs het spoor, zodat de trein voorbijkomt
+    const t0 = Noise.clamp(info.t - dir * 0.14, 0, 1);
+    const start = World.roadPoint(seg.v, seg.n, seg.ox, t0);
+    const mesh = buildTrain();
+    const gy = Chunks.groundY(Math.floor(start.x), Math.floor(start.z));
+    mesh.position.set(start.x, gy + 1.15, start.z);
+    scene.add(mesh);
+    trains.push({ mesh, seg, t: t0, dir, speed: 7 + rng() * 3, y: gy + 1.15, smokeT: 0 });
+  }
+
+  function updateTrain(tr, dt, t) {
+    const seg = tr.seg;
+    tr.t += tr.dir * (tr.speed / seg.len) * dt;
+    if (tr.t <= 0 || tr.t >= 1) { scene.remove(tr.mesh); const i = trains.indexOf(tr); if (i >= 0) trains.splice(i, 1); return; }
+    const p = World.roadPoint(seg.v, seg.n, seg.ox, tr.t);
+    const ahead = World.roadPoint(seg.v, seg.n, seg.ox, Noise.clamp(tr.t + tr.dir * 0.012, 0, 1));
+    const gy = Chunks.groundY(Math.floor(p.x), Math.floor(p.z));
+    tr.y += ((gy + 1.15) - tr.y) * Math.min(1, dt * 6);
+    tr.mesh.position.set(p.x, tr.y, p.z);
+    const dx = ahead.x - p.x, dz = ahead.z - p.z;
+    if (dx || dz) tr.mesh.rotation.y = Math.atan2(dx, dz);
+    // schoorsteenrook aanmelden bij het rookdeeltjes-systeem
+    const ch = tr.mesh.userData.chimney;
+    tr.chimney = { x: p.x + Math.sin(tr.mesh.rotation.y) * 1.1, y: tr.y + 2.4, z: p.z + Math.cos(tr.mesh.rotation.y) * 1.1 };
+    // despawnen als de speler te ver weg is
+    if (Math.hypot(p.x - (window.__cam ? __cam.position.x : p.x), p.z - (window.__cam ? __cam.position.z : p.z)) > 220) {
+      scene.remove(tr.mesh); const i = trains.indexOf(tr); if (i >= 0) trains.splice(i, 1);
+    }
+  }
+
   // ---- dieren --------------------------------------------------------------------------
   function buildSheep(seedN) {
     const r = Noise.rng(seedN);
@@ -746,11 +835,19 @@ window.Entities = (function () {
   }
   function updateSmoke(dt, t, playerPos) {
     const fires = Chunks.nearbyTorches(playerPos.x, playerPos.y, playerPos.z, 44).filter((o) => o.big);
+    // schoorstenen van rijdende treinen stoten ook rook uit
+    const chimneys = [];
+    for (const tn of trains) if (tn.chimney) chimneys.push(tn.chimney);
     const posA = smoke.geometry.attributes.position, colA = smoke.geometry.attributes.color;
     for (let i = 0; i < SMOKE_N; i++) {
       const p = smokeData[i];
       if (p.life <= 0) {
-        if (fires.length && rng() < dt * 6) {
+        if (chimneys.length && rng() < dt * 10) {
+          const f = chimneys[(rng() * chimneys.length) | 0];
+          p.x = f.x + (rng() - 0.5) * 0.2; p.y = f.y; p.z = f.z + (rng() - 0.5) * 0.2;
+          p.vx = (rng() - 0.5) * 0.2; p.vz = (rng() - 0.5) * 0.2;
+          p.life = 1.4 + rng() * 1.2; p.maxLife = p.life;
+        } else if (fires.length && rng() < dt * 6) {
           const f = fires[(rng() * fires.length) | 0];
           p.x = f.x + (rng() - 0.5) * 0.3; p.y = f.y + 0.3; p.z = f.z + (rng() - 0.5) * 0.3;
           p.vx = (rng() - 0.5) * 0.3; p.vz = (rng() - 0.5) * 0.3;
@@ -918,6 +1015,9 @@ window.Entities = (function () {
     initMist();
   };
 
+  E._trains = trains;   // debug/test-toegang
+  E.spawnTrainNow = function (playerPos) { trainTimer = 0; trySpawnTrain(playerPos); };
+
   E.reset = function () {
     for (const v of villagers) scene.remove(v.mesh);
     villagers.length = 0;
@@ -925,6 +1025,8 @@ window.Entities = (function () {
     animals.length = 0;
     for (const tr of travelers) scene.remove(tr.mesh);
     travelers.length = 0;
+    for (const tn of trains) scene.remove(tn.mesh);
+    trains.length = 0;
     for (const f of flocks) for (const b of f.birds) scene.remove(b.parts.g);
     flocks.length = 0;
     populatedVillages.clear();
@@ -970,6 +1072,11 @@ window.Entities = (function () {
       }
       updateTraveler(tr, dt, t, nightAmt);
     }
+
+    // stoomtrein tussen dorpen
+    trainTimer -= dt;
+    if (trainTimer <= 0) { trainTimer = 25 + Math.random() * 40; trySpawnTrain(playerPos); }
+    for (let i = trains.length - 1; i >= 0; i--) updateTrain(trains[i], dt, t);
 
     // dieren
     animalSpawnTimer -= dt;
