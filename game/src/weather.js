@@ -28,7 +28,7 @@ window.Weather = (function () {
     scene = theScene;
     rng = Noise.rng((seed ^ 0xabcdef) >>> 0);
     W.current = 'clear'; W.intensity = 0; transition = 1;
-    stateTimer = 40 + rng() * 60;
+    stateTimer = 110 + rng() * 90;   // begin met een ruime zonnige periode
 
     if (!rainLines) {
       const geo = new THREE.BufferGeometry();
@@ -52,24 +52,24 @@ window.Weather = (function () {
 
   function pickNext() {
     const r = rng();
-    // rustig spel: meestal mooi weer
+    // rustig spel: standaard zonnig, af en toe een buitje
     if (W.current === 'clear') {
-      if (r < 0.45) return 'clear';
-      if (r < 0.62) return 'mist';
-      if (r < 0.88) return 'rain';
+      if (r < 0.72) return 'clear';
+      if (r < 0.80) return 'mist';
+      if (r < 0.95) return 'rain';
       return 'storm';
     }
     if (W.current === 'rain') {
-      if (r < 0.5) return 'clear';
-      if (r < 0.75) return 'rain';
-      if (r < 0.9) return 'storm';
+      if (r < 0.62) return 'clear';
+      if (r < 0.80) return 'rain';
+      if (r < 0.90) return 'storm';
       return 'mist';
     }
     if (W.current === 'storm') {
-      return r < 0.6 ? 'rain' : 'clear';
+      return r < 0.7 ? 'rain' : 'clear';
     }
     // mist
-    return r < 0.6 ? 'clear' : (r < 0.8 ? 'mist' : 'rain');
+    return r < 0.75 ? 'clear' : (r < 0.88 ? 'mist' : 'rain');
   }
 
   function respawnDrop(i, px, py, pz, randomY) {

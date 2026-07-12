@@ -44,7 +44,7 @@ window.Sky = (function () {
     uTime: { value: 0 },
     uAurora: { value: 0 },
     uCloudsOn: { value: 1 },
-    uCloudCover: { value: 0.5 },
+    uCloudCover: { value: 0.24 },
     uCamPos: { value: new THREE.Vector3() },
     uNight: { value: 0 },
     uRainbow: { value: 0 },
@@ -382,7 +382,7 @@ window.Sky = (function () {
     sunI *= wm.lightMul;
 
     S.uniforms.uStars.value = Noise.smoothstep(0.0, -0.22, e) * (1 - wm.skyDesat * 0.9);
-    S.uniforms.uHaze.value = 0.35 + wm.hazeAdd;
+    S.uniforms.uHaze.value = 0.22 + wm.hazeAdd;
 
     // zonlicht volgt de speler zodat de schaduwcamera dichtbij blijft
     sunLight.position.copy(playerPos).addScaledVector(_sunDir, 160);
@@ -449,8 +449,8 @@ window.Sky = (function () {
     S.uniforms.uNight.value = nightAmt;
     S.uniforms.uRainbow.value = (window.Weather ? Weather.rainbow : 0);
     S.uniforms.uCloudsOn.value = G.settings.clouds ? 1 : 0;
-    // meer bewolking bij regen/onweer
-    S.uniforms.uCloudCover.value = Noise.lerp(0.45, 0.85, wm.skyDesat) + wm.hazeAdd * 0.2;
+    // helder standaard: weinig wolken; alleen bij regen/onweer flink bewolkt
+    S.uniforms.uCloudCover.value = Noise.lerp(0.24, 0.85, wm.skyDesat) + wm.hazeAdd * 0.2;
 
     // noorderlicht (sterker in de winter), sterrenbeelden en vallende sterren
     const winter = G.season.idx === 3 ? 1 : 0;
