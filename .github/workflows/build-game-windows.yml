@@ -1,0 +1,40 @@
+name: Build Blokkenwereld (Windows)
+
+# Bouwt de Windows-desktopapplicatie van het spel (map: game/) op een
+# Windows-runner en levert de installer + portable .exe als download-artefact.
+on:
+  push:
+    branches:
+      - claude/minecraft-style-game-47ki25
+      - main
+    paths:
+      - 'game/**'
+      - '.github/workflows/build-game-windows.yml'
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: windows-latest
+    defaults:
+      run:
+        working-directory: game
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Install dependencies
+        run: npm install --no-audit --no-fund
+
+      - name: Build Windows installer + portable exe
+        run: npm run dist:win -- --publish never
+
+      - name: Upload Windows build
+        uses: actions/upload-artifact@v4
+        with:
+          name: Blokkenwereld-Windows
+          path: |
+            game/dist/*.exe
+          if-no-files-found: error

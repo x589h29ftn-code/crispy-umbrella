@@ -6,11 +6,28 @@ alle textures en geluiden worden procedureel gegenereerd.
 
 ## Starten
 
-Open `index.html` in een moderne browser (Chrome, Edge of Firefox). Dat is alles.
+### Als Windows-applicatie (aanbevolen)
 
-> Tip: voor de beste prestaties gebruik je een browser met hardware-versnelling
-> (WebGL) aan. Lokaal serveren kan ook: `python3 -m http.server` in deze map en
-> dan naar `http://localhost:8000`.
+Blokkenwereld draait als volwaardige Windows-desktopapp via Electron.
+
+- **Kant-en-klare build downloaden** — bij elke push wordt de Windows-build
+  automatisch gemaakt via GitHub Actions (workflow *Build Blokkenwereld
+  (Windows)*). Download in de **Actions**-tab het artefact
+  **Blokkenwereld-Windows**; daarin zitten:
+  - `Blokkenwereld-1.0.0-x64.exe` — installer (met snelkoppelingen)
+  - `Blokkenwereld-1.0.0-portable.exe` — draagbare versie, geen installatie nodig
+- **Zelf bouwen** (op Windows, met Node.js geïnstalleerd):
+  ```bash
+  cd game
+  npm install
+  npm run dist:win        # installer + portable exe in game/dist/
+  npm start               # of gewoon meteen draaien
+  ```
+
+### In de browser
+
+Je kunt `index.html` ook gewoon in een moderne browser openen (Chrome, Edge,
+Firefox). Lokaal serveren kan met `python3 -m http.server` in deze map.
 
 ## Wat zit erin
 

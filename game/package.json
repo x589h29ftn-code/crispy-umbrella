@@ -1,0 +1,53 @@
+{
+  "name": "blokkenwereld",
+  "productName": "Blokkenwereld",
+  "version": "1.0.0",
+  "description": "Blokkenwereld — een rustgevende, oneindige voxelwereld",
+  "author": "Blokkenwereld",
+  "license": "MIT",
+  "main": "electron-main.cjs",
+  "scripts": {
+    "start": "electron .",
+    "dist:win": "electron-builder --win --x64",
+    "dist:winportable": "electron-builder --win portable --x64",
+    "dist:dir": "electron-builder --dir"
+  },
+  "devDependencies": {
+    "electron": "^31.3.0",
+    "electron-builder": "^24.13.3"
+  },
+  "build": {
+    "appId": "com.blokkenwereld.game",
+    "productName": "Blokkenwereld",
+    "directories": {
+      "output": "dist",
+      "buildResources": "build"
+    },
+    "files": [
+      "electron-main.cjs",
+      "index.html",
+      "src/**/*",
+      "lib/**/*",
+      "build/icon.*"
+    ],
+    "win": {
+      "target": [
+        { "target": "nsis", "arch": ["x64"] },
+        { "target": "portable", "arch": ["x64"] }
+      ],
+      "icon": "build/icon.ico",
+      "artifactName": "Blokkenwereld-${version}-${arch}.${ext}"
+    },
+    "nsis": {
+      "oneClick": false,
+      "perMachine": false,
+      "allowToChangeInstallationDirectory": true,
+      "createDesktopShortcut": true,
+      "createStartMenuShortcut": true,
+      "shortcutName": "Blokkenwereld"
+    },
+    "portable": {
+      "artifactName": "Blokkenwereld-${version}-portable.${ext}"
+    }
+  }
+}
