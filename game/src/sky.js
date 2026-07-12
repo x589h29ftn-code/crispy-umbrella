@@ -43,6 +43,10 @@ window.Sky = (function () {
     uHaze: { value: 0 },
     uTime: { value: 0 },
     uAurora: { value: 0 },
+    uCloudsOn: { value: 1 },
+    uCloudCover: { value: 0.5 },
+    uCamPos: { value: new THREE.Vector3() },
+    uNight: { value: 0 },
   };
   let skyTime = 0;
 
@@ -66,14 +70,40 @@ window.Sky = (function () {
       `,
       fragmentShader: `
         uniform vec3 uTopColor, uHorizonColor, uSunColor;
-        uniform vec3 uSunDir, uMoonDir;
-        uniform float uStars, uHaze, uTime, uAurora;
+        uniform vec3 uSunDir, uMoonDir, uCamPos;
+        uniform float uStars, uHaze, uTime, uAurora, uCloudsOn, uCloudCover, uNight;
         varying vec3 vDir;
 
         float hash(vec3 p) {
           p = fract(p * 0.3183099 + 0.1);
           p *= 17.0;
           return fract(p.x * p.y * p.z * (p.x + p.y + p.z));
+        }
+
+        // waarde-noise + fbm voor wolken
+        float vnoise(vec3 p) {
+          vec3 i = floor(p), f = fract(p);
+          f = f * f * (3.0 - 2.0 * f);
+          float n000 = hash(i + vec3(0,0,0)), n100 = hash(i + vec3(1,0,0));
+          float n010 = hash(i + vec3(0,1,0)), n110 = hash(i + vec3(1,1,0));
+          float n001 = hash(i + vec3(0,0,1)), n101 = hash(i + vec3(1,0,1));
+          float n011 = hash(i + vec3(0,1,1)), n111 = hash(i + vec3(1,1,1));
+          return mix(mix(mix(n000,n100,f.x), mix(n010,n110,f.x), f.y),
+                     mix(mix(n001,n101,f.x), mix(n011,n111,f.x), f.y), f.z);
+        }
+        float fbm(vec3 p) {
+          float s = 0.0, a = 0.5;
+          for (int i = 0; i < 4; i++) { s += vnoise(p) * a; p *= 2.02; a *= 0.5; }
+          return s;
+        }
+        // wolkdichtheid op een wereldpositie
+        float cloudDensity(vec3 p) {
+          vec3 q = p * 0.006;
+          q.xz += uTime * 0.010;                        // wind
+          float base = fbm(q);
+          float d = base - (1.0 - uCloudCover) * 0.55;  // dekkingsdrempel
+          d -= abs(p.y - 118.0) / 100.0;                // zachte verticale afronding
+          return clamp(d * 2.7, 0.0, 1.0);
         }
 
         void main() {
@@ -85,17 +115,19 @@ window.Sky = (function () {
           // nevel dichter bij de horizon (zoals op warme avonden)
           col = mix(col, uHorizonColor, uHaze * pow(1.0 - clamp(abs(h), 0.0, 1.0), 2.0) * 0.5);
 
-          // zon, met brede warme gloed als hij laag staat (gouden uur)
+          // zon: heldere schijf + meerdere gloedlagen (breed en zacht)
           float sd = dot(dir, normalize(uSunDir));
           float lowSun = 1.0 - clamp(uSunDir.y * 2.2, 0.0, 1.0);
-          col += uSunColor * pow(clamp(sd, 0.0, 1.0), 900.0) * 1.6;
-          col += uSunColor * pow(clamp(sd, 0.0, 1.0), 24.0) * (0.28 + lowSun * 0.35);
-          col += uSunColor * pow(clamp(sd, 0.0, 1.0), 4.0) * (0.10 + lowSun * 0.30);
+          col += uSunColor * pow(clamp(sd, 0.0, 1.0), 1400.0) * 2.0;                 // schijf
+          col += uSunColor * pow(clamp(sd, 0.0, 1.0), 24.0) * (0.32 + lowSun * 0.4); // binnengloed
+          col += uSunColor * pow(clamp(sd, 0.0, 1.0), 4.0) * (0.14 + lowSun * 0.34); // middengloed
+          col += uSunColor * pow(clamp(sd, 0.0, 1.0), 1.6) * (0.05 + lowSun * 0.12); // brede halo
 
-          // maan
+          // maan: schijf + zachte blauwe gloed
           float md = dot(dir, normalize(uMoonDir));
-          col += vec3(0.85, 0.9, 1.0) * pow(clamp(md, 0.0, 1.0), 1600.0) * 1.1;
-          col += vec3(0.5, 0.6, 0.85) * pow(clamp(md, 0.0, 1.0), 40.0) * 0.12;
+          col += vec3(0.9, 0.94, 1.0) * pow(clamp(md, 0.0, 1.0), 2200.0) * 1.4;
+          col += vec3(0.6, 0.7, 0.95) * pow(clamp(md, 0.0, 1.0), 60.0) * 0.16;
+          col += vec3(0.4, 0.5, 0.85) * pow(clamp(md, 0.0, 1.0), 8.0) * 0.07;
 
           // noorderlicht: golvende groene gordijnen hoog in de hemel
           if (uAurora > 0.01 && h > 0.08) {
@@ -115,6 +147,40 @@ window.Sky = (function () {
               float tw = hash(cell + 7.0) * 6.283;
               col += vec3(1.0) * uStars * (0.5 + 0.5 * sin(tw + uHaze * 20.0)) *
                      smoothstep(0.997, 1.0, s) * 0.9;
+            }
+          }
+
+          // volumetrische wolken (raymarch door een horizontale laag)
+          if (uCloudsOn > 0.5 && dir.y > 0.02) {
+            float h0 = 92.0, h1 = 145.0;
+            float t0 = max((h0 - uCamPos.y) / dir.y, 0.0);
+            float t1 = (h1 - uCamPos.y) / dir.y;
+            if (t1 > t0) {
+              float T = 1.0;
+              vec3 acc = vec3(0.0);
+              vec3 sunN = normalize(uSunDir);
+              const int N = 6;
+              for (int i = 0; i < N; i++) {
+                float t = mix(t0, t1, (float(i) + 0.5) / float(N));
+                if (t > 900.0) break;
+                vec3 pos = uCamPos + dir * t;
+                float d = cloudDensity(pos);
+                if (d > 0.01) {
+                  // belichting: dichtheid richting de zon geeft schaduw
+                  float ld = cloudDensity(pos + sunN * 9.0);
+                  float lit = clamp(1.0 - ld, 0.25, 1.0);
+                  vec3 lite = mix(uHorizonColor * 0.7, uSunColor, 0.6) * (0.55 + lit);
+                  vec3 shade = mix(vec3(0.32, 0.34, 0.40), lite, lit);
+                  shade = mix(shade, vec3(0.10, 0.12, 0.20), uNight * 0.7);
+                  float a = d * 0.55;
+                  acc += T * a * shade;
+                  T *= 1.0 - a;
+                  if (T < 0.02) break;
+                }
+              }
+              float cover = 1.0 - T;
+              float horizonFade = smoothstep(0.0, 0.07, dir.y);
+              col = mix(col, acc / max(cover, 0.001), cover * horizonFade);
             }
           }
 
@@ -242,34 +308,9 @@ window.Sky = (function () {
     }
   }
 
+  // Volumetrische wolken zitten in de hemel-shader; hier alleen aan/uit schakelen
   function buildClouds() {
-    if (clouds) { scene.remove(clouds); clouds.geometry.dispose(); clouds.material.dispose(); clouds = null; }
-    if (!G.settings.clouds) return;
-    const COUNT = 140;
-    const geo = new THREE.BoxGeometry(1, 1, 1);
-    const mat = new THREE.MeshBasicMaterial({
-      color: 0xffffff, transparent: true, opacity: 0.42, depthWrite: false, fog: false,
-    });
-    clouds = new THREE.InstancedMesh(geo, mat, COUNT);
-    clouds.frustumCulled = false;
-    cloudData = [];
-    const rng = Noise.rng(G.seed ^ 0x9e3779b9);
-    const m = new THREE.Matrix4();
-    for (let i = 0; i < COUNT; i++) {
-      const d = {
-        x: (rng() - 0.5) * 800,
-        z: (rng() - 0.5) * 800,
-        y: 105 + rng() * 14,
-        w: 14 + rng() * 34,
-        d: 10 + rng() * 26,
-        h: 2.5 + rng() * 2,
-      };
-      cloudData.push(d);
-      m.makeScale(d.w, d.h, d.d);
-      m.setPosition(d.x, d.y, d.z);
-      clouds.setMatrixAt(i, m);
-    }
-    scene.add(clouds);
+    S.uniforms.uCloudsOn.value = G.settings.clouds ? 1 : 0;
   }
   S.rebuildClouds = buildClouds;
 
@@ -379,8 +420,13 @@ window.Sky = (function () {
     wu.fogNear.value = fog.near;
     wu.fogFar.value = fog.far;
 
-    // koepel en wolken volgen de speler
+    // koepel volgt de speler; wolken-uniforms voeden
     skyMesh.position.copy(playerPos);
+    S.uniforms.uCamPos.value.copy(camera.position);
+    S.uniforms.uNight.value = nightAmt;
+    S.uniforms.uCloudsOn.value = G.settings.clouds ? 1 : 0;
+    // meer bewolking bij regen/onweer
+    S.uniforms.uCloudCover.value = Noise.lerp(0.45, 0.85, wm.skyDesat) + wm.hazeAdd * 0.2;
 
     // noorderlicht (sterker in de winter), sterrenbeelden en vallende sterren
     const winter = G.season.idx === 3 ? 1 : 0;
@@ -392,23 +438,6 @@ window.Sky = (function () {
       constellations.material.opacity = S.uniforms.uStars.value * tw;
     }
     updateShootingStars(dt, nightAmt, playerPos);
-
-    if (clouds) {
-      clouds.material.opacity = wm.cloudOpacity * (0.3 + 0.7 * (1 - nightAmt));
-      clouds.material.color.setRGB(1, 1, 1).lerp(cA.setRGB(0.35, 0.4, 0.55), nightAmt);
-      const drift = G.timeSec * 1.6;
-      for (let i = 0; i < cloudData.length; i++) {
-        const d = cloudData[i];
-        let x = d.x + drift;
-        // wolkenveld herhaalt zich rond de speler
-        x = ((x - playerPos.x + 400) % 800 + 800) % 800 - 400 + playerPos.x;
-        const z = ((d.z - playerPos.z + 400) % 800 + 800) % 800 - 400 + playerPos.z;
-        _m4.makeScale(d.w, d.h, d.d);
-        _m4.setPosition(x, d.y, z);
-        clouds.setMatrixAt(i, _m4);
-      }
-      clouds.instanceMatrix.needsUpdate = true;
-    }
 
     return { elevation: e, nightAmt, sunDir: _sunDir };
   };

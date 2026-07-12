@@ -128,19 +128,36 @@ window.Post = (function () {
     compMat = new THREE.ShaderMaterial({
       uniforms: {
         tDiffuse: { value: null }, tBloom: { value: null }, tGod: { value: null },
-        res: { value: new THREE.Vector2() },
-        bloomStr: { value: 0.65 }, godStr: { value: 0.0 }, vig: { value: 0.9 }, sat: { value: 1.08 }, fxaaOn: { value: 1 },
+        res: { value: new THREE.Vector2() }, sunUV: { value: sunUV },
+        bloomStr: { value: 0.65 }, godStr: { value: 0.0 }, vig: { value: 0.9 }, sat: { value: 1.08 }, fxaaOn: { value: 1 }, flare: { value: 0 },
       },
       vertexShader: VERT,
       fragmentShader: `
-        uniform sampler2D tDiffuse, tBloom, tGod; uniform vec2 res;
-        uniform float bloomStr, godStr, vig, sat, fxaaOn; varying vec2 vUv;
+        uniform sampler2D tDiffuse, tBloom, tGod; uniform vec2 res, sunUV;
+        uniform float bloomStr, godStr, vig, sat, fxaaOn, flare; varying vec2 vUv;
         ${FXAA}
+        float ghost(vec2 uv, vec2 p, float r, float aspect){
+          vec2 d = uv - p; d.x *= aspect;
+          return smoothstep(r, 0.0, length(d));
+        }
         void main(){
           vec3 base = fxaaOn > 0.5 ? fxaa(tDiffuse, vUv, res) : texture2D(tDiffuse, vUv).rgb;
           vec3 bloom = texture2D(tBloom, vUv).rgb;
           vec3 god = texture2D(tGod, vUv).rgb;
           vec3 c = base + bloom * bloomStr + god * godStr * vec3(1.0, 0.92, 0.78);
+
+          // lensflare: enkele spookjes op de lijn zon → schermmidden
+          if (flare > 0.5) {
+            float occ = smoothstep(0.05, 0.3, texture2D(tBloom, sunUV).r);
+            float aspect = res.x / res.y;
+            vec2 toC = vec2(0.5) - sunUV;
+            float g = ghost(vUv, sunUV + toC * 0.30, 0.05, aspect) * 0.5;
+            g += ghost(vUv, sunUV + toC * 0.55, 0.09, aspect) * 0.3;
+            g += ghost(vUv, sunUV + toC * 0.80, 0.03, aspect) * 0.6;
+            g += ghost(vUv, sunUV + toC * 1.35, 0.14, aspect) * 0.18;
+            c += vec3(1.0, 0.88, 0.66) * g * occ * 0.6;
+          }
+
           float l = dot(c, vec3(0.299,0.587,0.114));
           c = mix(vec3(l), c, sat);              // lichte verzadiging
           vec2 q = vUv - 0.5;
@@ -199,6 +216,7 @@ window.Post = (function () {
     compMat.uniforms.bloomStr.value = P.bloom ? P.bloomStrength : 0.0;
     compMat.uniforms.godStr.value = doGod ? P.godStrength : 0.0;
     compMat.uniforms.vig.value = P.vignette ? 0.72 : 0.0;
+    compMat.uniforms.flare.value = (P.bloom && sunVisible) ? 1 : 0;
     quad.material = compMat;
     renderer.setRenderTarget(null);
     renderer.render(fsScene, fsCam);
