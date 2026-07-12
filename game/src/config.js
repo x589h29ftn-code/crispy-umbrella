@@ -15,16 +15,20 @@ window.G = (function () {
     TALLGRASS: 15, FLOWER_RED: 16, FLOWER_YELLOW: 17, FLOWER_BLUE: 18, CROP: 19,
     LEAVES_BIRCH: 20, LOG_BIRCH: 21, LEAVES_PINE: 22, GRAVEL: 23, FLOWER_WHITE: 24,
     STONE_BRICK: 25, STONE_BRICK_MOSSY: 26, GLASS: 27,
+    STAIRS: 28, SLAB: 29, DOOR: 30, CAMPFIRE: 31,
   };
   const B = G.B;
 
   // Kruisvormige plantjes (geen collision, in het foliage-mesh met wind)
   G.CROSS_BLOCKS = new Set([B.TALLGRASS, B.FLOWER_RED, B.FLOWER_YELLOW, B.FLOWER_BLUE, B.FLOWER_WHITE, B.CROP]);
   // Blokken waar je doorheen kunt lopen
-  G.NON_SOLID = new Set([B.AIR, B.WATER, B.TORCH, B.TALLGRASS, B.FLOWER_RED, B.FLOWER_YELLOW, B.FLOWER_BLUE, B.FLOWER_WHITE, B.CROP]);
+  G.NON_SOLID = new Set([B.AIR, B.WATER, B.TORCH, B.TALLGRASS, B.FLOWER_RED, B.FLOWER_YELLOW, B.FLOWER_BLUE, B.FLOWER_WHITE, B.CROP, B.CAMPFIRE]);
   // Blokken die het vlak van hun buurman NIET volledig bedekken
   G.NON_OCCLUDING = new Set([B.AIR, B.WATER, B.LEAVES, B.LEAVES_BIRCH, B.LEAVES_PINE, B.TORCH, B.FENCE,
-    B.TALLGRASS, B.FLOWER_RED, B.FLOWER_YELLOW, B.FLOWER_BLUE, B.FLOWER_WHITE, B.CROP, B.GLASS]);
+    B.TALLGRASS, B.FLOWER_RED, B.FLOWER_YELLOW, B.FLOWER_BLUE, B.FLOWER_WHITE, B.CROP, B.GLASS,
+    B.STAIRS, B.SLAB, B.DOOR, B.CAMPFIRE]);
+  // Blokken met een eigen vorm (deels gevuld) — collision via Chunks.solidShapeAt
+  G.SHAPED = new Set([B.STAIRS, B.SLAB, B.DOOR]);
 
   G.isSolid = (id) => id !== undefined && !G.NON_SOLID.has(id);
   G.isCross = (id) => G.CROSS_BLOCKS.has(id);
@@ -35,15 +39,16 @@ window.G = (function () {
     [B.GRASS]: 'Gras', [B.DIRT]: 'Aarde', [B.STONE]: 'Steen', [B.SAND]: 'Zand',
     [B.PLANKS]: 'Planken', [B.LOG]: 'Boomstam', [B.COBBLE]: 'Keien', [B.FENCE]: 'Hekje', [B.TORCH]: 'Fakkel',
     [B.STONE_BRICK]: 'Bakstenen', [B.STONE_BRICK_MOSSY]: 'Bemoste bakstenen', [B.GLASS]: 'Glas',
+    [B.STAIRS]: 'Trap', [B.SLAB]: 'Plaat / bankje', [B.DOOR]: 'Deur', [B.CAMPFIRE]: 'Kampvuur',
   };
-  // Kasteel-set voorop op 1–9; gras/aarde/zand via scrollwiel
-  G.HOTBAR = [B.STONE_BRICK, B.STONE_BRICK_MOSSY, B.COBBLE, B.STONE, B.PLANKS, B.LOG, B.GLASS, B.FENCE, B.TORCH,
-    B.GRASS, B.DIRT, B.SAND];
+  // Bouw-set voorop op 1–9; overige blokken via scrollwiel
+  G.HOTBAR = [B.STONE_BRICK, B.STONE_BRICK_MOSSY, B.STAIRS, B.SLAB, B.PLANKS, B.DOOR, B.GLASS, B.FENCE, B.TORCH,
+    B.CAMPFIRE, B.COBBLE, B.LOG, B.GRASS, B.DIRT, B.SAND];
 
   // Instellingen (met persistentie)
   const DEFAULTS = {
     dayMinutes: 15, renderDist: 10, fogMul: 1.0, fov: 75,
-    musicVol: 0.55, sfxVol: 0.8, shadows: true, clouds: true,
+    musicVol: 0.55, sfxVol: 0.8, shadows: true, clouds: true, seasonDays: 2,
   };
   G.settings = Object.assign({}, DEFAULTS);
   try {
@@ -75,6 +80,38 @@ window.G = (function () {
   G.clearEdits = function () {
     G.worldEdits.clear();
     G.editIndex.clear();
+    G.meta.clear();
+  };
+
+  // Blok-metadata (oriëntatie/staat) voor gevormde blokken zoals trappen en deuren.
+  // Klein geheel getal per positie; los van de blok-id's.
+  //   trap:  bits0-1 = richting (0..3)
+  //   deur:  bit0 = open, bits1-2 = richting, bit3 = bovenste helft
+  G.meta = new Map();      // "x,y,z" -> int
+  G.getMeta = function (x, y, z) { return G.meta.get(x + ',' + y + ',' + z) || 0; };
+  G.setMeta = function (x, y, z, v) {
+    const k = x + ',' + y + ',' + z;
+    if (v) G.meta.set(k, v); else G.meta.delete(k);
+  };
+
+  // ---- seizoenen ----
+  G.SEASON_NAMES = ['Lente', 'Zomer', 'Herfst', 'Winter'];
+  // grasp/blad-kleurvermenigvuldigers per seizoen (RGB)
+  G.SEASON_GRASS = [
+    [1.05, 1.10, 0.90], [1.00, 1.00, 1.00], [1.30, 0.92, 0.40], [0.92, 0.96, 1.00],
+  ];
+  G.SEASON_LEAF = [
+    [1.02, 1.08, 0.92], [1.00, 1.00, 1.00], [1.72, 0.78, 0.30], [0.86, 0.88, 0.90],
+  ];
+  // winter legt een rijp/sneeuw-waas over gras en blad (mengen naar lichtwit)
+  G.SEASON_FROST = [0, 0, 0, 0.55];
+  G.season = { idx: 1, name: 'Zomer', t: 0, grass: [1, 1, 1], leaf: [1, 1, 1], frost: 0 };
+  G.seasonInfo = function () {
+    const dpS = Math.max(0.25, G.settings.seasonDays);
+    const totalDays = G.timeSec / G.cycleLen();
+    const f = totalDays / dpS;
+    const idx = ((Math.floor(f) % 4) + 4) % 4;
+    return { idx, name: G.SEASON_NAMES[idx], t: f - Math.floor(f), grass: G.SEASON_GRASS[idx], leaf: G.SEASON_LEAF[idx], frost: G.SEASON_FROST[idx] };
   };
 
   // Verhouding nacht t.o.v. dag

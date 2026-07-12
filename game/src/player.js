@@ -107,9 +107,14 @@ window.Player = (function () {
 
   // ---- collision helpers ----
   function solidAt(x, y, z) {
-    const b = Chunks.getBlock(Math.floor(x), Math.floor(y), Math.floor(z));
-    if (b === undefined) return true;      // niet-geladen chunk = muur
-    return G.isSolid(b);
+    return Chunks.solidShapeAt(x, y, z);
+  }
+
+  // Kompasrichting waar de speler naar kijkt: 0=-z, 1=+x, 2=+z, 3=-x
+  function facingFromYaw(yaw) {
+    const fx = -Math.sin(yaw), fz = -Math.cos(yaw);
+    if (Math.abs(fx) > Math.abs(fz)) return fx > 0 ? 1 : 3;
+    return fz > 0 ? 2 : 0;
   }
 
   function collide(px, py, pz) {
@@ -160,37 +165,72 @@ window.Player = (function () {
     const hit = P.raycast(6);
     if (!hit) return;
     if (hit.y <= 1) { UI.hint('De bodem van de wereld is te hard.'); return; }
+    // deur: beide helften weghalen
+    if (hit.block === B.DOOR) {
+      const m = Chunks.getMeta(hit.x, hit.y, hit.z);
+      const by = (m & 8) ? hit.y - 1 : hit.y;
+      Chunks.setBlock(hit.x, by, hit.z, B.AIR);
+      Chunks.setBlock(hit.x, by + 1, hit.z, B.AIR);
+      Sfx.dig(B.PLANKS);
+      return;
+    }
     Chunks.setBlock(hit.x, hit.y, hit.z, B.AIR);
-    // plantje bovenop een gesloopt blok verwijderen
+    // plantje/fakkel bovenop een gesloopt blok verwijderen
     const above = Chunks.getBlock(hit.x, hit.y + 1, hit.z);
-    if (above !== undefined && (G.isCross(above) || above === B.TORCH)) {
+    if (above !== undefined && (G.isCross(above) || above === B.TORCH || above === B.CAMPFIRE)) {
       Chunks.setBlock(hit.x, hit.y + 1, hit.z, B.AIR);
     }
     Sfx.dig(hit.block);
   }
 
+  function toggleDoor(hit) {
+    const m = Chunks.getMeta(hit.x, hit.y, hit.z);
+    const by = (m & 8) ? hit.y - 1 : hit.y;
+    const bm = Chunks.getMeta(hit.x, by, hit.z);
+    const tm = Chunks.getMeta(hit.x, by + 1, hit.z);
+    Chunks.setBlock(hit.x, by, hit.z, B.DOOR, true, bm ^ 1);
+    Chunks.setBlock(hit.x, by + 1, hit.z, B.DOOR, true, tm ^ 1);
+    Sfx.dig(B.PLANKS);
+  }
+
   function placeBlock() {
     const hit = P.raycast(6);
     if (!hit) return;
+    // rechtsklik op een deur = openen/sluiten
+    if (hit.block === B.DOOR) { toggleDoor(hit); return; }
+
     const id = G.HOTBAR[P.hotbarSel];
     let tx = hit.x + hit.face[0], ty = hit.y + hit.face[1], tz = hit.z + hit.face[2];
-    // plantjes en fakkels mogen direct vervangen worden
     const target = Chunks.getBlock(tx, ty, tz);
     if (target === undefined) return;
     if (target !== B.AIR && target !== B.WATER && !G.isCross(target) && target !== B.TORCH) return;
-    // niet in jezelf bouwen (fakkel mag wel, die heeft geen collision)
-    if (G.isSolid(id)) {
+
+    // niet in jezelf bouwen (dingen zonder collision mogen wel)
+    const solidPlace = G.isSolid(id) && id !== B.CAMPFIRE;
+    if (solidPlace) {
       const hw = SIZE.w / 2;
       const px = P.pos.x, py = P.pos.y, pz = P.pos.z;
       if (tx + 1 > px - hw && tx < px + hw && tz + 1 > pz - hw && tz < pz + hw &&
           ty + 1 > py && ty < py + SIZE.h) { return; }
     }
-    // fakkel heeft een dragend blok nodig
-    if (id === B.TORCH) {
+
+    // fakkel/kampvuur hebben een dragend blok nodig
+    if (id === B.TORCH || id === B.CAMPFIRE) {
       const below = Chunks.getBlock(tx, ty - 1, tz);
-      if (!G.occludes(below) && below !== B.FENCE) { UI.hint('Een fakkel heeft een ondergrond nodig.'); return; }
+      if (!G.occludes(below) && below !== B.FENCE) { UI.hint('Dit heeft een stevige ondergrond nodig.'); return; }
     }
-    Chunks.setBlock(tx, ty, tz, id);
+
+    if (id === B.STAIRS) {
+      Chunks.setBlock(tx, ty, tz, id, true, facingFromYaw(P.yaw));
+    } else if (id === B.DOOR) {
+      const above = Chunks.getBlock(tx, ty + 1, tz);
+      if (above !== B.AIR && !G.isCross(above)) { UI.hint('Een deur heeft twee blokken hoogte nodig.'); return; }
+      const facing = facingFromYaw(P.yaw);
+      Chunks.setBlock(tx, ty, tz, id, true, (facing << 1));           // onderste helft
+      Chunks.setBlock(tx, ty + 1, tz, id, true, (facing << 1) | 8);  // bovenste helft
+    } else {
+      Chunks.setBlock(tx, ty, tz, id);
+    }
     Sfx.place(id);
   }
 
@@ -294,11 +334,16 @@ window.Player = (function () {
     }
     P.vel.y = Noise.clamp(P.vel.y, -42, 20);
 
-    // per as bewegen en botsen
+    // per as bewegen en botsen, met automatisch opstappen (trapjes/platen)
+    const canStep = P.onGround || P.inWater;
     let nx = P.pos.x + P.vel.x * dt;
-    if (!collide(nx, P.pos.y, P.pos.z)) P.pos.x = nx; else P.vel.x = 0;
+    if (!collide(nx, P.pos.y, P.pos.z)) P.pos.x = nx;
+    else if (canStep && !collide(nx, P.pos.y + 0.55, P.pos.z)) { P.pos.x = nx; P.pos.y += 0.52; }
+    else P.vel.x = 0;
     let nz = P.pos.z + P.vel.z * dt;
-    if (!collide(P.pos.x, P.pos.y, nz)) P.pos.z = nz; else P.vel.z = 0;
+    if (!collide(P.pos.x, P.pos.y, nz)) P.pos.z = nz;
+    else if (canStep && !collide(P.pos.x, P.pos.y + 0.55, nz)) { P.pos.z = nz; P.pos.y += 0.52; }
+    else P.vel.z = 0;
     let ny = P.pos.y + P.vel.y * dt;
     if (!collide(P.pos.x, ny, P.pos.z)) {
       P.pos.y = ny;

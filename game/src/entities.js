@@ -63,9 +63,12 @@ window.Entities = (function () {
     for (let i = 0; i < POOL_N; i++) {
       const l = lightPool[i];
       if (i < cands.length) {
+        const c = cands[i];
         l.visible = true;
-        l.position.set(cands[i].x, cands[i].y + 0.1, cands[i].z);
-        l.intensity = 1.15 + Math.sin(t * 9 + i * 2.7) * 0.18 + Math.sin(t * 23 + i) * 0.08;
+        l.position.set(c.x, c.y + 0.1, c.z);
+        const flick = Math.sin(t * 9 + i * 2.7) * 0.18 + Math.sin(t * 23 + i) * 0.08;
+        if (c.big) { l.intensity = 2.0 + flick; l.distance = 22; l.color.setHex(0xff9a4e); }
+        else { l.intensity = 1.15 + flick; l.distance = 13; l.color.setHex(0xffab5e); }
       } else l.visible = false;
     }
   }
@@ -268,29 +271,89 @@ window.Entities = (function () {
     return g;
   }
 
+  function buildDeer(seedN) {
+    const r = Noise.rng(seedN);
+    const coat = [0x9a6b41, 0xae7c4e, 0x835636][(r() * 3) | 0];
+    const g = new THREE.Group();
+    const body = new THREE.Mesh(box(0.5, 0.58, 1.2), mat(coat)); body.position.y = 1.05; body.castShadow = true; g.add(body);
+    const neck = new THREE.Mesh(box(0.3, 0.5, 0.3), mat(coat)); neck.position.set(0, 1.35, 0.55); neck.rotation.x = -0.5; g.add(neck);
+    const head = new THREE.Mesh(box(0.28, 0.28, 0.46), mat(coat)); head.position.set(0, 1.62, 0.78); g.add(head);
+    for (const [lx, lz] of [[-0.18, 0.48], [0.18, 0.48], [-0.18, -0.48], [0.18, -0.48]]) {
+      const leg = new THREE.Mesh(box(0.11, 0.78, 0.11), mat(0x6e4d30)); leg.position.set(lx, 0.39, lz); g.add(leg);
+    }
+    if (r() < 0.5) for (const s of [-1, 1]) {
+      const ant = new THREE.Mesh(box(0.05, 0.4, 0.05), mat(0xcbb089));
+      ant.position.set(s * 0.1, 1.9, 0.78); ant.rotation.z = s * 0.4; g.add(ant);
+    }
+    return g;
+  }
+
+  function buildFox(seedN) {
+    const c = 0xc9772f;
+    const g = new THREE.Group();
+    const body = new THREE.Mesh(box(0.3, 0.3, 0.7), mat(c)); body.position.y = 0.4; body.castShadow = true; g.add(body);
+    const head = new THREE.Mesh(box(0.28, 0.28, 0.28), mat(c)); head.position.set(0, 0.5, 0.42); g.add(head);
+    for (const ex of [-0.09, 0.09]) { const ear = new THREE.Mesh(box(0.07, 0.13, 0.05), mat(0x3a2a1a)); ear.position.set(ex, 0.7, 0.42); g.add(ear); }
+    const snout = new THREE.Mesh(box(0.13, 0.12, 0.12), mat(0xf0e8dc)); snout.position.set(0, 0.46, 0.56); g.add(snout);
+    const tail = new THREE.Mesh(box(0.16, 0.16, 0.4), mat(0xe6a866)); tail.position.set(0, 0.44, -0.46); tail.rotation.x = 0.5; g.add(tail);
+    for (const [lx, lz] of [[-0.1, 0.25], [0.1, 0.25], [-0.1, -0.25], [0.1, -0.25]]) {
+      const leg = new THREE.Mesh(box(0.08, 0.32, 0.08), mat(0x5a3a22)); leg.position.set(lx, 0.16, lz); g.add(leg);
+    }
+    return g;
+  }
+
+  function buildDuck(seedN) {
+    const r = Noise.rng(seedN);
+    const white = r() < 0.5;
+    const bodyC = white ? 0xf2f0ea : 0x8a6b45;
+    const g = new THREE.Group();
+    const body = new THREE.Mesh(box(0.36, 0.28, 0.5), mat(bodyC)); body.position.y = 0.16; body.castShadow = true; g.add(body);
+    const neck = new THREE.Mesh(box(0.14, 0.3, 0.14), mat(white ? bodyC : 0x2e5233)); neck.position.set(0, 0.38, 0.18); g.add(neck);
+    const head = new THREE.Mesh(box(0.18, 0.18, 0.2), mat(white ? bodyC : 0x2e5233)); head.position.set(0, 0.54, 0.22); g.add(head);
+    const beak = new THREE.Mesh(box(0.09, 0.06, 0.13), mat(0xe0a020)); beak.position.set(0, 0.52, 0.36); g.add(beak);
+    const tail = new THREE.Mesh(box(0.2, 0.12, 0.14), mat(bodyC)); tail.position.set(0, 0.2, -0.28); tail.rotation.x = -0.4; g.add(tail);
+    return g;
+  }
+
+  const BUILDERS = { sheep: buildSheep, rabbit: buildRabbit, deer: buildDeer, fox: buildFox, duck: buildDuck };
+  const SPEEDS = { sheep: 0.85, rabbit: 2.4, deer: 1.7, fox: 2.2, duck: 1.1 };
+
   let animalSpawnTimer = 4;
   function trySpawnAnimal(playerPos) {
-    if (animals.length >= 34) return;
+    if (animals.length >= 40) return;
     const a = rng() * Math.PI * 2;
-    const d = 30 + rng() * 40;
+    const d = 30 + rng() * 42;
     const x = playerPos.x + Math.cos(a) * d;
     const z = playerPos.z + Math.sin(a) * d;
-    const gy = Chunks.groundY(x, z);
-    const surf = Chunks.getBlock(Math.floor(x), gy, Math.floor(z));
-    if (surf !== B.GRASS) return;
-    const kind = rng() < 0.55 ? 'sheep' : 'rabbit';
     const seedN = (Math.floor(x) * 341873 ^ Math.floor(z) * 132897) >>> 0;
-    const groupN = kind === 'sheep' ? 1 + ((rng() * 3) | 0) : 1 + ((rng() * 2) | 0);
-    for (let i = 0; i < groupN && animals.length < 36; i++) {
-      const mesh = kind === 'sheep' ? buildSheep(seedN + i) : buildRabbit(seedN + i);
+
+    let kind, y;
+    if (window.Boats && Boats.isWater(x, z)) {
+      kind = 'duck'; y = G.SEA + 0.86;
+    } else {
+      const gy = Chunks.groundY(x, z);
+      const surf = Chunks.getBlock(Math.floor(x), gy, Math.floor(z));
+      if (surf !== B.GRASS) return;
+      const forest = Noise.fbm2(x * 0.004 + 900.2, z * 0.004 + 41.9, 3);
+      const r = rng();
+      if (forest > 0.15 && r < 0.28) kind = 'deer';
+      else if (forest > 0.1 && r < 0.42) kind = 'fox';
+      else if (r < 0.72) kind = 'sheep';
+      else kind = 'rabbit';
+      y = gy + 1;
+    }
+    const groupN = (kind === 'sheep' || kind === 'deer' || kind === 'duck') ? 1 + ((rng() * 3) | 0)
+      : (kind === 'fox' ? 1 : 1 + ((rng() * 2) | 0));
+    for (let i = 0; i < groupN && animals.length < 42; i++) {
+      const mesh = BUILDERS[kind](seedN + i);
       const an = {
         type: kind, mesh,
-        x: x + (rng() - 0.5) * 4, z: z + (rng() - 0.5) * 4, y: gy + 1,
+        x: x + (rng() - 0.5) * 4, z: z + (rng() - 0.5) * 4, y,
         tx: x, tz: z, state: 'idle', timer: rng() * 4,
-        speed: kind === 'rabbit' ? 2.4 : 0.85, phase: rng() * 10, heading: rng() * 6.28,
-        hop: 0,
+        speed: SPEEDS[kind], phase: rng() * 10, heading: rng() * 6.28, hop: 0,
       };
-      an.y = Chunks.groundY(an.x, an.z) + 1;
+      if (kind === 'duck') an.y = G.SEA + 0.86;
+      else an.y = Chunks.groundY(an.x, an.z) + 1;
       mesh.position.set(an.x, an.y, an.z);
       scene.add(mesh);
       animals.push(an);
@@ -298,6 +361,7 @@ window.Entities = (function () {
   }
 
   function updateAnimal(an, dt, t, playerPos) {
+    if (an.type === 'duck') { updateDuck(an, dt, t); return; }
     an.timer -= dt;
     if (an.timer <= 0) {
       const r = rng();
@@ -335,13 +399,38 @@ window.Entities = (function () {
       an.hop += dt * 9;
       yOff = Math.abs(Math.sin(an.hop)) * 0.22;
     }
-    if (an.state === 'graze') {
-      m.children[1].position.y = 0.62 + Math.sin(t * 2 + an.phase) * 0.12 - 0.25;
-    } else if (an.type === 'sheep') {
-      m.children[1].position.y = 1.0;
+    if (an.type === 'sheep') {
+      if (an.state === 'graze') m.children[1].position.y = 0.62 + Math.sin(t * 2 + an.phase) * 0.12 - 0.25;
+      else m.children[1].position.y = 1.0;
     }
+    // lichte loop-bob voor hert/vos
+    if ((an.type === 'deer' || an.type === 'fox') && an.state === 'walk') yOff += Math.abs(Math.sin(t * 6 + an.phase)) * 0.06;
     m.position.set(an.x, an.y + yOff, an.z);
     m.rotation.y += (an.heading - m.rotation.y) * Math.min(1, dt * 6);
+  }
+
+  // eenden dobberen en zwemmen alleen over water
+  function updateDuck(an, dt, t) {
+    an.timer -= dt;
+    if (an.timer <= 0) {
+      const a = rng() * Math.PI * 2, r = 2 + rng() * 6;
+      an.tx = an.x + Math.cos(a) * r; an.tz = an.z + Math.sin(a) * r;
+      an.state = rng() < 0.7 ? 'walk' : 'idle';
+      an.timer = 3 + rng() * 4;
+    }
+    if (an.state === 'walk') {
+      const dx = an.tx - an.x, dz = an.tz - an.z, d = Math.hypot(dx, dz);
+      if (d < 0.3) an.state = 'idle';
+      else {
+        const step = Math.min(d, an.speed * dt);
+        const nx = an.x + (dx / d) * step, nz = an.z + (dz / d) * step;
+        if (window.Boats && Boats.isWater(nx, nz)) { an.x = nx; an.z = nz; an.heading = Math.atan2(dx, dz); }
+        else { an.state = 'idle'; an.timer = 0.5; }
+      }
+    }
+    an.y = G.SEA + 0.84 + Math.sin(t * 1.6 + an.phase) * 0.04;
+    an.mesh.position.set(an.x, an.y, an.z);
+    an.mesh.rotation.y += (an.heading + Math.sin(t * 3 + an.phase) * 0.15 - an.mesh.rotation.y) * Math.min(1, dt * 5);
   }
 
   // ---- vogels ---------------------------------------------------------------------------
@@ -522,6 +611,47 @@ window.Entities = (function () {
     colA.needsUpdate = true;
   }
 
+  // ---- kampvuurrook --------------------------------------------------------------------------
+  const SMOKE_N = 70;
+  let smoke = null, smokeData = [];
+  function initSmoke() {
+    const geo = new THREE.BufferGeometry();
+    geo.setAttribute('position', new THREE.BufferAttribute(new Float32Array(SMOKE_N * 3), 3));
+    geo.setAttribute('color', new THREE.BufferAttribute(new Float32Array(SMOKE_N * 3), 3));
+    const smat = new THREE.PointsMaterial({
+      size: 0.5, vertexColors: true, transparent: true, opacity: 0.5,
+      depthWrite: false, sizeAttenuation: true,
+    });
+    smoke = new THREE.Points(geo, smat);
+    smoke.frustumCulled = false;
+    scene.add(smoke);
+    for (let i = 0; i < SMOKE_N; i++) smokeData.push({ x: 0, y: -100, z: 0, life: 0, vx: 0, vz: 0, seed: Math.random() * 10 });
+  }
+  function updateSmoke(dt, t, playerPos) {
+    const fires = Chunks.nearbyTorches(playerPos.x, playerPos.y, playerPos.z, 44).filter((o) => o.big);
+    const posA = smoke.geometry.attributes.position, colA = smoke.geometry.attributes.color;
+    for (let i = 0; i < SMOKE_N; i++) {
+      const p = smokeData[i];
+      if (p.life <= 0) {
+        if (fires.length && rng() < dt * 6) {
+          const f = fires[(rng() * fires.length) | 0];
+          p.x = f.x + (rng() - 0.5) * 0.3; p.y = f.y + 0.3; p.z = f.z + (rng() - 0.5) * 0.3;
+          p.vx = (rng() - 0.5) * 0.3; p.vz = (rng() - 0.5) * 0.3;
+          p.life = 1.6 + rng() * 1.4; p.maxLife = p.life;
+        } else { posA.setXYZ(i, 0, -100, 0); colA.setXYZ(i, 0, 0, 0); continue; }
+      }
+      p.life -= dt;
+      p.y += (0.9 + Math.sin(t + p.seed) * 0.1) * dt;
+      p.x += p.vx * dt + Math.sin(t * 1.3 + p.seed) * dt * 0.15;
+      p.z += p.vz * dt;
+      const f = Math.max(0, p.life / p.maxLife);
+      const g = 0.28 + (1 - f) * 0.25;
+      posA.setXYZ(i, p.x, p.y, p.z);
+      colA.setXYZ(i, g * f, g * f, g * f);
+    }
+    posA.needsUpdate = true; colA.needsUpdate = true;
+  }
+
   // ---- hoofdinterface -------------------------------------------------------------------------
   E.init = function (theScene, seed) {
     scene = theScene;
@@ -529,6 +659,7 @@ window.Entities = (function () {
     initLightPool();
     initFireflies();
     initButterflies();
+    initSmoke();
   };
 
   E.reset = function () {
@@ -583,6 +714,7 @@ window.Entities = (function () {
     updateFlocks(dt, t, playerPos, nightAmt);
     updateFireflies(dt, t, playerPos, nightAmt);
     updateButterflies(dt, t, playerPos, nightAmt);
+    updateSmoke(dt, t, playerPos);
     updateLightPool(camera.position, t);
   };
 

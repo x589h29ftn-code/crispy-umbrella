@@ -87,6 +87,29 @@ window.World = (function () {
     return best;
   };
 
+  // Ligt (x,z) op een verbindingsweg tussen twee naburige dorpen?
+  W.onVillageRoad = function (x, z) {
+    const cX = Math.floor(x / VILLAGE_CELL), cZ = Math.floor(z / VILLAGE_CELL);
+    for (let dx = -1; dx <= 1; dx++) for (let dz = -1; dz <= 1; dz++) {
+      const v = villageRaw(cX + dx, cZ + dz);
+      if (!v) continue;
+      for (const [ox, oz] of [[1, 0], [0, 1], [1, 1], [1, -1]]) {
+        const n = villageRaw(v.cellX + ox, v.cellZ + oz);
+        if (!n) continue;
+        const dcx = n.cx - v.cx, dcz = n.cz - v.cz;
+        const len = Math.hypot(dcx, dcz);
+        if (len < 1 || len > VILLAGE_CELL * 2.1) continue;
+        let tPar = ((x - v.cx) * dcx + (z - v.cz) * dcz) / (len * len);
+        tPar = Noise.clamp(tPar, 0, 1);
+        const wob = Noise.noise2(tPar * 4 + v.cellX * 3.1, v.cellZ * 2.7 + ox) * (len * 0.07);
+        const px = v.cx + dcx * tPar - dcz / len * wob;
+        const pz = v.cz + dcz * tPar + dcx / len * wob;
+        if (Math.hypot(x - px, z - pz) < 1.8) return true;
+      }
+    }
+    return false;
+  };
+
   // ---- uiteindelijke hoogte (terrein + dorps-afvlakking) ------------------------
   W.height = function (x, z) {
     const key = x + ',' + z;
@@ -220,6 +243,19 @@ window.World = (function () {
 
     buildWell(bm, v.cx, v.cz, gy);
 
+    // gezellig kampvuurtje met plankbankjes op het plein
+    {
+      const ang = rng() * Math.PI * 2;
+      const fx = Math.round(v.cx + Math.cos(ang) * 6);
+      const fz = Math.round(v.cz + Math.sin(ang) * 6);
+      bmSet(bm, fx, gy, fz, B.COBBLE);
+      bmSet(bm, fx, gy + 1, fz, B.CAMPFIRE);
+      for (const [bx, bz] of [[fx - 2, fz], [fx + 2, fz], [fx, fz - 2], [fx, fz + 2]]) {
+        bmSet(bm, bx, gy, bz, B.DIRT);
+        bmSet(bm, bx, gy + 1, bz, B.SLAB);
+      }
+    }
+
     const nHouses = 3 + ((rng() * 4) | 0);
     const nPlots = 1 + ((rng() * 3) | 0);
     const total = nHouses + nPlots;
@@ -281,6 +317,7 @@ window.World = (function () {
     if (riverFactor(x, z) > 0.35) return null;
     const v = W.nearestVillage(x, z, VILLAGE_R + 8);
     if (v && Math.hypot(v.cx - x, v.cz - z) < VILLAGE_R + 6) return null;
+    if (W.onVillageRoad(x, z)) return null;   // geen bomen op de weg
 
     const r = Noise.hash2(x * 17 + 5, z * 13 - 3);
     const r2 = Noise.hash2(x * 29 - 1, z * 31 + 9);
@@ -367,6 +404,10 @@ window.World = (function () {
                         Math.abs(W.height(wx, wz + 2) - W.height(wx, wz - 2));
           if (slope < 4) surf = Noise.hash2(wx, wz) < 0.75 ? B.PATH : B.GRAVEL;
         }
+      }
+      // verbindingsweg tussen dorpen
+      if ((surf === B.GRASS || surf === B.STONE) && W.onVillageRoad(wx, wz)) {
+        surf = Noise.hash2(wx * 3 + 1, wz * 3 - 2) < 0.8 ? B.PATH : B.GRAVEL;
       }
 
       for (let y = 0; y <= h && y < CH; y++) {

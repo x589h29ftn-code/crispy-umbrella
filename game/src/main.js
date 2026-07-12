@@ -7,6 +7,7 @@ window.Main = (function () {
   let autosaveTimer = 0;
   let elapsed = 0;
   let loadingWorld = false;
+  let lastSeasonIdx = -1;
 
   // ---- opstarten ----
   function boot() {
@@ -60,10 +61,18 @@ window.Main = (function () {
     World.init(seed);
     G.clearEdits();
     G.timeSec = saveData ? (saveData.timeSec || 0) : G.settings.dayMinutes * 60 * 0.12; // begin in de ochtend
+    // seizoen meteen zetten zodat de eerste chunks de juiste tint krijgen
+    const si0 = G.seasonInfo();
+    G.season.idx = si0.idx; G.season.name = si0.name; G.season.t = si0.t;
+    G.season.grass = si0.grass; G.season.leaf = si0.leaf; G.season.frost = si0.frost;
+    lastSeasonIdx = si0.idx;
     Weather.deserialize(saveData ? saveData.weather : null);
 
     if (saveData && saveData.edits) {
       for (const [x, y, z, id] of saveData.edits) G.recordEdit(x, y, z, id);
+    }
+    if (saveData && saveData.metas) {
+      for (const [x, y, z, v] of saveData.metas) G.setMeta(x, y, z, v);
     }
 
     Chunks.reset ? Chunks.reset() : null;
@@ -178,6 +187,15 @@ window.Main = (function () {
     elapsed += dt;
     Chunks.timeUniform.value = elapsed;
 
+    // seizoen bijwerken; bij een wisseling de wereld hertekenen
+    const si = G.seasonInfo();
+    G.season.idx = si.idx; G.season.name = si.name; G.season.t = si.t;
+    G.season.grass = si.grass; G.season.leaf = si.leaf; G.season.frost = si.frost;
+    if (si.idx !== lastSeasonIdx) {
+      if (lastSeasonIdx !== -1) { Chunks.remeshAll(); UI.toast('Het seizoen wisselt naar ' + si.name.toLowerCase() + ' 🍃'); }
+      lastSeasonIdx = si.idx;
+    }
+
     // wereld-streaming (tijdbudget per frame)
     Chunks.update(Player.pos.x, Player.pos.z, 5);
 
@@ -199,6 +217,12 @@ window.Main = (function () {
     // audio-omgeving
     Sfx.updateNature(dt, sunInfo.nightAmt, rainLevel);
     Sfx.setWindLevel(Weather.current === 'storm' ? 0.8 : (Weather.current === 'rain' ? 0.4 : 0.12));
+    // kampvuur-nabijheid
+    const fires = Chunks.nearbyTorches(Player.pos.x, Player.pos.y, Player.pos.z, 14).filter((o) => o.big);
+    let fireLvl = 0;
+    for (const f of fires) fireLvl = Math.max(fireLvl, 1 - Math.sqrt(f.d2) / 12);
+    Sfx.setCampfireLevel(Math.max(0, fireLvl));
+    Sfx.updateCampfire(dt);
 
     UI.updateClock();
 

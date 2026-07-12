@@ -27,10 +27,23 @@ Open `index.html` in een moderne browser (Chrome, Edge of Firefox). Dat is alles
   leven: overdag wandelen en werken ze, 's avonds lopen sommigen met een
   fakkel rond en gaan ze hun huisje in.
 - **Natuur** — gevarieerde bomen (eik, berk, den), wuivend gras, bloemen,
-  schapen, konijnen, zwermen vogels en 's nachts vuurvliegjes.
+  struiken en riet. Schapen, konijnen, herten, vossen en eenden op het water,
+  zwermen vogels, overdag vlinders en 's nachts vuurvliegjes.
+- **Seizoenen** — lente, zomer, herfst en winter wisselen elkaar af (instelbaar
+  aantal dagen per seizoen); gras en bladeren verkleuren en in de winter ligt er
+  rijp over het land.
+- **Sterrenhemel** — sterrenbeelden, af en toe een vallende ster en in koude
+  nachten een groen noorderlicht.
+- **Kampvuur & zitplekken** — plaats een kampvuur met vlammen, licht, rook en
+  een knappend geluid; plaatbanken om omheen te zitten. Dorpen hebben hun eigen
+  kampvuurtje op het plein.
+- **Wegen tussen dorpen** — dorpen zijn met kronkelende paden met elkaar
+  verbonden.
 - **Bouwen** — blokken plaatsen en weghalen, hekjes bouwen, fakkels plaatsen
   (met echt licht) of in de hand houden. Kasteelblokken (bakstenen, bemoste
-  bakstenen en doorzichtig glas) om muren, torens en ramen te bouwen.
+  bakstenen en doorzichtig glas) om muren, torens en ramen te bouwen. Trappen
+  (met oriëntatie, je loopt er vanzelf op), platen/bankjes (halve blokken) en
+  deuren die met de rechtermuisknop open en dicht gaan.
 - **Bootjes** — houten roeibootjes drijven langs de oevers; laat er zelf een te
   water (B) en vaar over rivieren en meren (E om in/uit te stappen).
 - **Hoge bergen** — dramatische, steile kliffen met besneeuwde toppen boven de

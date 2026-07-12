@@ -4,8 +4,9 @@ window.Sfx = (function () {
   const A = {};
   let ctx = null;
   let master, musicBus, sfxBus, ambBus;
-  let rainGain, rainFilter, windGain;
+  let rainGain, rainFilter, windGain, campGain;
   let started = false;
+  let crackleTimer = 0, campLevel = 0;
 
   function ensureCtx() {
     if (ctx) return true;
@@ -36,6 +37,15 @@ window.Sfx = (function () {
     rainGain = ctx.createGain(); rainGain.gain.value = 0;
     rainSrc.connect(rainFilter); rainFilter.connect(rainGain); rainGain.connect(ambBus);
     rainSrc.start();
+
+    // kampvuur-geroffel (zacht laag geruis, gemoduleerd door nabijheid)
+    const fireSrc = ctx.createBufferSource();
+    fireSrc.buffer = noiseBuf; fireSrc.loop = true;
+    const fireF = ctx.createBiquadFilter();
+    fireF.type = 'lowpass'; fireF.frequency.value = 900; fireF.Q.value = 0.5;
+    campGain = ctx.createGain(); campGain.gain.value = 0;
+    fireSrc.connect(fireF); fireF.connect(campGain); campGain.connect(ambBus);
+    fireSrc.start();
 
     return true;
   }
@@ -137,6 +147,29 @@ window.Sfx = (function () {
   A.setWindLevel = function (v) {
     if (!ctx) return;
     windGain.gain.setTargetAtTime(0.02 + v * 0.06, ctx.currentTime, 1.2);
+  };
+  A.setCampfireLevel = function (v) {
+    if (!ctx) return;
+    campLevel = v;
+    campGain.gain.setTargetAtTime(v * 0.09, ctx.currentTime, 0.3);
+  };
+  // korte knapjes wanneer je bij een kampvuur staat
+  A.updateCampfire = function (dt) {
+    if (!ctx || campLevel < 0.15) return;
+    crackleTimer -= dt;
+    if (crackleTimer <= 0) {
+      crackleTimer = 0.15 + Math.random() * 0.5;
+      const t0 = ctx.currentTime;
+      const o = ctx.createOscillator(); o.type = 'square';
+      o.frequency.value = 400 + Math.random() * 1400;
+      const g = ctx.createGain();
+      g.gain.setValueAtTime(0, t0);
+      g.gain.linearRampToValueAtTime(0.03 * campLevel, t0 + 0.005);
+      g.gain.exponentialRampToValueAtTime(0.0004, t0 + 0.06);
+      const f = ctx.createBiquadFilter(); f.type = 'bandpass'; f.frequency.value = o.frequency.value;
+      o.connect(f); f.connect(g); g.connect(sfxBus);
+      o.start(t0); o.stop(t0 + 0.08);
+    }
   };
 
   A.thunder = function (delaySec) {

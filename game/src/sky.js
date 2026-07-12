@@ -41,7 +41,10 @@ window.Sky = (function () {
     uMoonDir: { value: new THREE.Vector3(0, -1, 0) },
     uStars: { value: 0 },
     uHaze: { value: 0 },
+    uTime: { value: 0 },
+    uAurora: { value: 0 },
   };
+  let skyTime = 0;
 
   S.init = function (theScene, theCamera, theRenderer) {
     scene = theScene; camera = theCamera; renderer = theRenderer;
@@ -64,7 +67,7 @@ window.Sky = (function () {
       fragmentShader: `
         uniform vec3 uTopColor, uHorizonColor, uSunColor;
         uniform vec3 uSunDir, uMoonDir;
-        uniform float uStars, uHaze;
+        uniform float uStars, uHaze, uTime, uAurora;
         varying vec3 vDir;
 
         float hash(vec3 p) {
@@ -93,6 +96,16 @@ window.Sky = (function () {
           float md = dot(dir, normalize(uMoonDir));
           col += vec3(0.85, 0.9, 1.0) * pow(clamp(md, 0.0, 1.0), 1600.0) * 1.1;
           col += vec3(0.5, 0.6, 0.85) * pow(clamp(md, 0.0, 1.0), 40.0) * 0.12;
+
+          // noorderlicht: golvende groene gordijnen hoog in de hemel
+          if (uAurora > 0.01 && h > 0.08) {
+            float curtain = sin(dir.x * 7.0 + uTime * 0.5 + sin(dir.z * 4.0 + uTime * 0.25) * 2.2);
+            float band = sin(dir.x * 2.3 - dir.z * 1.7 + uTime * 0.15);
+            float hMask = smoothstep(0.12, 0.45, h) * (1.0 - smoothstep(0.55, 0.95, h));
+            float a = hMask * pow(max(curtain, 0.0), 2.0) * (0.6 + 0.4 * band) * uAurora;
+            col += vec3(0.18, 0.95, 0.55) * a * 0.6;
+            col += vec3(0.35, 0.18, 0.85) * a * 0.18;
+          }
 
           // sterren
           if (uStars > 0.01 && h > 0.02) {
@@ -145,7 +158,89 @@ window.Sky = (function () {
 
     // ---- wolken: blokkige, langzaam drijvende platen ----
     buildClouds();
+
+    // ---- sterrenbeelden: enkele heldere sterren in vaste patronen ----
+    buildConstellations();
+
+    // ---- vallende sterren ----
+    initShootingStars();
   };
+
+  // Heldere sterren gegroepeerd in een paar herkenbare clusters
+  let constellations = null;
+  function buildConstellations() {
+    const rng = Noise.rng(0xC0FFEE);
+    const pos = [], col = [];
+    const R = 880;
+    const clusters = 7;
+    for (let c = 0; c < clusters; c++) {
+      const ca = rng() * Math.PI * 2, ce = 0.25 + rng() * 0.9;
+      const n = 4 + ((rng() * 5) | 0);
+      for (let i = 0; i < n; i++) {
+        const a = ca + (rng() - 0.5) * 0.5, e = ce + (rng() - 0.5) * 0.4;
+        const ce2 = Math.cos(e);
+        pos.push(Math.cos(a) * ce2 * R, Math.sin(e) * R, Math.sin(a) * ce2 * R);
+        const w = 0.8 + rng() * 0.2;
+        col.push(w, w, 1.0);
+      }
+    }
+    const geo = new THREE.BufferGeometry();
+    geo.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
+    geo.setAttribute('color', new THREE.Float32BufferAttribute(col, 3));
+    const mat = new THREE.PointsMaterial({
+      size: 5, vertexColors: true, transparent: true, opacity: 0,
+      blending: THREE.AdditiveBlending, depthWrite: false, fog: false, sizeAttenuation: false,
+    });
+    constellations = new THREE.Points(geo, mat);
+    constellations.frustumCulled = false;
+    constellations.renderOrder = -9;
+    scene.add(constellations);
+  }
+
+  // ---- vallende sterren ----
+  const SHOOTERS = 3;
+  const shooters = [];
+  let shootTimer = 6;
+  function initShootingStars() {
+    for (let i = 0; i < SHOOTERS; i++) {
+      const geo = new THREE.BufferGeometry();
+      geo.setAttribute('position', new THREE.Float32BufferAttribute(new Float32Array(6), 3));
+      const mat = new THREE.LineBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0, fog: false });
+      const line = new THREE.Line(geo, mat);
+      line.frustumCulled = false;
+      line.renderOrder = -8;
+      scene.add(line);
+      shooters.push({ line, life: 0, pos: new THREE.Vector3(), vel: new THREE.Vector3() });
+    }
+  }
+  function updateShootingStars(dt, nightAmt, playerPos) {
+    shootTimer -= dt;
+    if (shootTimer <= 0 && nightAmt > 0.5) {
+      shootTimer = 5 + Math.random() * 12;
+      const s = shooters.find((o) => o.life <= 0);
+      if (s) {
+        const a = Math.random() * Math.PI * 2;
+        const e = 0.55 + Math.random() * 0.35;
+        const R = 500;
+        s.pos.set(Math.cos(a) * Math.cos(e) * R, Math.sin(e) * R, Math.sin(a) * Math.cos(e) * R);
+        // schuine baan langs de hemel
+        s.vel.set(-Math.sin(a) * 260 + (Math.random() - 0.5) * 80, -60 - Math.random() * 60, Math.cos(a) * 260);
+        s.life = 0.7 + Math.random() * 0.6;
+        s.maxLife = s.life;
+      }
+    }
+    for (const s of shooters) {
+      if (s.life <= 0) { s.line.material.opacity = 0; continue; }
+      s.life -= dt;
+      s.pos.addScaledVector(s.vel, dt);
+      const tail = s.pos.clone().addScaledVector(s.vel, -0.08);
+      const p = s.line.geometry.attributes.position;
+      p.setXYZ(0, playerPos.x + s.pos.x, playerPos.y + s.pos.y, playerPos.z + s.pos.z);
+      p.setXYZ(1, playerPos.x + tail.x, playerPos.y + tail.y, playerPos.z + tail.z);
+      p.needsUpdate = true;
+      s.line.material.opacity = Math.max(0, s.life / s.maxLife) * nightAmt;
+    }
+  }
 
   function buildClouds() {
     if (clouds) { scene.remove(clouds); clouds.geometry.dispose(); clouds.material.dispose(); clouds = null; }
@@ -185,6 +280,8 @@ window.Sky = (function () {
   S.weatherMod = { fogMul: 1, skyDesat: 0, lightMul: 1, hazeAdd: 0, cloudOpacity: 0.42 };
 
   S.update = function (dt, playerPos) {
+    skyTime += dt;
+    S.uniforms.uTime.value = skyTime;
     // tijd laten verlopen
     G.timeSec += dt;
     const cyc = G.cycleLen();
@@ -253,6 +350,18 @@ window.Sky = (function () {
     fog.near = Math.max(8, viewDist * 0.28 / fm);
     fog.far = Math.max(24, viewDist * 1.0 / fm);
 
+    // seizoensgrading: winter koeler/helderder, herfst warmer
+    if (G.season.idx === 3) {
+      fog.color.lerp(cA.setRGB(0.82, 0.86, 0.93), 0.28);
+      sunLight.color.lerp(cB.setRGB(0.85, 0.9, 1.0), 0.25);
+      renderer.toneMappingExposure *= 1.05;
+    } else if (G.season.idx === 2) {
+      fog.color.lerp(cA.setRGB(0.86, 0.72, 0.52), 0.18);
+      sunLight.color.lerp(cB.setRGB(1.0, 0.88, 0.7), 0.2);
+    } else if (G.season.idx === 0) {
+      fog.color.lerp(cA.setRGB(0.80, 0.88, 0.82), 0.10);
+    }
+
     // waterschader voeden
     const wu = Chunks.waterUniforms;
     wu.uSunDir.value.copy(_sunDir);
@@ -266,6 +375,17 @@ window.Sky = (function () {
 
     // koepel en wolken volgen de speler
     skyMesh.position.copy(playerPos);
+
+    // noorderlicht (sterker in de winter), sterrenbeelden en vallende sterren
+    const winter = G.season.idx === 3 ? 1 : 0;
+    const slow = 0.5 + 0.5 * Math.sin(skyTime * 0.05 + 1.3);
+    S.uniforms.uAurora.value = nightAmt * (0.2 + winter * 0.55) * slow * (1 - wm.skyDesat);
+    if (constellations) {
+      constellations.position.copy(playerPos);
+      const tw = 0.85 + 0.15 * Math.sin(skyTime * 1.5);
+      constellations.material.opacity = S.uniforms.uStars.value * tw;
+    }
+    updateShootingStars(dt, nightAmt, playerPos);
 
     if (clouds) {
       clouds.material.opacity = wm.cloudOpacity * (0.3 + 0.7 * (1 - nightAmt));

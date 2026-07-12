@@ -57,7 +57,7 @@ window.Textures = (function () {
     PLANKS: 8, COBBLE: 9, SNOW: 10, PATH: 11, FARMLAND: 12, GRAVEL: 13, TORCH: 14, TALLGRASS: 15,
     FLOWER_RED: 16, FLOWER_YELLOW: 17, FLOWER_BLUE: 18, FLOWER_WHITE: 19, CROP: 20,
     BIRCH_SIDE: 21, BIRCH_TOP: 22, LEAVES_BIRCH: 23, LEAVES_PINE: 24, FLAME: 25, SNOW_SIDE: 26,
-    STONE_BRICK: 27, STONE_BRICK_MOSSY: 28, GLASS: 29,
+    STONE_BRICK: 27, STONE_BRICK_MOSSY: 28, GLASS: 29, DOOR: 30, EMBER: 31,
   };
 
   function draw() {
@@ -413,6 +413,37 @@ window.Textures = (function () {
         px(tx, ty, i, i - 1, 255, 255, 255, 0.35);
       }
     }
+
+    // DEUR: houten paneeldeur met beslag en klink
+    {
+      const idx = TI.DOOR, tx = idx % COLS, ty = (idx / COLS) | 0;
+      fill(idx, [150, 112, 62], { macroS: 0.1, macro: 0.06, grain: 0.04, warm: 0.4 });
+      // verticale nerf
+      for (let y = 0; y < TILE; y++) for (let x = 0; x < TILE; x++)
+        if (vn(tx, ty, x * 0.5, y, 0.5, 7) > 0.72) px(tx, ty, x, y, 124, 92, 50, 0.5);
+      // paneelranden (twee panelen)
+      function panel(x0, y0, x1, y1) {
+        for (let x = x0; x <= x1; x++) { px(tx, ty, x, y0, 108, 80, 44); px(tx, ty, x, y1, 108, 80, 44); }
+        for (let y = y0; y <= y1; y++) { px(tx, ty, x0, y, 108, 80, 44); px(tx, ty, x1, y, 108, 80, 44); }
+      }
+      panel(4, 3, 27, 13); panel(4, 17, 27, 29);
+      // ijzerbeslag
+      for (const by of [4, 27]) for (let x = 2; x < 30; x++) if (x % 2 === 0) px(tx, ty, x, by, 70, 66, 64);
+      // klink
+      for (let y = 15; y < 18; y++) for (let x = 24; x < 28; x++) px(tx, ty, x, y, 60, 56, 52);
+      px(tx, ty, 26, 16, 210, 200, 150);
+    }
+
+    // GLOEIENDE SINTELS (voor kampvuur-bodem)
+    {
+      const idx = TI.EMBER, tx = idx % COLS, ty = (idx / COLS) | 0;
+      fill(idx, [40, 34, 30], { macro: 0.2, grain: 0.1 });
+      for (let i = 0; i < 60; i++) {
+        const x = (R() * TILE) | 0, y = (R() * TILE) | 0;
+        const hot = R();
+        px(tx, ty, x, y, 255, 90 + hot * 120, 20 + hot * 40, 0.6 + hot * 0.4);
+      }
+    }
   }
   draw();
 
@@ -457,6 +488,10 @@ window.Textures = (function () {
       case B.STONE_BRICK: return TI2.STONE_BRICK;
       case B.STONE_BRICK_MOSSY: return TI2.STONE_BRICK_MOSSY;
       case B.GLASS: return TI2.GLASS;
+      case B.STAIRS: return TI2.STONE_BRICK;
+      case B.SLAB: return TI2.PLANKS;
+      case B.DOOR: return TI2.DOOR;
+      case B.CAMPFIRE: return TI2.LOG_SIDE;
       case B.SNOW: return face === 2 ? TI2.SNOW : (face === 3 ? TI2.DIRT : TI2.SNOW_SIDE);
       case B.PATH: return face === 2 ? TI2.PATH : (face === 3 ? TI2.DIRT : TI2.PATH);
       case B.FARMLAND: return face === 2 ? TI2.FARMLAND : TI2.DIRT;

@@ -152,6 +152,29 @@ window.Chunks = (function () {
     return ch.blocks[lidx(wx - cx * CS, wy, wz - cz * CS)];
   };
 
+  C.getMeta = function (wx, wy, wz) { return G.getMeta(wx, wy, wz); };
+
+  // Vorm- en hoogtebewuste collisie-test voor een wereldpunt (floats)
+  C.solidShapeAt = function (x, y, z) {
+    const bx = Math.floor(x), by = Math.floor(y), bz = Math.floor(z);
+    const id = C.getBlock(bx, by, bz);
+    if (id === undefined) return true;         // niet-geladen = muur
+    if (!G.isSolid(id)) return false;
+    if (!G.SHAPED.has(id)) return true;        // volle blokken
+    const fx = x - bx, fy = y - by, fz = z - bz;
+    if (id === B.SLAB) return fy <= 0.5 + 1e-4;
+    if (id === B.DOOR) return (G.getMeta(bx, by, bz) & 1) ? false : true;
+    if (id === B.STAIRS) {
+      if (fy <= 0.5 + 1e-4) return true;
+      const facing = G.getMeta(bx, by, bz) & 3;
+      if (facing === 0) return fz <= 0.5;
+      if (facing === 2) return fz >= 0.5;
+      if (facing === 1) return fx >= 0.5;
+      return fx <= 0.5;
+    }
+    return true;
+  };
+
   // Hoogste blok dat regen tegenhoudt (voor regen-occlusie e.d.)
   C.topBlockY = function (wx, wz) {
     const cx = Math.floor(wx / CS), cz = Math.floor(wz / CS);
@@ -200,13 +223,14 @@ window.Chunks = (function () {
   }
 
   // ---- blok wijzigen (speler / gameplay) -----------------------------------------------
-  C.setBlock = function (wx, wy, wz, id, recordEdit) {
+  C.setBlock = function (wx, wy, wz, id, recordEdit, meta) {
     if (wy < 0 || wy >= CH) return false;
     const cx = Math.floor(wx / CS), cz = Math.floor(wz / CS);
     const chObj = chunks.get(ck(cx, cz));
     if (!chObj) return false;
     const lx = wx - cx * CS, lz = wz - cz * CS;
     chObj.blocks[lidx(lx, wy, lz)] = id;
+    G.setMeta(wx, wy, wz, meta || 0);        // meta hoort bij dit blok
     if (recordEdit !== false) G.recordEdit(wx, wy, wz, id);
     rebuildHeightColumn(chObj, lx, lz);
     remesh(chObj);
@@ -253,20 +277,33 @@ window.Chunks = (function () {
   }
 
   // ---- meshing ------------------------------------------------------------------------------
+  function frost(out, wx, wz) {
+    const f = G.season.frost || 0;
+    if (f <= 0) return;
+    // ietwat vlekkerige rijp zodat het niet egaal is
+    const v = f * (0.75 + 0.25 * Noise.hash2((wx | 0) * 2 + 7, (wz | 0) * 2 - 3));
+    out[0] = Noise.lerp(out[0], 0.92, v);
+    out[1] = Noise.lerp(out[1], 0.95, v);
+    out[2] = Noise.lerp(out[2], 1.02, v);
+  }
   function grassTint(wx, wz, out) {
     const n = Noise.fbm2(wx * 0.015 + 12.3, wz * 0.015 - 7.7, 2);
     const n2 = Noise.hash2(wx | 0, wz | 0) - 0.5;
     // warm geel-groen met droge plekken, zoals zomerse weides
-    out[0] = 0.47 + n * 0.16 + n2 * 0.06;
-    out[1] = 0.68 + n * 0.08 + n2 * 0.04;
-    out[2] = 0.24 + n * 0.05;
+    const s = G.season.grass;
+    out[0] = (0.47 + n * 0.16 + n2 * 0.06) * s[0];
+    out[1] = (0.68 + n * 0.08 + n2 * 0.04) * s[1];
+    out[2] = (0.24 + n * 0.05) * s[2];
+    frost(out, wx, wz);
   }
   function leafTint(wx, wy, wz, out) {
     const n = Noise.fbm2(wx * 0.02 + 99.1, wz * 0.02 + 3.3, 2);
     const n2 = Noise.hash3(wx | 0, wy | 0, wz | 0) - 0.5;
-    out[0] = 0.60 + n * 0.14 + n2 * 0.10;
-    out[1] = 0.86 + n * 0.10 + n2 * 0.08;
-    out[2] = 0.50 + n * 0.10;
+    const s = G.season.leaf;
+    out[0] = (0.60 + n * 0.14 + n2 * 0.10) * s[0];
+    out[1] = (0.86 + n * 0.10 + n2 * 0.08) * s[1];
+    out[2] = (0.50 + n * 0.10) * s[2];
+    frost(out, wx, wz);
   }
 
   function buildMeshes(chObj) {
@@ -333,12 +370,13 @@ window.Chunks = (function () {
       }
     }
 
-    function emitFlame(x, y, z) {
+    function emitFlame(x, y, z, scale) {
       const [u0, v0, u1, v1] = Textures.uv(Textures.TI.FLAME);
-      const s = 0.30;
+      const s = 0.30 * (scale || 1);
+      const cx = x + 0.5, cz = z + 0.5;
       const quadsF = [
-        [[x + 0.5 - s, z + 0.5], [x + 0.5 + s, z + 0.5]],
-        [[x + 0.5, z + 0.5 - s], [x + 0.5, z + 0.5 + s]],
+        [[cx - s, cz], [cx + s, cz]],
+        [[cx, cz - s], [cx, cz + s]],
       ];
       for (const q of quadsF) {
         const base = flPos.length / 3;
@@ -389,7 +427,50 @@ window.Chunks = (function () {
           if (id === B.TORCH) {
             emitCross(wx, y, wz, Textures.TI.TORCH, [1, 1, 1], 0, 0.85);
             emitFlame(wx, y + 0.62, wz);
-            torches.push({ x: wx + 0.5, y: y + 0.85, z: wz + 0.5 });
+            torches.push({ x: wx + 0.5, y: y + 0.85, z: wz + 0.5, big: false });
+            continue;
+          }
+
+          if (id === B.SLAB) {
+            emitBox(wx, y, wz, 0, 0, 0, 1, 0.5, 1, Textures.TI.PLANKS);
+            continue;
+          }
+
+          if (id === B.STAIRS) {
+            const facing = C.getMeta(wx, y, wz) & 3;
+            emitBox(wx, y, wz, 0, 0, 0, 1, 0.5, 1, Textures.TI.STONE_BRICK);   // onderste helft
+            let x0 = 0, z0 = 0, x1 = 1, z1 = 1;                                 // bovenste helft
+            if (facing === 0) z1 = 0.5;
+            else if (facing === 2) z0 = 0.5;
+            else if (facing === 1) x0 = 0.5;
+            else x1 = 0.5;
+            emitBox(wx, y, wz, x0, 0.5, z0, x1, 1, z1, Textures.TI.STONE_BRICK);
+            continue;
+          }
+
+          if (id === B.DOOR) {
+            const m = C.getMeta(wx, y, wz);
+            const open = m & 1, facing = (m >> 1) & 3;
+            const axisZ = (facing === 0 || facing === 2);
+            if (open) {
+              if (axisZ) emitBox(wx, y, wz, 0, 0, 0, 0.14, 1, 1, Textures.TI.DOOR);
+              else emitBox(wx, y, wz, 0, 0, 0, 1, 1, 0.14, Textures.TI.DOOR);
+            } else {
+              if (axisZ) emitBox(wx, y, wz, 0, 0, 0.43, 1, 1, 0.57, Textures.TI.DOOR);
+              else emitBox(wx, y, wz, 0.43, 0, 0, 0.57, 1, 1, Textures.TI.DOOR);
+            }
+            continue;
+          }
+
+          if (id === B.CAMPFIRE) {
+            emitBox(wx, y, wz, 0.12, 0.0, 0.12, 0.88, 0.12, 0.88, Textures.TI.EMBER);
+            emitBox(wx, y, wz, 0.08, 0.10, 0.30, 0.92, 0.26, 0.48, Textures.TI.LOG_SIDE);
+            emitBox(wx, y, wz, 0.08, 0.10, 0.52, 0.92, 0.26, 0.70, Textures.TI.LOG_SIDE);
+            emitBox(wx, y, wz, 0.30, 0.24, 0.08, 0.48, 0.40, 0.92, Textures.TI.LOG_SIDE);
+            emitBox(wx, y, wz, 0.52, 0.24, 0.08, 0.70, 0.40, 0.92, Textures.TI.LOG_SIDE);
+            emitFlame(wx, y + 0.18, wz, 1.6);
+            emitFlame(wx + 0.12, y + 0.14, wz - 0.08, 1.1);
+            torches.push({ x: wx + 0.5, y: y + 0.55, z: wz + 0.5, big: true });
             continue;
           }
 
@@ -549,6 +630,11 @@ window.Chunks = (function () {
     lastCenter = null;
   };
 
+  // Alle geladen chunks opnieuw meshen (bv. bij een seizoenswisseling)
+  C.remeshAll = function () {
+    chunks.forEach((chObj) => { chObj.dirty = true; queueMesh(chObj); });
+  };
+
   // Wordt elke frame aangeroepen; genereert/mesht met een tijdbudget
   C.update = function (px, pz, budgetMs) {
     const ccx = Math.floor(px / CS), ccz = Math.floor(pz / CS);
@@ -600,7 +686,7 @@ window.Chunks = (function () {
       for (const t of chObj.torches) {
         const ddx = t.x - px, ddy = t.y - py, ddz = t.z - pz;
         const d2 = ddx * ddx + ddy * ddy + ddz * ddz;
-        if (d2 < md2) out.push({ x: t.x, y: t.y, z: t.z, d2 });
+        if (d2 < md2) out.push({ x: t.x, y: t.y, z: t.z, d2, big: t.big });
       }
     });
     return out;

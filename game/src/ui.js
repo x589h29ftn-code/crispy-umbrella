@@ -64,7 +64,8 @@ window.UI = (function () {
       const nightH = 20 + tod.phase * 10;      // 20:00 → 06:00
       hour = Math.floor(nightH) % 24; minute = Math.floor((nightH - Math.floor(nightH)) * 60);
     }
-    $('clocktxt').textContent = `Dag ${G.dayNumber} — ${String(hour).padStart(2, '0')}:${String(minute).padStart(2, '0')}`;
+    const seasonEmoji = ['🌱', '☀️', '🍂', '❄️'][G.season.idx] || '';
+    $('clocktxt').textContent = `Dag ${G.dayNumber} — ${String(hour).padStart(2, '0')}:${String(minute).padStart(2, '0')} · ${seasonEmoji}${G.season.name}`;
     $('clockicon').textContent = tod.sunUp ? (G.sunElevation() < 0.15 ? '🌅' : '☀️') : '🌙';
     const w = Weather.current;
     $('weathericon').textContent = w === 'rain' ? '🌧' : w === 'storm' ? '⛈' : w === 'mist' ? '🌫' : '';
@@ -86,6 +87,11 @@ window.UI = (function () {
       const p = k.split(',');
       edits.push([+p[0], +p[1], +p[2], id]);
     });
+    const metas = [];
+    G.meta.forEach((v, k) => {
+      const p = k.split(',');
+      metas.push([+p[0], +p[1], +p[2], v]);
+    });
     const data = {
       savedAt: Date.now(),
       seed: G.seed,
@@ -93,7 +99,7 @@ window.UI = (function () {
       dayNumber: G.dayNumber,
       player: Player.serialize(),
       weather: Weather.serialize(),
-      edits,
+      edits, metas,
     };
     try {
       localStorage.setItem(SAVE_PREFIX + slot, JSON.stringify(data));
@@ -174,6 +180,7 @@ window.UI = (function () {
       };
     };
     bind('set-daymin', 'dayMinutes', (v) => v + ' min');
+    bind('set-seasondays', 'seasonDays', (v) => v + ' d');
     bind('set-dist', 'renderDist', (v) => v + ' chunks', () => Main.onRenderDistChanged());
     bind('set-fog', 'fogMul', (v) => '×' + v.toFixed(2));
     bind('set-fov', 'fov', (v) => v + '°', () => Main.onFovChanged());
