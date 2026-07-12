@@ -49,6 +49,7 @@ window.G = (function () {
   const DEFAULTS = {
     dayMinutes: 15, renderDist: 10, fogMul: 1.0, fov: 75,
     musicVol: 0.55, sfxVol: 0.8, shadows: true, clouds: true, seasonDays: 2,
+    renderScale: 1.0, postFX: true, bloom: true, vignette: true,
   };
   G.settings = Object.assign({}, DEFAULTS);
   try {

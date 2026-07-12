@@ -186,10 +186,18 @@ window.UI = (function () {
     bind('set-fov', 'fov', (v) => v + '°', () => Main.onFovChanged());
     bind('set-music', 'musicVol', (v) => Math.round(v * 100) + '%', () => Sfx.applyVolumes());
     bind('set-sfx', 'sfxVol', (v) => Math.round(v * 100) + '%', () => Sfx.applyVolumes());
+    bind('set-scale', 'renderScale', (v) => Math.round(v * 100) + '%', () => Main.applyGraphics());
     $('set-shadows').checked = s.shadows;
     $('set-shadows').onchange = () => { s.shadows = $('set-shadows').checked; G.saveSettings(); };
     $('set-clouds').checked = s.clouds;
     $('set-clouds').onchange = () => { s.clouds = $('set-clouds').checked; G.saveSettings(); Sky.rebuildClouds(); };
+    const bindCheck = (id, key, after) => {
+      $(id).checked = s[key];
+      $(id).onchange = () => { s[key] = $(id).checked; G.saveSettings(); if (after) after(); };
+    };
+    bindCheck('set-postfx', 'postFX', () => Main.applyGraphics());
+    bindCheck('set-bloom', 'bloom', () => Main.applyGraphics());
+    bindCheck('set-vignette', 'vignette', () => Main.applyGraphics());
   }
 
   // ---- events ----

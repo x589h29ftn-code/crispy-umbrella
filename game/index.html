@@ -170,8 +170,13 @@
       <input type="range" id="set-music" min="0" max="1" step="0.05"><span class="val" id="val-music"></span></div>
     <div class="row"><label>Geluidsvolume</label>
       <input type="range" id="set-sfx" min="0" max="1" step="0.05"><span class="val" id="val-sfx"></span></div>
+    <div class="row"><label>Beeldscherpte (supersampling)</label>
+      <input type="range" id="set-scale" min="0.75" max="2" step="0.25"><span class="val" id="val-scale"></span></div>
     <div class="row"><label>Schaduwen</label><input type="checkbox" id="set-shadows"></div>
     <div class="row"><label>Wolken</label><input type="checkbox" id="set-clouds"></div>
+    <div class="row"><label>Beeldeffecten (AA + bloom)</label><input type="checkbox" id="set-postfx"></div>
+    <div class="row"><label>Gloed (bloom)</label><input type="checkbox" id="set-bloom"></div>
+    <div class="row"><label>Vignet</label><input type="checkbox" id="set-vignette"></div>
     <div class="divider"></div>
     <button class="btn" id="btn-settings-back">← Terug</button>
   </div>
@@ -217,6 +222,7 @@
 <script src="src/weather.js"></script>
 <script src="src/entities.js"></script>
 <script src="src/boats.js"></script>
+<script src="src/post.js"></script>
 <script src="src/audio.js"></script>
 <script src="src/player.js"></script>
 <script src="src/ui.js"></script>

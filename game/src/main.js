@@ -13,13 +13,20 @@ window.Main = (function () {
   function boot() {
     renderer = new THREE.WebGLRenderer({ antialias: true, powerPreference: 'high-performance' });
     renderer.setSize(window.innerWidth, window.innerHeight);
-    renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+    applyPixelRatio();
     renderer.shadowMap.enabled = true;
     renderer.shadowMap.type = THREE.PCFSoftShadowMap;
     renderer.toneMapping = THREE.ACESFilmicToneMapping;
     renderer.toneMappingExposure = 1.05;
     renderer.outputEncoding = THREE.sRGBEncoding;
     document.getElementById('app').appendChild(renderer.domElement);
+
+    // scherpere textures met maximale anisotropie
+    try {
+      const maxAniso = renderer.capabilities.getMaxAnisotropy();
+      Textures.texture.anisotropy = Math.min(16, maxAniso);
+      Textures.texture.needsUpdate = true;
+    } catch (e) {}
 
     scene = new THREE.Scene();
     camera = new THREE.PerspectiveCamera(G.settings.fov, window.innerWidth / window.innerHeight, 0.08, 1400);
@@ -29,8 +36,10 @@ window.Main = (function () {
       camera.aspect = window.innerWidth / window.innerHeight;
       camera.updateProjectionMatrix();
       renderer.setSize(window.innerWidth, window.innerHeight);
+      Post.resize();
     });
 
+    Post.init(renderer, scene, camera);
     UI.init();
 
     // Pointer lock kwijt = pauze; klik op het canvas pakt de lock (weer) op
@@ -49,8 +58,26 @@ window.Main = (function () {
       }
     });
 
+    applyGraphics();
     renderer.setAnimationLoop(loop);
   }
+
+  function applyPixelRatio() {
+    const scale = G.settings.renderScale || 1;
+    renderer.setPixelRatio(Math.min((window.devicePixelRatio || 1) * scale, 2.5));
+  }
+
+  function applyGraphics() {
+    Post.enabled = !!G.settings.postFX;
+    Post.bloom = !!G.settings.bloom;
+    Post.vignette = !!G.settings.vignette;
+    applyPixelRatio();
+    Post.resize();
+  }
+  M.applyGraphics = applyGraphics;
+
+  // presenteer een frame (via post-processing indien aan)
+  function present() { Post.render(); }
 
   // ---- wereld starten ----
   function initWorld(seed, saveData) {
@@ -176,11 +203,11 @@ window.Main = (function () {
 
     if (G.state === 'menu' && !loadingWorld) {
       // stilstaand achtergrondbeeld in het menu
-      renderer.render(scene, camera);
+      present();
       return;
     }
     if (G.state !== 'playing') {
-      renderer.render(scene, camera);
+      present();
       return;
     }
 
@@ -233,7 +260,7 @@ window.Main = (function () {
       UI.saveGame('auto');
     }
 
-    renderer.render(scene, camera);
+    present();
   }
 
   // ---- init op laden van de pagina ----

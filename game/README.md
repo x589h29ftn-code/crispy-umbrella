@@ -18,6 +18,10 @@ Open `index.html` in een moderne browser (Chrome, Edge of Firefox). Dat is alles
   meertjes, stranden en wandelpaden. Elke seed geeft een andere wereld.
 - **Sfeervolle belichting** — zachte schaduwen, warme zonsop- en ondergangen,
   mist in de verte, ACES-tonemapping en een sterrenhemel met maan 's nachts.
+- **Grafische instellingen** — MSAA + FXAA-randverzachting, instelbare
+  supersampling (75–200 %) voor kraakheldere randen, bloom-gloed rond zon,
+  vuur, water en noorderlicht, een zacht vignet en anisotrope textuurfiltering.
+  Alles individueel aan/uit te zetten in Instellingen.
 - **Realistisch water** — bewegende golfjes, fresnel-reflecties van de lucht en
   glinstering van de zon.
 - **Dag/nachtcyclus** — een dag duurt standaard 15 minuten en is instelbaar
