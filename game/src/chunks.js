@@ -83,6 +83,9 @@ window.Chunks = (function () {
     uSkyColor: { value: new THREE.Color(0.5, 0.7, 0.9) },
     uHorizonColor: { value: new THREE.Color(0.8, 0.85, 0.9) },
     uCamPos: { value: new THREE.Vector3() },
+    uReflect: { value: null },
+    uReflectMatrix: { value: new THREE.Matrix4() },
+    uReflectOn: { value: 0 },
     fogColor: { value: new THREE.Color(0.8, 0.85, 0.9) },
     fogNear: { value: 50 },
     fogFar: { value: 200 },
@@ -94,12 +97,22 @@ window.Chunks = (function () {
     transparent: true,
     vertexShader: `
       uniform float uTime;
+      uniform mat4 uReflectMatrix;
+      attribute float aEdge;
+      attribute vec2 aFlow;
       varying vec3 vWorld;
+      varying vec4 vRefl;
+      varying float vEdge;
+      varying vec2 vFlow;
       void main() {
         vec3 p = position;
         p.y += sin(uTime * 1.3 + position.x * 0.6 + position.z * 0.4) * 0.035
              + sin(uTime * 2.1 - position.x * 0.35 + position.z * 0.8) * 0.02;
         vWorld = p;
+        vEdge = aEdge;
+        vFlow = aFlow;
+        vec4 wpos = modelMatrix * vec4(p, 1.0);
+        vRefl = uReflectMatrix * wpos;
         gl_Position = projectionMatrix * modelViewMatrix * vec4(p, 1.0);
       }
     `,
@@ -107,10 +120,13 @@ window.Chunks = (function () {
       uniform float uTime;
       uniform vec3 uSunDir, uSunColor, uSkyColor, uHorizonColor, uCamPos;
       uniform vec3 fogColor;
-      uniform float fogNear, fogFar;
+      uniform float fogNear, fogFar, uReflectOn;
+      uniform sampler2D uReflect;
       varying vec3 vWorld;
+      varying vec4 vRefl;
+      varying float vEdge;
+      varying vec2 vFlow;
 
-      // golfhoogte-veld voor normalen
       float wave(vec2 p) {
         return sin(p.x * 0.9 + uTime * 1.4) * 0.5
              + sin(p.y * 1.1 - uTime * 1.1 + p.x * 0.4) * 0.35
@@ -119,7 +135,8 @@ window.Chunks = (function () {
       }
 
       void main() {
-        vec2 wp = vWorld.xz;
+        // stromingsverschuiving voor rivieren (lakes: aFlow ~ 0)
+        vec2 wp = vWorld.xz - vFlow * uTime * 0.9;
         float e = 0.35;
         float hC = wave(wp);
         float hX = wave(wp + vec2(e, 0.0));
@@ -131,8 +148,19 @@ window.Chunks = (function () {
         fresnel = clamp(fresnel, 0.04, 1.0);
 
         vec3 deep = vec3(0.05, 0.22, 0.32) * (0.5 + uSkyColor * 0.9);
-        vec3 refl = mix(uHorizonColor, uSkyColor, clamp(n.y, 0.0, 1.0));
-        vec3 col = mix(deep, refl, fresnel * 0.9);
+        vec3 skyRefl = mix(uHorizonColor, uSkyColor, clamp(n.y, 0.0, 1.0));
+
+        // planaire reflectie van de wereld
+        vec3 reflection = skyRefl;
+        if (uReflectOn > 0.5) {
+          vec2 ruv = vRefl.xy / max(vRefl.w, 0.0001);
+          ruv += n.xz * 0.03;                       // golfvervorming
+          if (ruv.x > 0.0 && ruv.x < 1.0 && ruv.y > 0.0 && ruv.y < 1.0) {
+            vec3 world = texture2D(uReflect, ruv).rgb;
+            reflection = mix(skyRefl, world, 0.85);
+          }
+        }
+        vec3 col = mix(deep, reflection, fresnel * 0.9);
 
         // zonneglinstering
         vec3 hv = normalize(viewDir + normalize(uSunDir));
@@ -142,6 +170,13 @@ window.Chunks = (function () {
         col += uSunColor * glit * 4.0 * clamp(uSunDir.y + 0.05, 0.0, 1.0);
 
         float alpha = clamp(0.72 + fresnel * 0.24, 0.0, 0.95);
+
+        // oeverschuim
+        float foamMask = smoothstep(0.35, 0.95, vEdge);
+        float foamWave = 0.5 + 0.5 * sin(uTime * 3.0 + vWorld.x * 2.5 + vWorld.z * 2.5 + hC * 3.0);
+        float foam = foamMask * (0.55 + 0.45 * foamWave);
+        col = mix(col, vec3(0.92, 0.96, 0.98), clamp(foam, 0.0, 0.85));
+        alpha = max(alpha, foam * 0.9);
 
         float dist = distance(uCamPos, vWorld);
         float fogF = smoothstep(fogNear, fogFar, dist);
@@ -154,6 +189,7 @@ window.Chunks = (function () {
       }
     `,
   });
+  C.waterMat = waterMat;
 
   // ---- vlak-definities voor het meshen ------------------------------------------------
   // texFace: index voor Textures.texFor (0 +x, 1 -x, 2 +y, 3 -y, 4 +z, 5 -z)
@@ -349,7 +385,7 @@ window.Chunks = (function () {
     // arrays voor de drie geometrieën
     const oPos = [], oNrm = [], oUv = [], oCol = [], oIdx = [], oTrans = [];
     const fPos = [], fNrm = [], fUv = [], fCol = [], fSway = [], fIdx = [];
-    const wPos = [], wIdx = [];
+    const wPos = [], wIdx = [], wEdge = [], wFlow = [];
     const flPos = [], flUv = [], flIdx = [];
     const gPos = [], gNrm = [], gUv = [], gIdx = [];
     const torches = [];
@@ -421,12 +457,31 @@ window.Chunks = (function () {
           const wx = x0 + lx, wz = z0 + lz;
 
           if (id === B.WATER) {
+            // stroomrichting uit het riviergradient (meren ~ 0)
+            const rfc = World.riverFactor(wx + 0.5, wz + 0.5);
+            let flx = 0, flz = 0;
+            if (rfc > 0.05) {
+              const gx = World.riverFactor(wx + 1.5, wz + 0.5) - World.riverFactor(wx - 0.5, wz + 0.5);
+              const gz = World.riverFactor(wx + 0.5, wz + 1.5) - World.riverFactor(wx + 0.5, wz - 0.5);
+              flx = -gz; flz = gx;
+              const l = Math.hypot(flx, flz) || 1;
+              flx = flx / l * rfc; flz = flz / l * rfc;
+            }
+            const edgeCorner = (i, j) => {
+              for (const di of [i - 1, i]) for (const dj of [j - 1, j]) {
+                const bb = get(wx + di, y, wz + dj);
+                if (bb !== B.WATER && G.occludes(bb)) return 1;
+              }
+              return 0;
+            };
             const above = get(wx, y + 1, wz);
             if (above !== B.WATER && G.occludes(above) === false) {
-              // bovenvlak
+              // bovenvlak, met schuim-hoekwaarden
               const base = wPos.length / 3;
               const wy = y + 0.86;
               wPos.push(wx, wy, wz, wx + 1, wy, wz, wx, wy, wz + 1, wx + 1, wy, wz + 1);
+              wEdge.push(edgeCorner(0, 0), edgeCorner(1, 0), edgeCorner(0, 1), edgeCorner(1, 1));
+              wFlow.push(flx, flz, flx, flz, flx, flz, flx, flz);
               wIdx.push(base, base + 2, base + 1, base + 1, base + 2, base + 3);
             }
             // zijvlakken tegen lucht
@@ -437,6 +492,7 @@ window.Chunks = (function () {
                 const base = wPos.length / 3;
                 for (const c of f.corners) {
                   wPos.push(wx + c[0], y + c[1] * 0.86, wz + c[2]);
+                  wEdge.push(1); wFlow.push(flx, flz);
                 }
                 wIdx.push(base, base + 1, base + 2, base + 2, base + 1, base + 3);
               }
@@ -625,7 +681,7 @@ window.Chunks = (function () {
       if (nrm) geo.setAttribute('normal', new THREE.Float32BufferAttribute(nrm, 3));
       if (uv) geo.setAttribute('uv', new THREE.Float32BufferAttribute(uv, 2));
       if (col) geo.setAttribute('color', new THREE.Float32BufferAttribute(col, 3));
-      if (attrs) for (const a of attrs) geo.setAttribute(a.name, new THREE.Float32BufferAttribute(a.data, 1));
+      if (attrs) for (const a of attrs) geo.setAttribute(a.name, new THREE.Float32BufferAttribute(a.data, a.size || 1));
       geo.setIndex(idxArr);
       if (!nrm) geo.computeVertexNormals();
       geo.computeBoundingSphere();
@@ -640,7 +696,9 @@ window.Chunks = (function () {
     if (om) { om.castShadow = true; om.receiveShadow = true; }
     const fm = makeMesh(fPos, fNrm, fUv, fCol, fIdx, foliageMat, [{ name: 'aSway', data: fSway }]);
     if (fm) { fm.receiveShadow = true; }
-    makeMesh(wPos, null, null, null, wIdx, waterMat);
+    const wm = makeMesh(wPos, null, null, null, wIdx, waterMat,
+      [{ name: 'aEdge', data: wEdge, size: 1 }, { name: 'aFlow', data: wFlow, size: 2 }]);
+    if (wm) wm.layers.set(1);            // laag 1: uitgesloten van de reflectie-render
     makeMesh(flPos, null, flUv, null, flIdx, flameMat);
     const gm = makeMesh(gPos, gNrm, gUv, null, gIdx, glassMat);
     if (gm) gm.renderOrder = 1;

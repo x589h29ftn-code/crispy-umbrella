@@ -39,9 +39,12 @@ window.Main = (function () {
       camera.updateProjectionMatrix();
       renderer.setSize(window.innerWidth, window.innerHeight);
       Post.resize();
+      if (reflectRT) sizeReflectRT();
     });
 
     Post.init(renderer, scene, camera);
+    setupReflection();
+    camera.layers.enable(1);      // hoofdcamera ziet ook het water (laag 1)
     UI.init();
 
     // Pointer lock kwijt = pauze; klik op het canvas pakt de lock (weer) op
@@ -69,13 +72,66 @@ window.Main = (function () {
     renderer.setPixelRatio(Math.min((window.devicePixelRatio || 1) * scale, 2.5));
   }
 
+  // ---- planaire waterreflectie ----
+  let reflectCamera, reflectRT, reflectTexMatrix, reflectMirror;
+  let reflectionsOn = true;
+  const WATER_SURF = G.SEA + 0.86;
+  function setupReflection() {
+    reflectCamera = new THREE.PerspectiveCamera();
+    reflectCamera.matrixAutoUpdate = false;
+    reflectCamera.layers.set(0);      // reflectie rendert alles behalve water (laag 1)
+    reflectTexMatrix = new THREE.Matrix4();
+    reflectMirror = new THREE.Matrix4().set(
+      1, 0, 0, 0,
+      0, -1, 0, 2 * WATER_SURF,
+      0, 0, 1, 0,
+      0, 0, 0, 1);
+    sizeReflectRT();
+  }
+  function sizeReflectRT() {
+    const s = new THREE.Vector2();
+    renderer.getDrawingBufferSize(s);
+    const w = Math.max(2, (s.x * 0.5) | 0), h = Math.max(2, (s.y * 0.5) | 0);
+    if (reflectRT) reflectRT.dispose();
+    reflectRT = new THREE.WebGLRenderTarget(w, h, {
+      minFilter: THREE.LinearFilter, magFilter: THREE.LinearFilter, type: THREE.UnsignedByteType, depthBuffer: true,
+    });
+  }
+  const _bias = new THREE.Matrix4().set(0.5, 0, 0, 0.5, 0, 0.5, 0, 0.5, 0, 0, 0.5, 0.5, 0, 0, 0, 1);
+  function renderReflection() {
+    const wu = Chunks.waterUniforms;
+    if (!reflectionsOn || camera.position.y < WATER_SURF + 0.2) { wu.uReflectOn.value = 0; return; }
+    // spiegelcamera opbouwen
+    reflectCamera.matrixWorld.multiplyMatrices(reflectMirror, camera.matrixWorld);
+    reflectCamera.matrixWorldInverse.copy(reflectCamera.matrixWorld).invert();
+    reflectCamera.projectionMatrix.copy(camera.projectionMatrix);
+    reflectCamera.projectionMatrixInverse.copy(camera.projectionMatrixInverse);
+    reflectTexMatrix.multiplyMatrices(_bias, reflectCamera.projectionMatrix);
+    reflectTexMatrix.multiply(reflectCamera.matrixWorldInverse);
+
+    const gl = renderer.getContext();
+    gl.frontFace(gl.CW);          // gespiegelde winding corrigeren
+    const prevTarget = renderer.getRenderTarget();
+    renderer.setRenderTarget(reflectRT);
+    renderer.clear();
+    renderer.render(scene, reflectCamera);
+    renderer.setRenderTarget(prevTarget);
+    gl.frontFace(gl.CCW);
+
+    wu.uReflect.value = reflectRT.texture;
+    wu.uReflectMatrix.value.copy(reflectTexMatrix);
+    wu.uReflectOn.value = 1;
+  }
+
   function applyGraphics() {
     Post.enabled = !!G.settings.postFX;
     Post.bloom = !!G.settings.bloom;
     Post.vignette = !!G.settings.vignette;
     Post.godrays = !!G.settings.godrays;
+    reflectionsOn = !!G.settings.reflections;
     applyPixelRatio();
     Post.resize();
+    if (reflectRT) sizeReflectRT();
   }
   M.applyGraphics = applyGraphics;
 
@@ -273,6 +329,8 @@ window.Main = (function () {
     frames++; fpsTime += dt;
     if (fpsTime >= 0.5) { UI.updateFps(Math.round(frames / fpsTime)); frames = 0; fpsTime = 0; }
 
+    camera.updateMatrixWorld();
+    renderReflection();
     present();
   }
 

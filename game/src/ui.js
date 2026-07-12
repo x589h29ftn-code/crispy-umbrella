@@ -195,9 +195,12 @@ window.UI = (function () {
       $(id).checked = s[key];
       $(id).onchange = () => { s[key] = $(id).checked; G.saveSettings(); if (after) after(); };
     };
+    bindCheck('set-reflections', 'reflections', () => Main.applyGraphics());
     bindCheck('set-postfx', 'postFX', () => Main.applyGraphics());
     bindCheck('set-bloom', 'bloom', () => Main.applyGraphics());
     bindCheck('set-godrays', 'godrays', () => Main.applyGraphics());
+    bindCheck('set-ssao', 'ssao', () => Main.applyGraphics());
+    bindCheck('set-dof', 'dof', () => Main.applyGraphics());
     bindCheck('set-vignette', 'vignette', () => Main.applyGraphics());
     bindCheck('set-fps', 'showFps', () => U.applyFps());
   }

@@ -55,13 +55,14 @@ window.G = (function () {
     dayMinutes: 15, renderDist: 10, fogMul: 1.0, fov: 75,
     musicVol: 0.55, sfxVol: 0.8, shadows: true, clouds: true, seasonDays: 2,
     renderScale: 1.0, postFX: true, bloom: true, vignette: true, godrays: true, showFps: false,
+    reflections: true, ssao: true, dof: false,
   };
 
   // Grafische kwaliteitspresets
   G.QUALITY_PRESETS = {
-    low: { renderScale: 0.75, postFX: false, bloom: false, vignette: false, godrays: false, shadows: false, clouds: false, renderDist: 6 },
-    med: { renderScale: 1.0, postFX: true, bloom: true, vignette: true, godrays: false, shadows: true, clouds: true, renderDist: 8 },
-    high: { renderScale: 1.5, postFX: true, bloom: true, vignette: true, godrays: true, shadows: true, clouds: true, renderDist: 12 },
+    low: { renderScale: 0.75, postFX: false, bloom: false, vignette: false, godrays: false, shadows: false, clouds: false, renderDist: 6, reflections: false, ssao: false, dof: false },
+    med: { renderScale: 1.0, postFX: true, bloom: true, vignette: true, godrays: false, shadows: true, clouds: true, renderDist: 8, reflections: true, ssao: true, dof: false },
+    high: { renderScale: 1.5, postFX: true, bloom: true, vignette: true, godrays: true, shadows: true, clouds: true, renderDist: 12, reflections: true, ssao: true, dof: true },
   };
   G.settings = Object.assign({}, DEFAULTS);
   try {
