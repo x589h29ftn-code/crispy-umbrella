@@ -25,6 +25,7 @@
     },
     "files": [
       "electron-main.cjs",
+      "preload.cjs",
       "index.html",
       "src/**/*",
       "lib/**/*",
