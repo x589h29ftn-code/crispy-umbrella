@@ -550,8 +550,8 @@ window.Chunks = (function () {
 
           if (G.isCross(id)) {
             if (lod) continue;   // verre chunk: geen fijn gras/bloemen
-            if (id === B.TALLGRASS) { grassTint(wx, wz, tint); emitCross(wx, y, wz, Textures.texFor(id, 0), tint, 1, 0.85); }
-            else if (id === B.FERN) { grassTint(wx, wz, tint); tint[0] *= 0.9; tint[2] *= 0.95; emitCross(wx, y, wz, Textures.TI.FERN, tint, 1, 0.9); }
+            if (id === B.TALLGRASS) { grassTint(wx, wz, tint); emitCross(wx, y, wz, Textures.texFor(id, 0), tint, 1.15, 1.0 + Noise.hash2(wx * 5 + 1, wz * 5 - 2) * 0.5); }
+            else if (id === B.FERN) { grassTint(wx, wz, tint); tint[0] *= 0.9; tint[2] *= 0.95; emitCross(wx, y, wz, Textures.TI.FERN, tint, 1.1, 1.0 + Noise.hash2(wx * 3, wz * 3) * 0.35); }
             else if (id === B.CROP) { const mm = C.getMeta(wx, y, wz); const st = mm === 0 ? 4 : mm; emitCross(wx, y, wz, Textures.TI.CROP, [1, 1, 1], 0.6, 0.28 + st * 0.13); }
             else if (id === B.MUSHROOM) { emitCross(wx, y, wz, Textures.TI.MUSHROOM, [1, 1, 1], 0.15, 0.6); }
             else if (id === B.LAVENDER) { emitCross(wx, y, wz, Textures.TI.LAVENDER, [1, 1, 1], 0.6, 1.15); }

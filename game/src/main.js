@@ -6,6 +6,7 @@ window.Main = (function () {
   let lastFrame = 0;
   let autosaveTimer = 0;
   let waterProbeTimer = 0;
+  let highlightBox = null;
   let elapsed = 0;
   let loadingWorld = false;
   let lastSeasonIdx = -1;
@@ -34,6 +35,16 @@ window.Main = (function () {
     scene = new THREE.Scene();
     camera = new THREE.PerspectiveCamera(G.settings.fov, window.innerWidth / window.innerHeight, 0.08, 1400);
     scene.add(camera);
+
+    // blok-selectiekader (dun zwart draadkader om het gerichte blok)
+    {
+      const g = new THREE.BoxGeometry(1.002, 1.002, 1.002);
+      highlightBox = new THREE.LineSegments(new THREE.EdgesGeometry(g),
+        new THREE.LineBasicMaterial({ color: 0x000000, transparent: true, opacity: 0.5, depthTest: true }));
+      highlightBox.visible = false;
+      highlightBox.renderOrder = 2;
+      scene.add(highlightBox);
+    }
 
     window.addEventListener('resize', () => {
       camera.aspect = window.innerWidth / window.innerHeight;
@@ -306,6 +317,14 @@ window.Main = (function () {
     Chunks.update(Player.pos.x, Player.pos.z, 5);
 
     Player.update(dt, elapsed);
+    // blok-selectiekader bijwerken
+    if (highlightBox) {
+      const hit = (!Player.ridingBoat && !Player.ridingTrain && !Player.resting) ? Player.raycast(6) : null;
+      if (hit) {
+        highlightBox.visible = true;
+        highlightBox.position.set(hit.x + 0.5, hit.y + 0.5, hit.z + 0.5);
+      } else highlightBox.visible = false;
+    }
     WaterSim.update(dt);
     Crops.update(dt);
     Fishing.update(dt, Player.pos);

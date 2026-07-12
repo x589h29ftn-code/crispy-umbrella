@@ -125,6 +125,11 @@ Firefox). Lokaal serveren kan met `python3 -m http.server` in deze map.
   groepjes met elkaar staan te kletsen.
 - **Meerijden met de trein** — stap met <kbd>E</kbd> in de langsrijdende
   stoomtrein en geniet van de rit; leg met het rails-blok zelf sporen aan.
+- **Weelderige begroeiing** — dicht, hoog wuivend gras dat de grond bedekt en
+  volle, ronde boomkronen, in shader-stijl.
+- **Blok-selectiekader** — een dun kader licht het blok op waar je naar kijkt.
+- **Bolle stapelwolken & krachtig licht** — helderwitte cumuluswolken, een
+  fellere zon met sappigere kleuren en zachte schaduwen.
 
 ## Besturing
 

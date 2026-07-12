@@ -174,7 +174,7 @@ window.Post = (function () {
         tDiffuse: { value: null }, tBloom: { value: null }, tGod: { value: null },
         tAO: { value: null }, tDepth: { value: null },
         res: { value: new THREE.Vector2() }, sunUV: { value: sunUV }, uFar: { value: 1000 },
-        bloomStr: { value: 0.65 }, godStr: { value: 0.0 }, vig: { value: 0.9 }, sat: { value: 1.08 },
+        bloomStr: { value: 0.65 }, godStr: { value: 0.0 }, vig: { value: 0.9 }, sat: { value: 1.17 },
         fxaaOn: { value: 1 }, flare: { value: 0 }, aoOn: { value: 0 }, dofOn: { value: 0 }, dofRadius: { value: 6.0 }, dofStr: { value: 3.0 },
       },
       vertexShader: VERT,

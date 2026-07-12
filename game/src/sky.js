@@ -103,17 +103,19 @@ window.Sky = (function () {
         }
         float fbm(vec3 p) {
           float s = 0.0, a = 0.5;
-          for (int i = 0; i < 4; i++) { s += vnoise(p) * a; p *= 2.02; a *= 0.5; }
+          for (int i = 0; i < 5; i++) { s += vnoise(p) * a; p *= 2.03; a *= 0.5; }
           return s;
         }
-        // wolkdichtheid op een wereldpositie
+        // wolkdichtheid op een wereldpositie — bolle stapelwolken
         float cloudDensity(vec3 p) {
-          vec3 q = p * 0.006;
-          q.xz += uTime * 0.010;                        // wind
+          vec3 q = p * 0.0052;
+          q.xz += uTime * 0.009;                        // wind
           float base = fbm(q);
-          float d = base - (1.0 - uCloudCover) * 0.55;  // dekkingsdrempel
-          d -= abs(p.y - 118.0) / 100.0;                // zachte verticale afronding
-          return clamp(d * 2.7, 0.0, 1.0);
+          float detail = fbm(q * 3.1 + 11.0);           // erosie voor bollige randen
+          float d = base - (1.0 - uCloudCover) * 0.5;   // dekkingsdrempel
+          d -= detail * 0.10;
+          d -= abs(p.y - 118.0) / 130.0;                // zachte verticale afronding
+          return clamp(d * 5.0, 0.0, 1.0);
         }
 
         void main() {
@@ -174,34 +176,37 @@ window.Sky = (function () {
 
           // volumetrische wolken (raymarch door een horizontale laag)
           if (uCloudsOn > 0.5 && dir.y > 0.02) {
-            float h0 = 92.0, h1 = 145.0;
+            float h0 = 92.0, h1 = 148.0;
             float t0 = max((h0 - uCamPos.y) / dir.y, 0.0);
             float t1 = (h1 - uCamPos.y) / dir.y;
             if (t1 > t0) {
               float T = 1.0;
               vec3 acc = vec3(0.0);
               vec3 sunN = normalize(uSunDir);
-              const int N = 6;
+              vec3 sunTint = mix(vec3(1.02, 1.0, 0.96), uSunColor, 0.5);
+              const int N = 10;
               for (int i = 0; i < N; i++) {
                 float t = mix(t0, t1, (float(i) + 0.5) / float(N));
-                if (t > 900.0) break;
+                if (t > 1100.0) break;
                 vec3 pos = uCamPos + dir * t;
                 float d = cloudDensity(pos);
                 if (d > 0.01) {
-                  // belichting: dichtheid richting de zon geeft schaduw
-                  float ld = cloudDensity(pos + sunN * 9.0);
-                  float lit = clamp(1.0 - ld, 0.25, 1.0);
-                  vec3 lite = mix(uHorizonColor * 0.7, uSunColor, 0.6) * (0.55 + lit);
-                  vec3 shade = mix(vec3(0.32, 0.34, 0.40), lite, lit);
+                  // lichtabsorptie richting de zon → volume + zilveren randen
+                  float ld = cloudDensity(pos + sunN * 7.0) + cloudDensity(pos + sunN * 16.0) * 0.5;
+                  float lit = exp(-ld * 1.6);                          // Beer-Lambert
+                  float edge = clamp(1.0 - d, 0.0, 1.0);               // dunne randen lichten op
+                  vec3 bright = sunTint * (1.15 + edge * 0.5);         // heldere zonzijde
+                  vec3 shadow = mix(vec3(0.42, 0.46, 0.56), vec3(0.62, 0.66, 0.74), edge);
+                  vec3 shade = mix(shadow, bright, lit);
                   shade = mix(shade, vec3(0.10, 0.12, 0.20), uNight * 0.7);
-                  float a = d * 0.55;
+                  float a = smoothstep(0.12, 0.6, d) * 0.95;   // scherpere wolkranden, blauwe gaten
                   acc += T * a * shade;
                   T *= 1.0 - a;
                   if (T < 0.02) break;
                 }
               }
               float cover = 1.0 - T;
-              float horizonFade = smoothstep(0.0, 0.07, dir.y);
+              float horizonFade = smoothstep(0.0, 0.06, dir.y);
               col = mix(col, acc / max(cover, 0.001), cover * horizonFade);
             }
           }
@@ -364,8 +369,8 @@ window.Sky = (function () {
     keyLerp(e, 1, S.uniforms.uTopColor.value);
     keyLerp(e, 2, S.uniforms.uHorizonColor.value);
     keyLerp(e, 3, S.uniforms.uSunColor.value);
-    let sunI = keyLerp(e, 4);
-    let expo = keyLerp(e, 5);
+    let sunI = keyLerp(e, 4) * 1.12;    // fellere zon voor krachtiger licht/schaduw
+    let expo = keyLerp(e, 5) * 1.05;
 
     const wm = S.weatherMod;
     // weer: lucht vergrijzen en licht dempen
@@ -449,8 +454,8 @@ window.Sky = (function () {
     S.uniforms.uNight.value = nightAmt;
     S.uniforms.uRainbow.value = (window.Weather ? Weather.rainbow : 0);
     S.uniforms.uCloudsOn.value = G.settings.clouds ? 1 : 0;
-    // helder standaard: weinig wolken; alleen bij regen/onweer flink bewolkt
-    S.uniforms.uCloudCover.value = Noise.lerp(0.24, 0.85, wm.skyDesat) + wm.hazeAdd * 0.2;
+    // helder standaard: losse bolle stapelwolken; bij regen/onweer flink bewolkt
+    S.uniforms.uCloudCover.value = Noise.lerp(0.42, 0.92, wm.skyDesat) + wm.hazeAdd * 0.2;
 
     // noorderlicht (sterker in de winter), sterrenbeelden en vallende sterren
     const winter = G.season.idx === 3 ? 1 : 0;

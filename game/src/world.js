@@ -600,7 +600,7 @@ window.World = (function () {
       }
     }
     const forest = Noise.fbm2(x * 0.004 + 900.2, z * 0.004 + 41.9, 3);      // bosdichtheid
-    const density = Noise.clamp(0.006 + Noise.smoothstep(-0.15, 0.55, forest) * 0.055, 0, 0.06);
+    const density = Noise.clamp(0.010 + Noise.smoothstep(-0.15, 0.55, forest) * 0.085, 0, 0.095);   // dichtere bossen
     const roll = Noise.hash2(x * 3 + 71, z * 3 - 29);
     if (roll > density) return null;
     const h = W.height(x, z);
@@ -647,12 +647,12 @@ window.World = (function () {
       const th = 6 + Math.floor(size * 4);          // hogere, duidelijk zichtbare stam
       for (let y = 0; y < th; y++) set(x, baseY + y, z, B.LOG, false);
       const cy = baseY + th;
-      const rad = 2 + (size > 0.6 ? 1 : 0);
+      const rad = 3 + (size > 0.6 ? 1 : 0);
       // kroon bovenop de stam (laagste blad ruim boven de grond)
       for (let dy = -1; dy <= 3; dy++) for (let dx = -rad; dx <= rad; dx++) for (let dz = -rad; dz <= rad; dz++) {
         const dd = dx * dx + dz * dz + (dy - 0.5) * (dy - 0.5) * 1.6;
-        if (dd > rad * rad + 1) continue;
-        if (dd > rad * rad - 1 && Noise.hash3(x + dx, cy + dy, z + dz) < 0.4) continue;
+        if (dd > rad * rad + 1.5) continue;
+        if (dd > rad * rad - 1 && Noise.hash3(x + dx, cy + dy, z + dz) < 0.22) continue;
         set(x + dx, cy + dy, z + dz, B.LEAVES, true);
       }
     } else if (type === 'birch') {
@@ -684,11 +684,11 @@ window.World = (function () {
         set(x, baseY + y, z, B.LOG, false);
         if (y > th - 4) { set(x + 1, baseY + y, z, B.LOG, false); set(x, baseY + y, z + 1, B.LOG, false); }
       }
-      const cy = baseY + th, rad = 4;
+      const cy = baseY + th, rad = 5;
       for (let dy = -2; dy <= 4; dy++) for (let dx = -rad; dx <= rad; dx++) for (let dz = -rad; dz <= rad; dz++) {
-        const dd = dx * dx + dz * dz + (dy - 1) * (dy - 1) * 1.5;
+        const dd = dx * dx + dz * dz + (dy - 1) * (dy - 1) * 1.4;
         if (dd > rad * rad + 2) continue;
-        if (dd > rad * rad - 2 && Noise.hash3(x + dx, cy + dy, z + dz) < 0.45) continue;
+        if (dd > rad * rad - 2 && Noise.hash3(x + dx, cy + dy, z + dz) < 0.25) continue;
         set(x + dx, cy + dy, z + dz, B.LEAVES, true);
       }
     } else if (type === 'willow') {
@@ -943,7 +943,7 @@ window.World = (function () {
       const meadow = Noise.fbm2(wx * 0.012 + 55.5, wz * 0.012 - 88.8, 2);
       const forest = Noise.fbm2(wx * 0.004 + 900.2, wz * 0.004 + 41.9, 3);
       const roll = Noise.hash2(wx * 11 + 2, wz * 11 + 6);
-      const grassP = 0.18 + Noise.smoothstep(-0.3, 0.6, meadow) * 0.52;   // dichter gras
+      const grassP = 0.42 + Noise.smoothstep(-0.3, 0.6, meadow) * 0.46;   // weelderig, bijna gesloten grasdek
       if (roll < grassP) {
         // varens in het bos, elders hoog gras
         blocks[idx(lx, h + 1, lz)] =
