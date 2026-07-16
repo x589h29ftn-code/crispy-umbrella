@@ -1,0 +1,25 @@
+/** Mapping van fontId naar bestandsnaam in public/fonts/. */
+export const FONT_FILES: Record<string, string> = {
+  greatVibes: 'GreatVibes-Regular.ttf',
+  pinyonScript: 'PinyonScript-Regular.ttf',
+  mrsSaintDelafield: 'MrsSaintDelafield-Regular.ttf',
+  tangerine: 'Tangerine-Regular.ttf',
+  dancingScript: 'DancingScript.ttf',
+  allura: 'Allura-Regular.ttf',
+  rougeScript: 'RougeScript-Regular.ttf',
+  petitFormalScript: 'PetitFormalScript-Regular.ttf',
+  monsieurLaDoulaise: 'MonsieurLaDoulaise-Regular.ttf',
+  herrVonMuellerhoff: 'HerrVonMuellerhoff-Regular.ttf',
+  arizonia: 'Arizonia-Regular.ttf',
+  yellowtail: 'Yellowtail-Regular.ttf',
+  sacramento: 'Sacramento-Regular.ttf',
+  norican: 'Norican-Regular.ttf',
+  kaushanScript: 'KaushanScript-Regular.ttf',
+  qwigley: 'Qwigley-Regular.ttf',
+  drSugiyama: 'DrSugiyama-Regular.ttf',
+  zeyada: 'Zeyada.ttf',
+  homemadeApple: 'HomemadeApple-Regular.ttf',
+  laBelleAurore: 'LaBelleAurore.ttf',
+  meddon: 'Meddon.ttf',
+  alexBrush: 'AlexBrush-Regular.ttf'
+}
