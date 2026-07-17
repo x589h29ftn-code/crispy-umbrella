@@ -3,6 +3,7 @@ import { FLOURISH_GENERATORS } from './flourishes'
 import { getLoadedFont } from './fontManager'
 import { layoutText, type BBox } from './layout'
 import { mulberry32 } from './random'
+import { renderStrokeSignature } from './stroke'
 
 export const DEFAULT_PARAMS: GenerationParams = {
   slantDeg: 8,
@@ -37,6 +38,9 @@ export function renderSignature(
   text: string,
   seed: number
 ): SignatureRender | null {
+  if (style.engine === 'stroke') {
+    return renderStrokeSignature(style, params, applyCase(text, style.caseTransform), seed)
+  }
   const font = getLoadedFont(style.fontId)
   if (!font) return null
 

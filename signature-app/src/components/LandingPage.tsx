@@ -5,9 +5,9 @@ import { hashString } from '../engine/random'
 import { SignaturePreview } from './SignaturePreview'
 
 const DEMOS: { styleId: string; text: string }[] = [
+  { styleId: 'signatuur-2', text: 'Bankey F.' },
   { styleId: 'elegant-1', text: 'H. Ramaekers' },
-  { styleId: 'zakelijk-3', text: 'T. Fenlon' },
-  { styleId: 'abstract-1', text: 'Daisy Olivier' }
+  { styleId: 'signatuur-4', text: 'Tamsyn' }
 ]
 
 export function LandingPage() {

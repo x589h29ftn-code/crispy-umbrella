@@ -1,5 +1,7 @@
 import opentype from 'opentype.js'
 import { FONT_FILES } from '../data/fonts'
+import type { SignatureStyle } from '../types'
+import { ensureStrokeFont, strokeFontLoaded } from './stroke'
 
 const cache = new Map<string, Promise<opentype.Font>>()
 
@@ -36,4 +38,14 @@ export async function ensureFont(fontId: string): Promise<opentype.Font> {
 
 export function getLoadedFont(fontId: string): opentype.Font | undefined {
   return resolved.get(fontId)
+}
+
+/** Laadt de assets die een stijl nodig heeft: een TTF (font-engine) of de
+ *  Hershey-penlijndata (stroke-engine). */
+export function ensureStyleAssets(style: SignatureStyle): Promise<unknown> {
+  return style.engine === 'stroke' ? ensureStrokeFont() : ensureFont(style.fontId)
+}
+
+export function styleAssetsReady(style: SignatureStyle): boolean {
+  return style.engine === 'stroke' ? strokeFontLoaded() : !!getLoadedFont(style.fontId)
 }

@@ -2,7 +2,7 @@
 // naar public/fonts/. Draai met: npm run fetch-fonts
 // De fonts worden daarna gecommit zodat de app volledig offline werkt.
 import { execFileSync } from 'node:child_process'
-import { mkdirSync, statSync, existsSync } from 'node:fs'
+import { mkdirSync, statSync, existsSync, readFileSync, writeFileSync, rmSync } from 'node:fs'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
@@ -75,6 +75,22 @@ for (const [dir, candidates] of FONTS) {
     failed.push(dir)
     console.warn(`✗ ${dir}: geen kandidaat gevonden`)
   }
+}
+
+// Hershey Script single-stroke fonts (penlijn-letterdata voor de stroke-engine).
+// Bron: techninja/hersheytextjs (MIT); de Hershey-fonts zelf zijn vrij te
+// gebruiken met bronvermelding. We bewaren alleen de drie script-varianten.
+try {
+  const tmp = join(outDir, 'hersheytext.tmp.json')
+  download('https://raw.githubusercontent.com/techninja/hersheytextjs/master/hersheytext.min.json', tmp, 100_000)
+  const all = JSON.parse(readFileSync(tmp, 'utf8'))
+  const keep = {}
+  for (const key of ['scripts', 'cursive', 'scriptc']) keep[key] = all[key]
+  writeFileSync(join(outDir, 'hershey-script.json'), JSON.stringify(keep))
+  rmSync(tmp)
+  console.log('✓ hershey-script.json')
+} catch (err) {
+  console.warn(`✗ hershey-script.json kon niet worden gemaakt: ${err.message}`)
 }
 
 // Licentieteksten (verplicht meeleveren: SIL OFL voor de meeste fonts,

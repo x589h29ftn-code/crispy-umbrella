@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import type { GeneratedSignature, GenerationParams, SignatureStyle } from '../../types'
 import { renderSignature } from '../../engine/compose'
-import { ensureFont } from '../../engine/fontManager'
+import { ensureStyleAssets } from '../../engine/fontManager'
 import {
   clipboardSupported,
   copyPng,
@@ -22,7 +22,7 @@ export function ExportBar({ signature, style, params, onPractice, onRemove }: Pr
   const [copied, setCopied] = useState(false)
 
   const withRender = async (fn: (render: NonNullable<ReturnType<typeof renderSignature>>) => void | Promise<void>) => {
-    await ensureFont(style.fontId)
+    await ensureStyleAssets(style)
     const render = renderSignature(style, params, signature.text, signature.seed)
     if (render) await fn(render)
   }

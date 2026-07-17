@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react'
 import type { GenerationParams, SignatureStyle } from '../types'
-import { ensureFont, getLoadedFont } from '../engine/fontManager'
+import { ensureStyleAssets, styleAssetsReady } from '../engine/fontManager'
 import { renderSignature } from '../engine/compose'
 
 interface Props {
@@ -15,23 +15,24 @@ interface Props {
 
 /** Rendert één handtekening als SVG; laadt het font on-demand met skeleton. */
 export function SignaturePreview({ style, params, text, seed, mode = 'solid', className }: Props) {
-  const [fontReady, setFontReady] = useState(() => !!getLoadedFont(style.fontId))
+  const [fontReady, setFontReady] = useState(() => styleAssetsReady(style))
 
   useEffect(() => {
-    if (getLoadedFont(style.fontId)) {
+    if (styleAssetsReady(style)) {
       setFontReady(true)
       return
     }
     let live = true
     setFontReady(false)
-    ensureFont(style.fontId).then(
+    ensureStyleAssets(style).then(
       () => live && setFontReady(true),
       () => undefined
     )
     return () => {
       live = false
     }
-  }, [style.fontId])
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [style.fontId, style.engine])
 
   const render = useMemo(
     () => (fontReady ? renderSignature(style, params, text, seed) : null),

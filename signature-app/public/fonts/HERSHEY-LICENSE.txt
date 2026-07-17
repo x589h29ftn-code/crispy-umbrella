@@ -1,0 +1,8 @@
+hershey-script.json bevat drie single-stroke lettertypen uit de Hershey-fontcollectie
+(Script 1-stroke, Script 1-stroke alt, Script medium), zoals gedigitaliseerd in het
+project "hersheytextjs" van James Todd (techninja), uitgebracht onder de MIT-licentie:
+https://github.com/techninja/hersheytextjs
+
+De oorspronkelijke Hershey-fonts zijn gemaakt door dr. A.V. Hershey bij het
+US Naval Weapons Laboratory en zijn vrij te gebruiken; de gebruiksvoorwaarden
+vragen alleen om bronvermelding van de oorsprong van de letterdata.

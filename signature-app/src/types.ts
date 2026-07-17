@@ -51,6 +51,16 @@ export interface SignatureStyle {
   /** Vaste naamvorm op basis van de achternaam (zoals "T. Baily", "Bankey F." of
    *  alleen "Tamsyn"); overschrijft de variant-keuze uit de wizard. */
   nameForm?: 'initialSurname' | 'surnameInitial' | 'surnameOnly'
+  /** 'stroke' rendert als één doorlopende penlijn (Hershey-script) met
+   *  pendynamiek i.p.v. gevulde font-glyphs. Default: 'font'. */
+  engine?: 'font' | 'stroke'
+  strokeFontId?: 'scripts' | 'cursive' | 'scriptc'
+  /** Basis-pendikte t.o.v. fontSize (alleen stroke-engine). */
+  penWidthEm?: number
+  /** 0..1: letters krimpen richting het einde, zoals een echte handtekening. */
+  taper?: number
+  /** 0..1: mate waarin tussenletters degenereren tot golfjes (onleesbaar midden). */
+  scribble?: number
   strokeWidthEm: number
   baselineDriftEm: number
   flourishes: FlourishSpec[]

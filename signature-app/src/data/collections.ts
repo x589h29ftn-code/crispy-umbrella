@@ -137,10 +137,11 @@ export const STYLES: SignatureStyle[] = [
     legibilityTag: 'abstract', formalityTag: 2
   },
 
-  // ─── Collectie 7: Signatuur (echte handtekening-vormen op achternaam) ───
+  // ─── Collectie 7: Signatuur (echte penlijn-handtekeningen, stroke-engine) ───
   {
     id: 'signatuur-1', collectionId: 'signatuur', fontId: 'mrsSaintDelafield', label: 'Voorletter + naam',
-    baseSlantDeg: 12, firstLetterScale: 1.55, letterSpacingEm: -0.005, caseTransform: 'none',
+    engine: 'stroke', strokeFontId: 'scripts', penWidthEm: 0.035, taper: 0.8, scribble: 0.25,
+    baseSlantDeg: 14, firstLetterScale: 1.5, letterSpacingEm: 0, caseTransform: 'none',
     nameForm: 'initialSurname',
     strokeWidthEm: 0.014, baselineDriftEm: 0.02,
     flourishes: [{ kind: 'strike', probability: 0.9, intensity: 0.95 }, { kind: 'tail', probability: 0.5, intensity: 0.7 }],
@@ -148,7 +149,8 @@ export const STYLES: SignatureStyle[] = [
   },
   {
     id: 'signatuur-2', collectionId: 'signatuur', fontId: 'monsieurLaDoulaise', label: 'Naam + voorletter',
-    baseSlantDeg: 8, firstLetterScale: 1.45, letterSpacingEm: -0.01, caseTransform: 'none',
+    engine: 'stroke', strokeFontId: 'scriptc', penWidthEm: 0.03, taper: 0.85, scribble: 0.5,
+    baseSlantDeg: 8, firstLetterScale: 1.45, letterSpacingEm: 0, caseTransform: 'none',
     nameForm: 'surnameInitial',
     strokeWidthEm: 0.012, baselineDriftEm: 0.015,
     flourishes: [{ kind: 'strike', probability: 0.95, intensity: 1 }],
@@ -156,7 +158,8 @@ export const STYLES: SignatureStyle[] = [
   },
   {
     id: 'signatuur-3', collectionId: 'signatuur', fontId: 'herrVonMuellerhoff', label: 'Grote beginkrul',
-    baseSlantDeg: 6, firstLetterScale: 1.7, letterSpacingEm: -0.005, caseTransform: 'none',
+    engine: 'stroke', strokeFontId: 'cursive', penWidthEm: 0.032, taper: 0.8, scribble: 0.6,
+    baseSlantDeg: 6, firstLetterScale: 1.8, letterSpacingEm: 0, caseTransform: 'none',
     nameForm: 'surnameInitial',
     strokeWidthEm: 0.01, baselineDriftEm: 0.018,
     flourishes: [{ kind: 'leadIn', probability: 0.85, intensity: 0.9 }, { kind: 'tail', probability: 0.7, intensity: 0.8 }],
@@ -164,7 +167,8 @@ export const STYLES: SignatureStyle[] = [
   },
   {
     id: 'signatuur-4', collectionId: 'signatuur', fontId: 'drSugiyama', label: 'Alleen achternaam',
-    baseSlantDeg: 12, firstLetterScale: 1.5, letterSpacingEm: 0, caseTransform: 'none',
+    engine: 'stroke', strokeFontId: 'scripts', penWidthEm: 0.04, taper: 0.75, scribble: 0.75,
+    baseSlantDeg: 14, firstLetterScale: 1.55, letterSpacingEm: 0, caseTransform: 'none',
     nameForm: 'surnameOnly',
     strokeWidthEm: 0.016, baselineDriftEm: 0.02,
     flourishes: [{ kind: 'strike', probability: 0.9, intensity: 0.95 }, { kind: 'tail', probability: 0.6, intensity: 0.9 }],
