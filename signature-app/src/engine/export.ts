@@ -20,12 +20,12 @@ export function toSvgString(render: SignatureRender, ink = INK, background?: str
   return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="${x} ${y} ${w} ${h}" width="${Math.round(w)}" height="${Math.round(h)}">${bg}${paths}</svg>`
 }
 
-/** Rastert de SVG naar PNG via een canvas (3× voor scherpte). */
+/** Rastert de SVG naar PNG via een canvas (4× voor scherpte). */
 export async function toPngBlob(
   render: SignatureRender,
   opts: { background?: string; scale?: number } = {}
 ): Promise<Blob> {
-  const scale = opts.scale ?? 3
+  const scale = opts.scale ?? 4
   const svg = toSvgString(render, INK, opts.background)
   const url = URL.createObjectURL(new Blob([svg], { type: 'image/svg+xml' }))
   try {

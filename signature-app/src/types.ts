@@ -91,8 +91,19 @@ export interface RenderPath {
   strokeWidth?: number
 }
 
+/** Eén logische tekenstap (voor het oefenblad): wat je in deze beweging
+ *  tekent, met het punt waar de pen neerkomt en de beginrichting. */
+export interface SignatureStep {
+  label: string
+  paths: RenderPath[]
+  start?: [number, number]
+  dir?: [number, number]
+}
+
 /** Puur-data-resultaat van de engine; gedeeld door preview én export. */
 export interface SignatureRender {
   paths: RenderPath[]
   viewBox: { x: number; y: number; w: number; h: number }
+  /** Tekenstappen in schrijfvolgorde; cumulatief = het volledige beeld. */
+  steps?: SignatureStep[]
 }

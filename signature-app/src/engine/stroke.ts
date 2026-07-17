@@ -1,5 +1,6 @@
-import type { GenerationParams, SignatureRender, SignatureStyle } from '../types'
+import type { GenerationParams, SignatureRender, SignatureStep, SignatureStyle } from '../types'
 import { mulberry32 } from './random'
+import { bezierSegments, fmt, resampleSmooth, type Pt } from './geometry'
 
 /**
  * Penstreek-engine: rendert een naam als één doorlopende penlijn op basis van
@@ -13,8 +14,6 @@ import { mulberry32 } from './random'
  * in-/uitloopstreek op de basislijn, waardoor ze aaneengesloten geschreven
  * kunnen worden.
  */
-
-type Pt = [number, number]
 
 interface HersheyChar {
   d: string
@@ -95,34 +94,10 @@ function glyphAdvance(fontId: string, char: string): number {
   return font.chars[idx].o
 }
 
-/** Catmull-Rom-hersampling van een polyline naar een dichte, vloeiende puntenreeks. */
-function smoothResample(pts: Pt[], steps = 8): Pt[] {
-  if (pts.length < 3) return pts.slice()
-  const out: Pt[] = [pts[0]]
-  for (let i = 0; i < pts.length - 1; i++) {
-    const p0 = pts[Math.max(0, i - 1)]
-    const p1 = pts[i]
-    const p2 = pts[i + 1]
-    const p3 = pts[Math.min(pts.length - 1, i + 2)]
-    for (let s = 1; s <= steps; s++) {
-      const t = s / steps
-      const t2 = t * t
-      const t3 = t2 * t
-      out.push([
-        0.5 * (2 * p1[0] + (-p0[0] + p2[0]) * t + (2 * p0[0] - 5 * p1[0] + 4 * p2[0] - p3[0]) * t2 + (-p0[0] + 3 * p1[0] - 3 * p2[0] + p3[0]) * t3),
-        0.5 * (2 * p1[1] + (-p0[1] + p2[1]) * t + (2 * p0[1] - 5 * p1[1] + 4 * p2[1] - p3[1]) * t2 + (-p0[1] + 3 * p1[1] - 3 * p2[1] + p3[1]) * t3)
-      ])
-    }
-  }
-  return out
-}
-
-const fmt = (n: number) => Math.round(n * 100) / 100
-
 /**
- * Bouwt van een centerline een gevulde pen-omtrek: per punt een breedte
- * (dik op neerhalen, dun op verbindingsstreken, uitlopend aan de einden)
- * en offset langs de normalen aan beide zijden.
+ * Bouwt van een centerline een gevulde pen-omtrek als vloeiend Bézier-pad:
+ * per punt een breedte (dik op neerhalen, dun op verbindingsstreken,
+ * spits uitlopend aan de einden) en offset langs de normalen.
  */
 function penOutline(center: Pt[], baseWidth: number, taperLen: number): string {
   const pts: Pt[] = []
@@ -152,19 +127,25 @@ function penOutline(center: Pt[], baseWidth: number, taperLen: number): string {
     // Pendynamiek: neerhalen (ty > 0, y wijst omlaag) zijn dik, ophalen dun
     const down = Math.max(0, ty)
     let w = baseWidth * (0.45 + 0.55 * down)
-    // Eind-taper aan beide kanten van de streek
+    // Spitse einden aan beide kanten van de streek
     const edge = Math.min(cum[i], total - cum[i])
-    if (edge < taperLen) w *= Math.max(0.12, edge / taperLen)
+    if (edge < taperLen) w *= Math.max(0.08, edge / taperLen)
     const nx = -ty * (w / 2)
     const ny = tx * (w / 2)
     left.push([pts[i][0] + nx, pts[i][1] + ny])
     right.push([pts[i][0] - nx, pts[i][1] - ny])
   }
 
-  let d = `M${fmt(left[0][0])} ${fmt(left[0][1])}`
-  for (let i = 1; i < left.length; i++) d += ` L${fmt(left[i][0])} ${fmt(left[i][1])}`
-  for (let i = right.length - 1; i >= 0; i--) d += ` L${fmt(right[i][0])} ${fmt(right[i][1])}`
-  return d + ' Z'
+  // Vloeiende Bézier-contour: heen langs links, terug langs rechts.
+  // De einden lopen spits toe, dus een rechte verbinding is onzichtbaar.
+  const rightBack = right.slice().reverse()
+  return (
+    `M${fmt(left[0][0])} ${fmt(left[0][1])}` +
+    bezierSegments(left) +
+    ` L${fmt(rightBack[0][0])} ${fmt(rightBack[0][1])}` +
+    bezierSegments(rightBack) +
+    ' Z'
+  )
 }
 
 interface LetterPlan {
@@ -202,6 +183,13 @@ function scribbleWave(advance: number, rng: () => number): Pt[] {
   return pts
 }
 
+/** Eén penstreek met betekenis, in schrijfvolgorde. */
+interface StrokeRec {
+  pts: Pt[]
+  kind: 'capital' | 'run' | 'mark' | 'flourish'
+  text?: string
+}
+
 export function renderStrokeSignature(
   style: SignatureStyle,
   params: GenerationParams,
@@ -227,16 +215,20 @@ export function renderStrokeSignature(
   const plans = planLetters(text)
   const letterCount = plans.filter((p) => p.char !== ' ').length
 
-  // Eén "lopende" centerline per aaneengeschreven stuk; kapitalen en losse
-  // segmenten (t-streepjes, punten) worden aparte streken.
-  const strokes: Pt[][] = []
+  // Hoofdstreken in schrijfvolgorde; punten/dwarsstreepjes en zwierstreken
+  // komen daarna (zoals je ook echt schrijft).
+  const mains: StrokeRec[] = []
+  const marks: StrokeRec[] = []
+  const flourishStrokes: StrokeRec[] = []
   let running: Pt[] = []
+  let runText = ''
   let cursor = 0
   let letterIdx = 0
 
   const flush = () => {
-    if (running.length > 1) strokes.push(running)
+    if (running.length > 1) mains.push({ pts: running, kind: 'run', text: runText })
     running = []
+    runText = ''
   }
 
   for (const plan of plans) {
@@ -263,20 +255,25 @@ export function renderStrokeSignature(
     if (isLower && scribbleAmount > 0 && !plan.isWordStart && !plan.isWordEnd && rng() < scribbleAmount) {
       // Degeneratie: golfjes in plaats van de letter, blijft verbonden
       for (const p of scribbleWave(advanceUnits, rng)) running.push(place(p))
+      runText += char
     } else {
       const segs = glyphSegments(fontId, char)
       if (segs && segs.length > 0) {
         const main = segs.reduce((a, b) => (b.length > a.length ? b : a))
         if (isLower) {
           for (const p of main) running.push(place(p))
+          runText += char
+          for (const seg of segs) {
+            if (seg !== main && seg.length > 1) marks.push({ pts: seg.map(place), kind: 'mark' })
+          }
         } else {
           // Kapitaal of leesteken: losse streken (pen even van het papier)
           flush()
-          for (const seg of segs) strokes.push(seg.map(place))
-        }
-        if (isLower) {
-          for (const seg of segs) {
-            if (seg !== main && seg.length > 1) strokes.push(seg.map(place))
+          const placed = segs.map((seg) => seg.map(place))
+          if (isUpper) {
+            for (const seg of placed) mains.push({ pts: seg, kind: 'capital', text: char })
+          } else {
+            for (const seg of placed) marks.push({ pts: seg, kind: 'mark' })
           }
         }
       }
@@ -303,8 +300,8 @@ export function renderStrokeSignature(
 
   // Bbox van de hoofdstreken voor strike/underline/leadIn
   let x1 = Infinity, y1 = Infinity, x2 = -Infinity, y2 = -Infinity
-  for (const s of strokes) {
-    for (const p of s) {
+  for (const s of [...mains, ...marks]) {
+    for (const p of s.pts) {
       if (p[0] < x1) x1 = p[0]
       if (p[0] > x2) x2 = p[0]
       if (p[1] < y1) y1 = p[1]
@@ -316,67 +313,106 @@ export function renderStrokeSignature(
 
   const strikeSpec = flourishWanted.get('strike')
   const underlineSpec = flourishWanted.get('underline')
-  const anchor: Pt = endPoint ?? [x2, (y1 + y2) / 2]
+  const lastMain = mains[mains.length - 1]
+  const anchor: Pt = lastMain ? lastMain.pts[lastMain.pts.length - 1] : [x2, (y1 + y2) / 2]
   if (strikeSpec && rng() < strikeSpec.probability * (0.35 + params.flourishIntensity)) {
     // Lange doorhaal-streek die begint bij het einde van de naam en over de
     // hele naam terugzwiept (Bankey F./Tamsyn-look)
     const inten = strikeSpec.intensity * (0.5 + params.flourishIntensity * 0.7)
     const yMid = y1 + (y2 - y1) * (0.32 + rng() * 0.12)
-    strokes.push([
-      [anchor[0] + unit * 2, anchor[1] - unit * 2],
-      [x2 + w * (0.12 + inten * 0.18), yMid - unit * (1 + rng() * 2)],
-      [x1 + w * 0.45, yMid + unit * (rng() - 0.5) * 2],
-      [x1 - w * (0.1 + inten * 0.2), yMid + unit * (1.5 + rng() * 1.5)]
-    ])
+    flourishStrokes.push({
+      kind: 'flourish',
+      pts: [
+        [anchor[0] + unit * 2, anchor[1] - unit * 2],
+        [x2 + w * (0.12 + inten * 0.18), yMid - unit * (1 + rng() * 2)],
+        [x1 + w * 0.45, yMid + unit * (rng() - 0.5) * 2],
+        [x1 - w * (0.1 + inten * 0.2), yMid + unit * (1.5 + rng() * 1.5)]
+      ]
+    })
   } else if (underlineSpec && params.underlineBias > 0 && rng() < underlineSpec.probability * (0.35 + params.flourishIntensity) * params.underlineBias) {
     const yLine = y2 + unit * (2 + rng() * 1.5)
-    strokes.push([
-      [anchor[0] + unit, anchor[1]],
-      [x2 + w * 0.08, yLine - unit],
-      [x1 + w * 0.4, yLine + unit * 1.2],
-      [x1 - w * 0.08, yLine]
-    ])
+    flourishStrokes.push({
+      kind: 'flourish',
+      pts: [
+        [anchor[0] + unit, anchor[1]],
+        [x2 + w * 0.08, yLine - unit],
+        [x1 + w * 0.4, yLine + unit * 1.2],
+        [x1 - w * 0.08, yLine]
+      ]
+    })
   }
 
   const leadSpec = flourishWanted.get('leadIn')
   if (leadSpec && rng() < leadSpec.probability * (0.35 + params.flourishIntensity)) {
-    strokes.push([
-      [x1 - w * 0.14, y2 + unit * 2],
-      [x1 - w * 0.05, (y1 + y2) / 2],
-      [x1 + unit * 2, y1 + (y2 - y1) * 0.4]
-    ])
+    flourishStrokes.push({
+      kind: 'flourish',
+      pts: [
+        [x1 - w * 0.14, y2 + unit * 2],
+        [x1 - w * 0.05, (y1 + y2) / 2],
+        [x1 + unit * 2, y1 + (y2 - y1) * 0.4]
+      ]
+    })
   }
 
-  // ── Centerlines → vloeiende pen-omtrekken ──
+  const allStrokes = [...mains, ...marks, ...flourishStrokes]
+
+  // ── Centerlines → vloeiende pen-omtrekken (Bézier, resolutie-onafhankelijk) ──
   const penWidth = (style.penWidthEm ?? 0.035) * fontSize * params.strokeScale
-  const parts: string[] = []
-  for (const s of strokes) {
+  const sampleStep = fontSize / 30
+  const outlineOf = (rec: StrokeRec): string => {
     let len = 0
-    for (let i = 1; i < s.length; i++) len += Math.hypot(s[i][0] - s[i - 1][0], s[i][1] - s[i - 1][1])
-    if (len < penWidth * 2.5) {
-      // Te kort voor een streek (bv. de punt na een voorletter): teken een inktpunt
-      const cx = s.reduce((a, p) => a + p[0], 0) / s.length
-      const cy = s.reduce((a, p) => a + p[1], 0) / s.length
-      const r = penWidth * 0.65
-      parts.push(
-        `M${fmt(cx - r)} ${fmt(cy)} A${fmt(r)} ${fmt(r)} 0 1 0 ${fmt(cx + r)} ${fmt(cy)} A${fmt(r)} ${fmt(r)} 0 1 0 ${fmt(cx - r)} ${fmt(cy)} Z`
-      )
-      continue
+    for (let i = 1; i < rec.pts.length; i++) {
+      len += Math.hypot(rec.pts[i][0] - rec.pts[i - 1][0], rec.pts[i][1] - rec.pts[i - 1][1])
     }
-    const dense = smoothResample(s)
-    const outline = penOutline(dense, penWidth, fontSize * 0.12)
-    if (outline) parts.push(outline)
+    if (len < penWidth * 2.5) {
+      // Te kort voor een streek (bv. de punt na een voorletter): een inktpunt
+      const cx = rec.pts.reduce((a, p) => a + p[0], 0) / rec.pts.length
+      const cy = rec.pts.reduce((a, p) => a + p[1], 0) / rec.pts.length
+      const r = penWidth * 0.65
+      return `M${fmt(cx - r)} ${fmt(cy)} A${fmt(r)} ${fmt(r)} 0 1 0 ${fmt(cx + r)} ${fmt(cy)} A${fmt(r)} ${fmt(r)} 0 1 0 ${fmt(cx - r)} ${fmt(cy)} Z`
+    }
+    return penOutline(resampleSmooth(rec.pts, sampleStep), penWidth, fontSize * 0.12)
   }
 
-  const render: SignatureRender = {
-    paths: [{ d: parts.join(' '), fill: 'currentColor' }],
-    viewBox: { x: 0, y: 0, w: 1, h: 1 }
+  const outlines = allStrokes.map((rec) => ({ rec, d: outlineOf(rec) })).filter((o) => o.d)
+
+  // ── Tekenstappen voor het oefenblad (in schrijfvolgorde, gegroepeerd) ──
+  const steps: SignatureStep[] = []
+  const pushStep = (label: string, group: typeof outlines) => {
+    if (!group.length) return
+    const first = group[0].rec.pts
+    const dir: Pt = first.length > 1 ? [first[1][0] - first[0][0], first[1][1] - first[0][1]] : [1, 0]
+    steps.push({
+      label,
+      paths: [{ d: group.map((g) => g.d).join(' '), fill: 'currentColor' }],
+      start: [first[0][0], first[0][1]],
+      dir
+    })
+  }
+  let i = 0
+  while (i < outlines.length) {
+    const { rec } = outlines[i]
+    if (rec.kind === 'capital') {
+      const group = []
+      while (i < outlines.length && outlines[i].rec.kind === 'capital' && outlines[i].rec.text === rec.text) group.push(outlines[i++])
+      pushStep(`Zet de hoofdletter ${rec.text ?? ''}`.trim(), group)
+    } else if (rec.kind === 'run') {
+      pushStep(`Schrijf "${rec.text ?? ''}" in één vloeiende beweging`, [outlines[i++]])
+    } else if (rec.kind === 'mark') {
+      const group = []
+      while (i < outlines.length && outlines[i].rec.kind === 'mark') group.push(outlines[i++])
+      pushStep('Zet de puntjes en dwarsstreepjes', group)
+    } else {
+      const group = []
+      while (i < outlines.length && outlines[i].rec.kind === 'flourish') group.push(outlines[i++])
+      pushStep('Sluit af met de zwierstreek', group)
+    }
   }
 
   // Werkelijke grenzen inclusief flourishes + marge
   let bx1 = Infinity, by1 = Infinity, bx2 = -Infinity, by2 = -Infinity
-  for (const s of strokes) {
-    for (const p of s) {
+  for (const s of allStrokes) {
+    for (const p of s.pts) {
       if (p[0] < bx1) bx1 = p[0]
       if (p[0] > bx2) bx2 = p[0]
       if (p[1] < by1) by1 = p[1]
@@ -384,6 +420,9 @@ export function renderStrokeSignature(
     }
   }
   const m = fontSize * 0.14
-  render.viewBox = { x: bx1 - m, y: by1 - m, w: bx2 - bx1 + m * 2, h: by2 - by1 + m * 2 }
-  return render
+  return {
+    paths: [{ d: outlines.map((o) => o.d).join(' '), fill: 'currentColor' }],
+    viewBox: { x: bx1 - m, y: by1 - m, w: bx2 - bx1 + m * 2, h: by2 - by1 + m * 2 },
+    steps
+  }
 }

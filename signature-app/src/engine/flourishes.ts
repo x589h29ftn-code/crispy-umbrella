@@ -1,26 +1,6 @@
 import type { FlourishKind } from '../types'
 import type { BBox } from './layout'
-
-const fmt = (n: number) => Math.round(n * 100) / 100
-
-/** Catmull-Rom door de punten → vloeiende cubic-Bézier-paddata. */
-function smoothPath(points: [number, number][]): string {
-  if (points.length < 2) return ''
-  const p = points
-  let d = `M${fmt(p[0][0])} ${fmt(p[0][1])}`
-  for (let i = 0; i < p.length - 1; i++) {
-    const p0 = p[Math.max(0, i - 1)]
-    const p1 = p[i]
-    const p2 = p[i + 1]
-    const p3 = p[Math.min(p.length - 1, i + 2)]
-    const c1x = p1[0] + (p2[0] - p0[0]) / 6
-    const c1y = p1[1] + (p2[1] - p0[1]) / 6
-    const c2x = p2[0] - (p3[0] - p1[0]) / 6
-    const c2y = p2[1] - (p3[1] - p1[1]) / 6
-    d += ` C${fmt(c1x)} ${fmt(c1y)} ${fmt(c2x)} ${fmt(c2y)} ${fmt(p2[0])} ${fmt(p2[1])}`
-  }
-  return d
-}
+import { smoothPathThrough as smoothPath } from './geometry'
 
 export interface FlourishInput {
   bbox: BBox

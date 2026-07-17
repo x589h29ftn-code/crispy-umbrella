@@ -1,4 +1,4 @@
-import type { GenerationParams, SignatureRender, SignatureStyle } from '../types'
+import type { GenerationParams, SignatureRender, SignatureStep, SignatureStyle } from '../types'
 import { FLOURISH_GENERATORS } from './flourishes'
 import { getLoadedFont } from './fontManager'
 import { layoutText, type BBox } from './layout'
@@ -50,7 +50,7 @@ export function renderSignature(
 
   // Stijl en gebruiker gemengd: de stijl geeft de basis, de antwoorden sturen bij.
   const slantDeg = style.baseSlantDeg + 0.6 * params.slantDeg
-  const { d, bbox } = layoutText(
+  const { d, bbox, glyphs } = layoutText(
     font,
     displayText,
     {
@@ -70,6 +70,7 @@ export function renderSignature(
   ]
 
   const flourishWidth = Math.max(inkWidth, fontSize * 0.014 * params.strokeScale)
+  const flourishPaths: SignatureRender['paths'] = []
   let usedStrikeOrEllipse = false
   for (const spec of style.flourishes) {
     let probability = spec.probability * (0.35 + params.flourishIntensity)
@@ -80,11 +81,39 @@ export function renderSignature(
 
     const intensity = Math.min(1, spec.intensity * (0.5 + params.flourishIntensity * 0.7))
     for (const d2 of FLOURISH_GENERATORS[spec.kind]({ bbox, rng, intensity })) {
-      paths.push({ d: d2, fill: 'none', stroke: 'currentColor', strokeWidth: flourishWidth })
+      flourishPaths.push({ d: d2, fill: 'none', stroke: 'currentColor', strokeWidth: flourishWidth })
     }
   }
+  paths.push(...flourishPaths)
 
-  return { paths, viewBox: viewBoxFor(paths, bbox, fontSize) }
+  // Tekenstappen voor het oefenblad: per woord één stap, zwierstreken als slot
+  const steps: SignatureStep[] = []
+  let gi = 0
+  for (const word of displayText.split(' ').filter(Boolean)) {
+    const group = glyphs.slice(gi, gi + word.length)
+    gi += word.length
+    if (!group.length) continue
+    steps.push({
+      label: `Schrijf "${word}"`,
+      paths: [{ d: group.map((g) => g.d).join(' '), fill: 'currentColor', stroke: 'currentColor', strokeWidth: inkWidth }],
+      start: firstMove(group[0].d)
+    })
+  }
+  if (flourishPaths.length) {
+    steps.push({
+      label: 'Sluit af met de zwierstreek',
+      paths: flourishPaths,
+      start: firstMove(flourishPaths[0].d)
+    })
+  }
+
+  return { paths, viewBox: viewBoxFor(paths, bbox, fontSize), steps }
+}
+
+/** Eerste M-coördinaat van een pad (startpunt voor de tekenstap-markering). */
+function firstMove(d: string): [number, number] | undefined {
+  const m = d.match(/M(-?\d+(?:\.\d+)?)[ ,](-?\d+(?:\.\d+)?)/)
+  return m ? [parseFloat(m[1]), parseFloat(m[2])] : undefined
 }
 
 /** Werkelijke grenzen van alle paden (coördinatenparen in de d-strings; Bézier-

@@ -19,6 +19,8 @@ export interface BBox {
 export interface LayoutResult {
   d: string
   bbox: BBox
+  /** Per-glyph subpaden in schrijfvolgorde (voor de tekenstappen op het oefenblad). */
+  glyphs: { char: string; d: string }[]
 }
 
 /** Zet tekst om in één SVG-paddata-string. De schuinte (skew) wordt direct op de
@@ -32,7 +34,7 @@ export function layoutText(
 ): LayoutResult {
   const { fontSize, letterSpacingEm, firstLetterScale, baselineDriftEm, jitter, slantDeg } = opts
   const shear = Math.tan((slantDeg * Math.PI) / 180)
-  const parts: string[] = []
+  const glyphs: { char: string; d: string }[] = []
   const bbox: BBox = { x1: Infinity, y1: Infinity, x2: -Infinity, y2: -Infinity }
 
   let x = 0
@@ -52,7 +54,9 @@ export function layoutText(
     if (char !== ' ') {
       const drift = baselineDriftEm * fontSize * (rng() - 0.5) * 2 * (0.4 + jitter)
       const path = glyph.getPath(x, drift, glyphSize)
+      const parts: string[] = []
       appendPath(parts, bbox, path, shear)
+      if (parts.length) glyphs.push({ char, d: parts.join(' ') })
       isFirstLetter = false
     }
 
@@ -64,7 +68,7 @@ export function layoutText(
     bbox.x1 = bbox.y1 = 0
     bbox.x2 = bbox.y2 = 1
   }
-  return { d: parts.join(' '), bbox }
+  return { d: glyphs.map((g) => g.d).join(' '), bbox, glyphs }
 }
 
 const fmt = (n: number) => Math.round(n * 100) / 100
