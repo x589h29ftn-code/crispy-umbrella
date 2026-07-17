@@ -66,8 +66,10 @@ function strike({ bbox, rng, intensity }: FlourishInput): string[] {
   const h = bbox.y2 - bbox.y1
   const midY = bbox.y1 + h * (0.45 + rng() * 0.1)
   const rise = h * (0.1 + intensity * 0.18)
-  const overL = w * (0.1 + rng() * 0.08)
-  const overR = w * (0.12 + rng() * 0.1)
+  // Bij hoge intensiteit loopt de lijn ver door, zoals de lange doorhaal-streek
+  // in klassieke handtekeningen ("Bankey F.", "Tamsyn").
+  const overL = w * (0.1 + intensity * 0.2 + rng() * 0.08)
+  const overR = w * (0.12 + intensity * 0.22 + rng() * 0.1)
   return [
     smoothPath([
       [bbox.x1 - overL, midY + rise * 0.7],

@@ -48,6 +48,9 @@ export interface SignatureStyle {
   firstLetterScale: number
   letterSpacingEm: number
   caseTransform: 'none' | 'lower' | 'initialsOnly'
+  /** Vaste naamvorm op basis van de achternaam (zoals "T. Baily", "Bankey F." of
+   *  alleen "Tamsyn"); overschrijft de variant-keuze uit de wizard. */
+  nameForm?: 'initialSurname' | 'surnameInitial' | 'surnameOnly'
   strokeWidthEm: number
   baselineDriftEm: number
   flourishes: FlourishSpec[]

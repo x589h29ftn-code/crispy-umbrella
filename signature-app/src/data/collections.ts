@@ -137,6 +137,40 @@ export const STYLES: SignatureStyle[] = [
     legibilityTag: 'abstract', formalityTag: 2
   },
 
+  // ─── Collectie 7: Signatuur (echte handtekening-vormen op achternaam) ───
+  {
+    id: 'signatuur-1', collectionId: 'signatuur', fontId: 'mrsSaintDelafield', label: 'Voorletter + naam',
+    baseSlantDeg: 12, firstLetterScale: 1.55, letterSpacingEm: -0.005, caseTransform: 'none',
+    nameForm: 'initialSurname',
+    strokeWidthEm: 0.014, baselineDriftEm: 0.02,
+    flourishes: [{ kind: 'strike', probability: 0.9, intensity: 0.95 }, { kind: 'tail', probability: 0.5, intensity: 0.7 }],
+    legibilityTag: 'gemengd', formalityTag: 4
+  },
+  {
+    id: 'signatuur-2', collectionId: 'signatuur', fontId: 'monsieurLaDoulaise', label: 'Naam + voorletter',
+    baseSlantDeg: 8, firstLetterScale: 1.45, letterSpacingEm: -0.01, caseTransform: 'none',
+    nameForm: 'surnameInitial',
+    strokeWidthEm: 0.012, baselineDriftEm: 0.015,
+    flourishes: [{ kind: 'strike', probability: 0.95, intensity: 1 }],
+    legibilityTag: 'gemengd', formalityTag: 4
+  },
+  {
+    id: 'signatuur-3', collectionId: 'signatuur', fontId: 'herrVonMuellerhoff', label: 'Grote beginkrul',
+    baseSlantDeg: 6, firstLetterScale: 1.7, letterSpacingEm: -0.005, caseTransform: 'none',
+    nameForm: 'surnameInitial',
+    strokeWidthEm: 0.01, baselineDriftEm: 0.018,
+    flourishes: [{ kind: 'leadIn', probability: 0.85, intensity: 0.9 }, { kind: 'tail', probability: 0.7, intensity: 0.8 }],
+    legibilityTag: 'abstract', formalityTag: 3
+  },
+  {
+    id: 'signatuur-4', collectionId: 'signatuur', fontId: 'drSugiyama', label: 'Alleen achternaam',
+    baseSlantDeg: 12, firstLetterScale: 1.5, letterSpacingEm: 0, caseTransform: 'none',
+    nameForm: 'surnameOnly',
+    strokeWidthEm: 0.016, baselineDriftEm: 0.02,
+    flourishes: [{ kind: 'strike', probability: 0.9, intensity: 0.95 }, { kind: 'tail', probability: 0.6, intensity: 0.9 }],
+    legibilityTag: 'abstract', formalityTag: 3
+  },
+
   // ─── Collectie 6: Artistiek ───
   {
     id: 'artistiek-1', collectionId: 'artistiek', fontId: 'homemadeApple', label: 'Echt handschrift',
@@ -169,6 +203,13 @@ export const STYLES: SignatureStyle[] = [
 ]
 
 export const COLLECTIONS: Collection[] = [
+  {
+    id: 'signatuur', name: 'Collectie 7 · Signatuur',
+    description: 'Zoals een échte handtekening: je achternaam met voorletter, of alleen je achternaam, met één krachtige streek.',
+    cardBackground: 'linear-gradient(150deg, #ffffff 0%, #f8f7f3 60%, #eeece5 100%)',
+    cardInk: '#141420',
+    styleIds: ['signatuur-1', 'signatuur-2', 'signatuur-3', 'signatuur-4']
+  },
   {
     id: 'elegant', name: 'Collectie 1 · Elegant',
     description: 'Sierlijke, vloeiende lijnen met een chique uitstraling.',

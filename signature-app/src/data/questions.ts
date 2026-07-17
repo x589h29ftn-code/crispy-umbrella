@@ -163,6 +163,8 @@ export function suggestNameVariants(fullName: string): string[] {
     const last = parts.slice(1).join(' ')
     variants.add(`${parts[0][0]}. ${last}`)
     variants.add(parts[parts.length - 1])
+    // Klassieke handtekening-vorm: achternaam gevolgd door voorletter ("Visser M.")
+    variants.add(`${parts[parts.length - 1]} ${parts[0][0]}.`)
     variants.add(parts.map((p) => p[0]).join(''))
     if (parts.length > 2) {
       variants.add(`${parts[0][0]}${parts[parts.length - 1][0]}`)

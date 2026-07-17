@@ -46,9 +46,32 @@ export function sortedCollections(answers: Partial<WizardAnswers>): Collection[]
   return [...COLLECTIONS].sort((a, b) => best(b) - best(a))
 }
 
+/** Echte handtekening-vormen op basis van de achternaam, zoals in klassieke
+ *  handtekeningen: "M. de Visser", "Visser M." of alleen "Visser". */
+export function nameForm(
+  fullName: string,
+  form: NonNullable<SignatureStyle['nameForm']>
+): string {
+  const parts = fullName.trim().split(/\s+/).filter(Boolean)
+  if (parts.length === 0) return 'Voorbeeld'
+  if (parts.length === 1) return parts[0]
+  const initial = parts[0][0].toUpperCase()
+  const surname = parts[parts.length - 1]
+  switch (form) {
+    case 'initialSurname':
+      // Tussenvoegsels blijven behouden: "M. de Visser"
+      return `${initial}. ${parts.slice(1).join(' ')}`
+    case 'surnameInitial':
+      return `${surname} ${initial}.`
+    case 'surnameOnly':
+      return surname
+  }
+}
+
 /** Best passende naamvariant voor een stijl: abstracte stijlen krijgen een
  *  korte variant, leesbare stijlen een voluit geschreven naam. */
 export function pickVariant(style: SignatureStyle, answers: Partial<WizardAnswers>): string {
+  if (style.nameForm) return nameForm(answers.fullName ?? '', style.nameForm)
   const variants = answers.nameVariants?.length
     ? answers.nameVariants
     : [answers.fullName ?? 'Voorbeeld']
