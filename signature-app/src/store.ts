@@ -12,15 +12,25 @@ interface AppState {
   answers: Partial<WizardAnswers>
   currentStep: number
   selected: GeneratedSignature[]
+  /** Variatieteller per stijl: bepaalt de seed van de preview op de stijlkaart. */
+  styleVariants: Record<string, number>
   notice: string | null
 
   setPhase: (phase: Phase) => void
   answerQuestion: <K extends keyof WizardAnswers>(key: K, value: WizardAnswers[K]) => void
   setStep: (step: number) => void
-  toggleStyle: (styleId: string, text: string) => void
+  toggleStyle: (styleId: string, text: string, variant: number) => void
+  shuffleStyle: (styleId: string) => void
+  updateSignature: (id: string, patch: Partial<GeneratedSignature>) => void
   removeSignature: (id: string) => void
   clearNotice: () => void
   reset: () => void
+}
+
+/** Seed-basis voor een stijl + naamvariant + variatienummer; variant 0 blijft
+ *  gelijk aan de oorspronkelijke opbouw zodat bestaande selecties intact zijn. */
+export function signatureId(styleId: string, text: string, variant: number): string {
+  return variant > 0 ? `${styleId}::${text}::v${variant}` : `${styleId}::${text}`
 }
 
 function selectedCollections(selected: GeneratedSignature[]): Set<string> {
@@ -39,6 +49,7 @@ export const useAppStore = create<AppState>()(
       answers: {},
       currentStep: 0,
       selected: [],
+      styleVariants: {},
       notice: null,
 
       setPhase: (phase) => set({ phase }),
@@ -48,9 +59,9 @@ export const useAppStore = create<AppState>()(
 
       setStep: (currentStep) => set({ currentStep }),
 
-      toggleStyle: (styleId, text) => {
+      toggleStyle: (styleId, text, variant) => {
         const { selected } = get()
-        const id = `${styleId}::${text}`
+        const id = signatureId(styleId, text, variant)
         if (selected.some((sig) => sig.id === id)) {
           set({ selected: selected.filter((sig) => sig.id !== id), notice: null })
           return
@@ -72,12 +83,23 @@ export const useAppStore = create<AppState>()(
         })
       },
 
+      shuffleStyle: (styleId) =>
+        set((s) => ({
+          styleVariants: { ...s.styleVariants, [styleId]: (s.styleVariants[styleId] ?? 0) + 1 }
+        })),
+
+      updateSignature: (id, patch) =>
+        set((s) => ({
+          selected: s.selected.map((sig) => (sig.id === id ? { ...sig, ...patch } : sig))
+        })),
+
       removeSignature: (id) =>
         set((s) => ({ selected: s.selected.filter((sig) => sig.id !== id) })),
 
       clearNotice: () => set({ notice: null }),
 
-      reset: () => set({ phase: 'landing', answers: {}, currentStep: 0, selected: [], notice: null })
+      reset: () =>
+        set({ phase: 'landing', answers: {}, currentStep: 0, selected: [], styleVariants: {}, notice: null })
     }),
     {
       name: 'handtekening-studio',
@@ -85,7 +107,8 @@ export const useAppStore = create<AppState>()(
         phase: s.phase,
         answers: s.answers,
         currentStep: s.currentStep,
-        selected: s.selected
+        selected: s.selected,
+        styleVariants: s.styleVariants
       })
     }
   )

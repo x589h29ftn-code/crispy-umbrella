@@ -7,6 +7,7 @@ import {
   copyPng,
   downloadPng,
   downloadSvg,
+  INK,
   safeFilename
 } from '../../engine/export'
 
@@ -20,6 +21,7 @@ interface Props {
 
 export function ExportBar({ signature, style, params, onPractice, onRemove }: Props) {
   const [copied, setCopied] = useState(false)
+  const ink = signature.ink ?? INK
 
   const withRender = async (fn: (render: NonNullable<ReturnType<typeof renderSignature>>) => void | Promise<void>) => {
     await ensureStyleAssets(style)
@@ -32,7 +34,7 @@ export function ExportBar({ signature, style, params, onPractice, onRemove }: Pr
       <button
         className="btn-small"
         title="PNG met transparante achtergrond (voor e-handtekening)"
-        onClick={() => withRender((r) => downloadPng(r, safeFilename(signature.text, '.png')))}
+        onClick={() => withRender((r) => downloadPng(r, safeFilename(signature.text, '.png'), undefined, ink))}
       >
         PNG
       </button>
@@ -40,7 +42,7 @@ export function ExportBar({ signature, style, params, onPractice, onRemove }: Pr
         className="btn-small"
         title="PNG met witte achtergrond"
         onClick={() =>
-          withRender((r) => downloadPng(r, safeFilename(signature.text, '-wit.png'), '#ffffff'))
+          withRender((r) => downloadPng(r, safeFilename(signature.text, '-wit.png'), '#ffffff', ink))
         }
       >
         PNG wit
@@ -48,7 +50,7 @@ export function ExportBar({ signature, style, params, onPractice, onRemove }: Pr
       <button
         className="btn-small"
         title="SVG (vector, oneindig schaalbaar)"
-        onClick={() => withRender((r) => downloadSvg(r, safeFilename(signature.text, '.svg')))}
+        onClick={() => withRender((r) => downloadSvg(r, safeFilename(signature.text, '.svg'), ink))}
       >
         SVG
       </button>
@@ -58,7 +60,7 @@ export function ExportBar({ signature, style, params, onPractice, onRemove }: Pr
           title="Kopieer naar klembord"
           onClick={() =>
             withRender(async (r) => {
-              await copyPng(r)
+              await copyPng(r, ink)
               setCopied(true)
               setTimeout(() => setCopied(false), 2000)
             })

@@ -449,6 +449,32 @@ button {
   font-weight: 700;
   opacity: 0.8;
 }
+.style-card {
+  cursor: pointer;
+}
+.style-card-shuffle {
+  position: absolute;
+  top: 0.4rem;
+  left: 0.5rem;
+  width: 1.7rem;
+  height: 1.7rem;
+  border-radius: 50%;
+  border: none;
+  background: rgba(255, 255, 255, 0.75);
+  color: #333;
+  font-size: 1rem;
+  line-height: 1;
+  opacity: 0;
+  transition: opacity 0.15s;
+}
+.style-card:hover .style-card-shuffle,
+.style-card-shuffle:focus-visible {
+  opacity: 1;
+}
+.style-card-shuffle:hover {
+  background: #fff;
+  color: var(--groen);
+}
 .style-card-check {
   position: absolute;
   top: 0.5rem;
@@ -533,6 +559,53 @@ button {
   color: var(--grijs);
   font-size: 0.85rem;
 }
+.tune-panel {
+  margin: 0.4rem 1rem 0;
+  border: 1px solid var(--rand);
+  border-radius: 8px;
+  padding: 0.35rem 0.7rem;
+  font-size: 0.85rem;
+}
+.tune-panel summary {
+  cursor: pointer;
+  font-weight: 700;
+  color: var(--groen);
+}
+.tune-row {
+  display: flex;
+  align-items: center;
+  gap: 0.7rem;
+  margin: 0.4rem 0;
+}
+.tune-row > span:first-child {
+  width: 5.2rem;
+  color: var(--grijs);
+  font-weight: 600;
+}
+.tune-row input[type='range'] {
+  flex: 1;
+  accent-color: var(--groen);
+}
+.ink-swatches {
+  display: flex;
+  gap: 0.45rem;
+}
+.ink-swatch {
+  width: 1.35rem;
+  height: 1.35rem;
+  border-radius: 50%;
+  border: 2px solid transparent;
+  cursor: pointer;
+}
+.ink-swatch.selected {
+  border-color: var(--groen);
+  box-shadow: 0 0 0 2px #fff inset;
+}
+.tune-reset {
+  font-size: 0.8rem;
+  padding: 0.2rem 0.5rem;
+}
+
 .export-bar {
   display: flex;
   flex-wrap: wrap;
@@ -671,6 +744,35 @@ button {
   text-align: right;
 }
 
+/* ─── Teken-animatie ─── */
+@keyframes sig-draw {
+  to {
+    stroke-dashoffset: 0;
+  }
+}
+@keyframes sig-fade {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+.practice-animation {
+  border: 1px dashed var(--rand);
+  border-radius: 8px;
+  padding: 0.6rem 0.8rem;
+  margin-top: 0.6rem;
+  display: flex;
+  align-items: center;
+  gap: 0.8rem;
+}
+.practice-animation svg,
+.practice-animation .sig-skeleton {
+  flex: 1;
+  height: 96px;
+}
+
 /* ─── Print: alleen het oefenblad ─── */
 @page {
   size: A4;
@@ -698,7 +800,8 @@ button {
     border-radius: 0;
     padding: 0;
   }
-  .practice-actions {
+  .practice-actions,
+  .practice-animation {
     display: none;
   }
 }

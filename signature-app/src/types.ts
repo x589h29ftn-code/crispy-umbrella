@@ -77,11 +77,21 @@ export interface Collection {
   styleIds: string[]
 }
 
+/** Fijnafstemming per gekozen handtekening (neutraal = 0 / 1). */
+export interface SignatureTweaks {
+  slant: number
+  thickness: number
+  flourish: number
+  size: number
+}
+
 export interface GeneratedSignature {
   id: string
   styleId: string
   text: string
   seed: number
+  tweaks?: SignatureTweaks
+  ink?: string
 }
 
 export interface RenderPath {
@@ -98,6 +108,9 @@ export interface SignatureStep {
   paths: RenderPath[]
   start?: [number, number]
   dir?: [number, number]
+  /** Centerline die de pen aflegt (voor de teken-animatie): paddata, totale
+   *  lengte en de maskerbreedte waarmee de inkt onthuld wordt. */
+  guide?: { d: string; len: number; width: number }
 }
 
 /** Puur-data-resultaat van de engine; gedeeld door preview én export. */

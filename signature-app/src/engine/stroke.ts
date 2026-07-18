@@ -1,6 +1,6 @@
 import type { GenerationParams, SignatureRender, SignatureStep, SignatureStyle } from '../types'
 import { mulberry32 } from './random'
-import { bezierSegments, fmt, resampleSmooth, type Pt } from './geometry'
+import { bezierSegments, fmt, resampleSmooth, smoothPathThrough, type Pt } from './geometry'
 
 /**
  * Penstreek-engine: rendert een naam als één doorlopende penlijn op basis van
@@ -312,10 +312,30 @@ export function renderStrokeSignature(
   const w = x2 - x1
 
   const strikeSpec = flourishWanted.get('strike')
+  const ellipseSpec = flourishWanted.get('ellipse')
   const underlineSpec = flourishWanted.get('underline')
   const lastMain = mains[mains.length - 1]
   const anchor: Pt = lastMain ? lastMain.pts[lastMain.pts.length - 1] : [x2, (y1 + y2) / 2]
-  if (strikeSpec && rng() < strikeSpec.probability * (0.35 + params.flourishIntensity)) {
+  if (ellipseSpec && rng() < ellipseSpec.probability * (0.35 + params.flourishIntensity)) {
+    // Omcirkeling (H.Ramuth-look): vanuit het einde van de naam ~1,2 omwenteling
+    // om de hele naam, met licht uitzettende straal
+    const inten = ellipseSpec.intensity * (0.5 + params.flourishIntensity * 0.7)
+    const cx = x1 + w / 2
+    const cy = y1 + (y2 - y1) * (0.42 + rng() * 0.08)
+    const rx = w * (0.6 + inten * 0.12)
+    const ry = (y2 - y1) * (0.85 + inten * 0.35)
+    const tilt = (rng() - 0.5) * 0.18
+    const startDeg = -8 + rng() * 20
+    const totalDeg = 395 + inten * 55
+    const pts: Pt[] = [[anchor[0] + unit, anchor[1] - unit]]
+    for (let deg = 0; deg <= totalDeg; deg += 18) {
+      const t = ((startDeg + deg) * Math.PI) / 180
+      const grow = 0.92 + (deg / totalDeg) * 0.16
+      const py = Math.sin(t) * ry * grow
+      pts.push([cx + Math.cos(t) * rx * grow + py * tilt, cy + py])
+    }
+    flourishStrokes.push({ kind: 'flourish', pts })
+  } else if (strikeSpec && rng() < strikeSpec.probability * (0.35 + params.flourishIntensity)) {
     // Lange doorhaal-streek die begint bij het einde van de naam en over de
     // hele naam terugzwiept (Bankey F./Tamsyn-look)
     const inten = strikeSpec.intensity * (0.5 + params.flourishIntensity * 0.7)
@@ -382,11 +402,23 @@ export function renderStrokeSignature(
     if (!group.length) return
     const first = group[0].rec.pts
     const dir: Pt = first.length > 1 ? [first[1][0] - first[0][0], first[1][1] - first[0][1]] : [1, 0]
+    // Centerline-gids voor de teken-animatie: het pad dat de pen aflegt
+    let guideLen = 0
+    const guideParts: string[] = []
+    for (const g of group) {
+      const dense = resampleSmooth(g.rec.pts, sampleStep * 2)
+      for (let j = 1; j < dense.length; j++) {
+        guideLen += Math.hypot(dense[j][0] - dense[j - 1][0], dense[j][1] - dense[j - 1][1])
+      }
+      const gd = smoothPathThrough(dense)
+      if (gd) guideParts.push(gd)
+    }
     steps.push({
       label,
       paths: [{ d: group.map((g) => g.d).join(' '), fill: 'currentColor' }],
       start: [first[0][0], first[0][1]],
-      dir
+      dir,
+      guide: guideParts.length ? { d: guideParts.join(' '), len: guideLen, width: penWidth * 1.8 } : undefined
     })
   }
   let i = 0

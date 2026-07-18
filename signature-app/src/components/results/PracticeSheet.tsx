@@ -4,6 +4,7 @@ import { getStyle } from '../../data/collections'
 import { ensureStyleAssets, styleAssetsReady } from '../../engine/fontManager'
 import { renderSignature } from '../../engine/compose'
 import { SignaturePreview } from '../SignaturePreview'
+import { AnimatedSignature } from '../AnimatedSignature'
 
 interface Props {
   signature: GeneratedSignature
@@ -78,6 +79,7 @@ function StepPanel({ render, index }: { render: SignatureRender; index: number }
 export function PracticeSheet({ signature, params, onClose }: Props) {
   const style = getStyle(signature.styleId)
   const [ready, setReady] = useState(() => (style ? styleAssetsReady(style) : false))
+  const [replay, setReplay] = useState(0)
 
   useEffect(() => {
     if (!style || styleAssetsReady(style)) return
@@ -151,6 +153,18 @@ export function PracticeSheet({ signature, params, onClose }: Props) {
               {steps.map((_, i) => (
                 <StepPanel key={i} render={render} index={i} />
               ))}
+            </div>
+            <div className="practice-animation">
+              <AnimatedSignature
+                key={replay}
+                style={style}
+                params={params}
+                text={signature.text}
+                seed={signature.seed}
+              />
+              <button className="btn-small" onClick={() => setReplay((r) => r + 1)}>
+                ▶ Bekijk het tempo
+              </button>
             </div>
           </section>
         )}

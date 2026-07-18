@@ -175,6 +175,69 @@ export const STYLES: SignatureStyle[] = [
     legibilityTag: 'abstract', formalityTag: 3
   },
 
+  // ─── Extra penlijn-stijlen (stroke-engine) verspreid over de collecties ───
+  {
+    id: 'elegant-5', collectionId: 'elegant', fontId: 'greatVibes', label: 'Koninklijke omcirkeling',
+    engine: 'stroke', strokeFontId: 'scriptc', penWidthEm: 0.028, taper: 0.7, scribble: 0.15,
+    baseSlantDeg: 7, firstLetterScale: 1.5, letterSpacingEm: 0, caseTransform: 'none',
+    strokeWidthEm: 0.012, baselineDriftEm: 0.01,
+    flourishes: [{ kind: 'ellipse', probability: 0.85, intensity: 0.85 }],
+    legibilityTag: 'leesbaar', formalityTag: 4
+  },
+  {
+    id: 'zakelijk-5', collectionId: 'zakelijk', fontId: 'dancingScript', label: 'Nette pen',
+    engine: 'stroke', strokeFontId: 'scripts', penWidthEm: 0.03, taper: 0.65, scribble: 0.2,
+    baseSlantDeg: 8, firstLetterScale: 1.4, letterSpacingEm: 0, caseTransform: 'none',
+    nameForm: 'initialSurname',
+    strokeWidthEm: 0.012, baselineDriftEm: 0.008,
+    flourishes: [{ kind: 'underline', probability: 0.85, intensity: 0.6 }],
+    legibilityTag: 'leesbaar', formalityTag: 5
+  },
+  {
+    id: 'klassiek-4', collectionId: 'klassiek', fontId: 'monsieurLaDoulaise', label: 'Omcirkelde achternaam',
+    engine: 'stroke', strokeFontId: 'cursive', penWidthEm: 0.03, taper: 0.8, scribble: 0.4,
+    baseSlantDeg: 6, firstLetterScale: 1.55, letterSpacingEm: 0, caseTransform: 'none',
+    nameForm: 'surnameOnly',
+    strokeWidthEm: 0.01, baselineDriftEm: 0.012,
+    flourishes: [{ kind: 'ellipse', probability: 0.9, intensity: 0.9 }],
+    legibilityTag: 'gemengd', formalityTag: 4
+  },
+  {
+    id: 'modern-5', collectionId: 'modern', fontId: 'yellowtail', label: 'Dikke penstreek',
+    engine: 'stroke', strokeFontId: 'scripts', penWidthEm: 0.055, taper: 0.7, scribble: 0.35,
+    baseSlantDeg: 10, firstLetterScale: 1.35, letterSpacingEm: 0, caseTransform: 'none',
+    nameForm: 'surnameOnly',
+    strokeWidthEm: 0.02, baselineDriftEm: 0.012,
+    flourishes: [{ kind: 'tail', probability: 0.6, intensity: 0.6 }],
+    legibilityTag: 'gemengd', formalityTag: 2
+  },
+  {
+    id: 'abstract-4', collectionId: 'abstract', fontId: 'qwigley', label: 'Volledig gekrabbeld',
+    engine: 'stroke', strokeFontId: 'scripts', penWidthEm: 0.035, taper: 0.7, scribble: 0.9,
+    baseSlantDeg: 16, firstLetterScale: 1.5, letterSpacingEm: 0, caseTransform: 'none',
+    nameForm: 'initialSurname',
+    strokeWidthEm: 0.01, baselineDriftEm: 0.02,
+    flourishes: [{ kind: 'strike', probability: 0.9, intensity: 1 }],
+    legibilityTag: 'abstract', formalityTag: 2
+  },
+  {
+    id: 'abstract-5', collectionId: 'abstract', fontId: 'zeyada', label: 'Lange uithaal',
+    engine: 'stroke', strokeFontId: 'scriptc', penWidthEm: 0.03, taper: 0.75, scribble: 0.7,
+    baseSlantDeg: 12, firstLetterScale: 1.45, letterSpacingEm: 0, caseTransform: 'none',
+    nameForm: 'surnameOnly',
+    strokeWidthEm: 0.01, baselineDriftEm: 0.02,
+    flourishes: [{ kind: 'tail', probability: 1, intensity: 1 }],
+    legibilityTag: 'abstract', formalityTag: 2
+  },
+  {
+    id: 'artistiek-5', collectionId: 'artistiek', fontId: 'homemadeApple', label: 'Losse pols',
+    engine: 'stroke', strokeFontId: 'cursive', penWidthEm: 0.033, taper: 0.85, scribble: 0.3,
+    baseSlantDeg: 4, firstLetterScale: 1.3, letterSpacingEm: 0, caseTransform: 'none',
+    strokeWidthEm: 0.012, baselineDriftEm: 0.02,
+    flourishes: [{ kind: 'leadIn', probability: 0.7, intensity: 0.7 }, { kind: 'tail', probability: 0.7, intensity: 0.7 }],
+    legibilityTag: 'gemengd', formalityTag: 2
+  },
+
   // ─── Collectie 6: Artistiek ───
   {
     id: 'artistiek-1', collectionId: 'artistiek', fontId: 'homemadeApple', label: 'Echt handschrift',
@@ -219,42 +282,42 @@ export const COLLECTIONS: Collection[] = [
     description: 'Sierlijke, vloeiende lijnen met een chique uitstraling.',
     cardBackground: 'linear-gradient(135deg, #f7f2e7 0%, #efe3c8 55%, #e2cf9f 100%)',
     cardInk: '#3a2f1b',
-    styleIds: ['elegant-1', 'elegant-2', 'elegant-3', 'elegant-4']
+    styleIds: ['elegant-1', 'elegant-2', 'elegant-3', 'elegant-4', 'elegant-5']
   },
   {
     id: 'zakelijk', name: 'Collectie 2 · Zakelijk',
     description: 'Helder en zelfverzekerd, perfect voor contracten en documenten.',
     cardBackground: 'linear-gradient(135deg, #dfe7ef 0%, #b9c9da 55%, #8fa7be 100%)',
     cardInk: '#16283b',
-    styleIds: ['zakelijk-1', 'zakelijk-2', 'zakelijk-3', 'zakelijk-4']
+    styleIds: ['zakelijk-1', 'zakelijk-2', 'zakelijk-3', 'zakelijk-4', 'zakelijk-5']
   },
   {
     id: 'klassiek', name: 'Collectie 3 · Klassiek',
     description: 'Tijdloze kalligrafie met grootse krullen en omcirkelingen.',
     cardBackground: 'linear-gradient(135deg, #f6e8d6 0%, #ecd4b4 50%, #ddba8e 100%)',
     cardInk: '#4a2e18',
-    styleIds: ['klassiek-1', 'klassiek-2', 'klassiek-3']
+    styleIds: ['klassiek-1', 'klassiek-2', 'klassiek-3', 'klassiek-4']
   },
   {
     id: 'modern', name: 'Collectie 4 · Modern',
     description: 'Strak, vlot en eigentijds — zonder franje.',
     cardBackground: 'linear-gradient(135deg, #ffffff 0%, #f2f4f6 60%, #e4e8ec 100%)',
     cardInk: '#1d232b',
-    styleIds: ['modern-1', 'modern-2', 'modern-3', 'modern-4']
+    styleIds: ['modern-1', 'modern-2', 'modern-3', 'modern-4', 'modern-5']
   },
   {
     id: 'abstract', name: 'Collectie 5 · Abstract',
     description: 'Snelle parafen en initialen — niemand hoeft hem te kunnen lezen.',
     cardBackground: 'linear-gradient(135deg, #2b2f36 0%, #383e47 55%, #23272e 100%)',
     cardInk: '#f2f0ea',
-    styleIds: ['abstract-1', 'abstract-2', 'abstract-3']
+    styleIds: ['abstract-1', 'abstract-2', 'abstract-3', 'abstract-4', 'abstract-5']
   },
   {
     id: 'artistiek', name: 'Collectie 6 · Artistiek',
     description: 'Persoonlijk en expressief, alsof het écht met de hand is geschreven.',
     cardBackground: 'linear-gradient(135deg, #e8d9c3 0%, #dcc6a5 55%, #cbaf87 100%)',
     cardInk: '#40301d',
-    styleIds: ['artistiek-1', 'artistiek-2', 'artistiek-3', 'artistiek-4']
+    styleIds: ['artistiek-1', 'artistiek-2', 'artistiek-3', 'artistiek-4', 'artistiek-5']
   }
 ]
 

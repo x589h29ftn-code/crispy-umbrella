@@ -23,10 +23,10 @@ export function toSvgString(render: SignatureRender, ink = INK, background?: str
 /** Rastert de SVG naar PNG via een canvas (4× voor scherpte). */
 export async function toPngBlob(
   render: SignatureRender,
-  opts: { background?: string; scale?: number } = {}
+  opts: { background?: string; scale?: number; ink?: string } = {}
 ): Promise<Blob> {
   const scale = opts.scale ?? 4
-  const svg = toSvgString(render, INK, opts.background)
+  const svg = toSvgString(render, opts.ink ?? INK, opts.background)
   const url = URL.createObjectURL(new Blob([svg], { type: 'image/svg+xml' }))
   try {
     const img = await new Promise<HTMLImageElement>((resolve, reject) => {
@@ -58,16 +58,17 @@ function downloadBlob(blob: Blob, filename: string): void {
   setTimeout(() => URL.revokeObjectURL(url), 1000)
 }
 
-export function downloadSvg(render: SignatureRender, filename: string): void {
-  downloadBlob(new Blob([toSvgString(render)], { type: 'image/svg+xml' }), filename)
+export function downloadSvg(render: SignatureRender, filename: string, ink?: string): void {
+  downloadBlob(new Blob([toSvgString(render, ink ?? INK)], { type: 'image/svg+xml' }), filename)
 }
 
 export async function downloadPng(
   render: SignatureRender,
   filename: string,
-  background?: string
+  background?: string,
+  ink?: string
 ): Promise<void> {
-  downloadBlob(await toPngBlob(render, { background }), filename)
+  downloadBlob(await toPngBlob(render, { background, ink }), filename)
 }
 
 export function clipboardSupported(): boolean {
@@ -76,8 +77,8 @@ export function clipboardSupported(): boolean {
 
 /** Kopieert de handtekening als PNG (witte achtergrond: transparantie wordt in
  *  veel plak-doelen zwart weergegeven). */
-export async function copyPng(render: SignatureRender): Promise<void> {
-  const blob = await toPngBlob(render, { background: '#ffffff' })
+export async function copyPng(render: SignatureRender, ink?: string): Promise<void> {
+  const blob = await toPngBlob(render, { background: '#ffffff', ink })
   await navigator.clipboard.write([new ClipboardItem({ 'image/png': blob })])
 }
 

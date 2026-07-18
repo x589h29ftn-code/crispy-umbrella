@@ -3,6 +3,7 @@ import { STYLES } from '../data/collections'
 import { DEFAULT_PARAMS } from '../engine/compose'
 import { hashString } from '../engine/random'
 import { SignaturePreview } from './SignaturePreview'
+import { AnimatedSignature } from './AnimatedSignature'
 
 const DEMOS: { styleId: string; text: string }[] = [
   { styleId: 'signatuur-2', text: 'Bankey F.' },
@@ -43,18 +44,30 @@ export function LandingPage() {
       </header>
 
       <section className="landing-demos">
-        {DEMOS.map(({ styleId, text }) => {
+        {DEMOS.map(({ styleId, text }, i) => {
           const style = STYLES.find((s) => s.id === styleId)
           if (!style) return null
+          const seed = hashString(`${styleId}::${text}`)
           return (
             <div className="landing-demo-card" key={styleId}>
-              <SignaturePreview
-                style={style}
-                params={DEFAULT_PARAMS}
-                text={text}
-                seed={hashString(`${styleId}::${text}`)}
-                className="landing-demo-sig"
-              />
+              {i === 0 ? (
+                <AnimatedSignature
+                  style={style}
+                  params={DEFAULT_PARAMS}
+                  text={text}
+                  seed={seed}
+                  loop
+                  className="landing-demo-sig"
+                />
+              ) : (
+                <SignaturePreview
+                  style={style}
+                  params={DEFAULT_PARAMS}
+                  text={text}
+                  seed={seed}
+                  className="landing-demo-sig"
+                />
+              )}
             </div>
           )
         })}
