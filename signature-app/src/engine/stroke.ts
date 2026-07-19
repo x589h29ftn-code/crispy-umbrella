@@ -1,6 +1,6 @@
 import type { GenerationParams, SignatureRender, SignatureStep, SignatureStyle } from '../types'
 import { mulberry32 } from './random'
-import { bezierSegments, fmt, resampleSmooth, smoothPathThrough, type Pt } from './geometry'
+import { fmt, resampleSmooth, smoothPathThrough, variableWidthOutline, type Pt } from './geometry'
 
 /**
  * Penstreek-engine: rendert een naam als één doorlopende penlijn op basis van
@@ -95,57 +95,28 @@ function glyphAdvance(fontId: string, char: string): number {
 }
 
 /**
- * Bouwt van een centerline een gevulde pen-omtrek als vloeiend Bézier-pad:
- * per punt een breedte (dik op neerhalen, dun op verbindingsstreken,
- * spits uitlopend aan de einden) en offset langs de normalen.
+ * Bouwt van een centerline een gevulde pen-omtrek: dik op neerhalen, dun op
+ * verbindingsstreken, spits uitlopend aan de einden.
  */
 function penOutline(center: Pt[], baseWidth: number, taperLen: number): string {
-  const pts: Pt[] = []
-  for (const p of center) {
-    const prev = pts[pts.length - 1]
-    if (!prev || Math.hypot(p[0] - prev[0], p[1] - prev[1]) > 0.05) pts.push(p)
-  }
-  if (pts.length < 2) return ''
-
-  // Cumulatieve lengte voor eind-taper (pen komt van het papier)
+  if (center.length < 2) return ''
   const cum: number[] = [0]
-  for (let i = 1; i < pts.length; i++) {
-    cum.push(cum[i - 1] + Math.hypot(pts[i][0] - pts[i - 1][0], pts[i][1] - pts[i - 1][1]))
+  for (let i = 1; i < center.length; i++) {
+    cum.push(cum[i - 1] + Math.hypot(center[i][0] - center[i - 1][0], center[i][1] - center[i - 1][1]))
   }
-  const total = cum[pts.length - 1]
-
-  const left: Pt[] = []
-  const right: Pt[] = []
-  for (let i = 0; i < pts.length; i++) {
-    const a = pts[Math.max(0, i - 1)]
-    const b = pts[Math.min(pts.length - 1, i + 1)]
-    let tx = b[0] - a[0]
-    let ty = b[1] - a[1]
-    const len = Math.hypot(tx, ty) || 1
-    tx /= len
-    ty /= len
-    // Pendynamiek: neerhalen (ty > 0, y wijst omlaag) zijn dik, ophalen dun
-    const down = Math.max(0, ty)
+  const total = cum[center.length - 1]
+  const widths = center.map((_, i) => {
+    const a = center[Math.max(0, i - 1)]
+    const b = center[Math.min(center.length - 1, i + 1)]
+    const len = Math.hypot(b[0] - a[0], b[1] - a[1]) || 1
+    // Pendynamiek: neerhalen (y wijst omlaag) zijn dik, ophalen dun
+    const down = Math.max(0, (b[1] - a[1]) / len)
     let w = baseWidth * (0.45 + 0.55 * down)
-    // Spitse einden aan beide kanten van de streek
     const edge = Math.min(cum[i], total - cum[i])
     if (edge < taperLen) w *= Math.max(0.08, edge / taperLen)
-    const nx = -ty * (w / 2)
-    const ny = tx * (w / 2)
-    left.push([pts[i][0] + nx, pts[i][1] + ny])
-    right.push([pts[i][0] - nx, pts[i][1] - ny])
-  }
-
-  // Vloeiende Bézier-contour: heen langs links, terug langs rechts.
-  // De einden lopen spits toe, dus een rechte verbinding is onzichtbaar.
-  const rightBack = right.slice().reverse()
-  return (
-    `M${fmt(left[0][0])} ${fmt(left[0][1])}` +
-    bezierSegments(left) +
-    ` L${fmt(rightBack[0][0])} ${fmt(rightBack[0][1])}` +
-    bezierSegments(rightBack) +
-    ' Z'
-  )
+    return w
+  })
+  return variableWidthOutline(center, widths)
 }
 
 interface LetterPlan {
@@ -181,6 +152,33 @@ function scribbleWave(advance: number, rng: () => number): Pt[] {
   // Uitloopstreek voorbij de eigen breedte, zoals echte Hershey-letters
   pts.push([advance + 4, BASELINE - 1])
   return pts
+}
+
+/** Accenttekens als losse pennenstreken boven/onder de letter (glyph-eenheden,
+ *  basislijn op BASELINE). De Hershey-data is ASCII; zo blijven é, ë, ü, ç
+ *  gewoon leesbaar in namen als "René" of "Zoë". */
+function accentSegments(mark: string, advance: number, isUpper: boolean): Pt[][] {
+  const cx = advance * 0.5
+  const y = isUpper ? -1 : 10.5
+  switch (mark) {
+    case '̀': // grave
+      return [[[cx - 1.5, y], [cx + 1.5, y + 2.2]]]
+    case '̂': // circumflex
+      return [[[cx - 2, y + 2.2], [cx, y], [cx + 2, y + 2.2]]]
+    case '̃': // tilde
+      return [[[cx - 2.2, y + 1.6], [cx - 0.8, y], [cx + 0.8, y + 1.6], [cx + 2.2, y]]]
+    case '̈': // trema/umlaut: twee inktpunten
+      return [
+        [[cx - 2, y + 0.6], [cx - 1.7, y + 0.9]],
+        [[cx + 1.7, y + 0.6], [cx + 2, y + 0.9]]
+      ]
+    case '̊': // ring (å)
+      return [[[cx - 1.2, y + 1], [cx, y - 0.2], [cx + 1.2, y + 1], [cx, y + 2.2], [cx - 1.2, y + 1]]]
+    case '̧': // cedille (ç)
+      return [[[cx, BASELINE + 0.5], [cx + 1, BASELINE + 2], [cx - 0.8, BASELINE + 3.2]]]
+    default: // acute en overige
+      return [[[cx - 1.5, y + 2.2], [cx + 1.5, y]]]
+  }
 }
 
 /** Eén penstreek met betekenis, in schrijfvolgorde. */
@@ -232,12 +230,20 @@ export function renderStrokeSignature(
   }
 
   for (const plan of plans) {
-    const { char } = plan
-    if (char === ' ') {
+    if (plan.char === ' ') {
       flush()
       cursor += 8 * unit
       continue
     }
+
+    // Accenten afsplitsen: de ASCII-basisletter door het normale pad,
+    // het accent als losse pennenstreek erboven/eronder
+    const decomposed = plan.char.normalize('NFD')
+    const char = decomposed[0]
+    const accents = [...decomposed.slice(1)].filter((c) => {
+      const code = c.charCodeAt(0)
+      return code >= 0x0300 && code <= 0x036f
+    })
 
     const isUpper = char.toUpperCase() === char && char.toLowerCase() !== char
     const isLower = !isUpper && /[a-zà-ž]/i.test(char)
@@ -276,6 +282,12 @@ export function renderStrokeSignature(
             for (const seg of placed) marks.push({ pts: seg, kind: 'mark' })
           }
         }
+      }
+    }
+
+    for (const accent of accents) {
+      for (const seg of accentSegments(accent, advanceUnits, isUpper)) {
+        marks.push({ pts: seg.map(place), kind: 'mark' })
       }
     }
 

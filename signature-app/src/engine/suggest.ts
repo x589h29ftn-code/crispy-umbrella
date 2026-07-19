@@ -68,6 +68,15 @@ export function nameForm(
   }
 }
 
+/** Paraaf-initialen: eerste + laatste woordinitiaal ("Mark de Visser" → "MV");
+ *  bij één woord de eerste twee letters. */
+export function initialsFor(fullName: string): string {
+  const parts = fullName.trim().split(/\s+/).filter(Boolean)
+  if (parts.length === 0) return 'XX'
+  if (parts.length === 1) return parts[0].slice(0, 2)
+  return `${parts[0][0]}${parts[parts.length - 1][0]}`.toUpperCase()
+}
+
 /** Best passende naamvariant voor een stijl: abstracte stijlen krijgen een
  *  korte variant, leesbare stijlen een voluit geschreven naam. */
 export function pickVariant(style: SignatureStyle, answers: Partial<WizardAnswers>): string {

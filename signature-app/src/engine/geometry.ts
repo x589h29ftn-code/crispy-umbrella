@@ -27,6 +27,47 @@ export function smoothPathThrough(points: Pt[]): string {
   return `M${fmt(points[0][0])} ${fmt(points[0][1])}${bezierSegments(points)}`
 }
 
+/** Gevulde pen-omtrek rond een centerline met per punt een eigen breedte:
+ *  offset langs de normalen, heen langs links en terug langs rechts als
+ *  vloeiende Bézier-contour. Breedtes die aan de einden (bijna) nul zijn
+ *  geven vanzelf spitse penpunten. */
+export function variableWidthOutline(center: Pt[], widths: number[]): string {
+  const pts: Pt[] = []
+  const w: number[] = []
+  for (let i = 0; i < center.length; i++) {
+    const prev = pts[pts.length - 1]
+    if (!prev || Math.hypot(center[i][0] - prev[0], center[i][1] - prev[1]) > 0.05) {
+      pts.push(center[i])
+      w.push(widths[i])
+    }
+  }
+  if (pts.length < 2) return ''
+
+  const left: Pt[] = []
+  const right: Pt[] = []
+  for (let i = 0; i < pts.length; i++) {
+    const a = pts[Math.max(0, i - 1)]
+    const b = pts[Math.min(pts.length - 1, i + 1)]
+    let tx = b[0] - a[0]
+    let ty = b[1] - a[1]
+    const len = Math.hypot(tx, ty) || 1
+    tx /= len
+    ty /= len
+    const nx = -ty * (w[i] / 2)
+    const ny = tx * (w[i] / 2)
+    left.push([pts[i][0] + nx, pts[i][1] + ny])
+    right.push([pts[i][0] - nx, pts[i][1] - ny])
+  }
+  const rightBack = right.slice().reverse()
+  return (
+    `M${fmt(left[0][0])} ${fmt(left[0][1])}` +
+    bezierSegments(left) +
+    ` L${fmt(rightBack[0][0])} ${fmt(rightBack[0][1])}` +
+    bezierSegments(rightBack) +
+    ' Z'
+  )
+}
+
 /** Catmull-Rom-hersampling met booglengte-adaptieve dichtheid: lange segmenten
  *  krijgen meer tussenpunten, zodat er nergens facetten ontstaan. */
 export function resampleSmooth(pts: Pt[], step: number): Pt[] {

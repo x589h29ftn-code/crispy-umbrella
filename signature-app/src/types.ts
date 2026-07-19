@@ -1,6 +1,6 @@
 export type Hand = 'links' | 'rechts'
 export type Legibility = 'leesbaar' | 'gemengd' | 'abstract'
-export type Phase = 'landing' | 'wizard' | 'collections' | 'results'
+export type Phase = 'landing' | 'wizard' | 'collections' | 'results' | 'draw'
 
 export interface WizardAnswers {
   fullName: string

@@ -1,10 +1,14 @@
 import { useEffect, useMemo, useState } from 'react'
 import type { GeneratedSignature, GenerationParams, SignatureRender } from '../../types'
 import { getStyle } from '../../data/collections'
+import { useAppStore } from '../../store'
 import { ensureStyleAssets, styleAssetsReady } from '../../engine/fontManager'
 import { renderSignature } from '../../engine/compose'
+import { initialsFor } from '../../engine/suggest'
+import { hashString } from '../../engine/random'
 import { SignaturePreview } from '../SignaturePreview'
 import { AnimatedSignature } from '../AnimatedSignature'
+import { paraafParams } from './ResultsPage'
 
 interface Props {
   signature: GeneratedSignature
@@ -78,8 +82,11 @@ function StepPanel({ render, index }: { render: SignatureRender; index: number }
  *  stappen en lege oefenregels. */
 export function PracticeSheet({ signature, params, onClose }: Props) {
   const style = getStyle(signature.styleId)
+  const fullName = useAppStore((s) => s.answers.fullName)
   const [ready, setReady] = useState(() => (style ? styleAssetsReady(style) : false))
   const [replay, setReplay] = useState(0)
+  const initials = initialsFor(fullName ?? signature.text)
+  const paraafSeed = hashString(`${signature.id}::paraaf`)
 
   useEffect(() => {
     if (!style || styleAssetsReady(style)) return
@@ -190,6 +197,27 @@ export function PracticeSheet({ signature, params, onClose }: Props) {
           <h2 className="practice-step">Stap 5 · Uit het hoofd</h2>
           <div className="practice-row practice-empty" />
           <div className="practice-row practice-empty" />
+          <div className="practice-row practice-empty" />
+        </section>
+
+        <section className="practice-section">
+          <h2 className="practice-step">Stap 6 · De paraaf ({initials})</h2>
+          <p className="practice-note">
+            Dezelfde stijl, alleen je initialen — voor het paraferen van pagina's.
+          </p>
+          <div className="practice-row">
+            {[0, 1, 2, 3].map((i) => (
+              <span className="practice-cell" style={{ opacity: i === 0 ? 1 : 0.45 }} key={i}>
+                <SignaturePreview
+                  style={style}
+                  params={paraafParams(params)}
+                  text={initials}
+                  seed={paraafSeed}
+                  className="practice-sig"
+                />
+              </span>
+            ))}
+          </div>
           <div className="practice-row practice-empty" />
         </section>
 

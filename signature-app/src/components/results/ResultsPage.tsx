@@ -1,9 +1,12 @@
 import { useMemo, useState } from 'react'
-import type { GeneratedSignature, GenerationParams, SignatureTweaks } from '../../types'
+import type { GeneratedSignature, GenerationParams, SignatureStyle, SignatureTweaks } from '../../types'
 import { useAppStore } from '../../store'
 import { getStyle } from '../../data/collections'
-import { deriveParams } from '../../engine/suggest'
-import { INK } from '../../engine/export'
+import { deriveParams, initialsFor } from '../../engine/suggest'
+import { downloadPng, downloadSvg, INK, safeFilename } from '../../engine/export'
+import { ensureStyleAssets } from '../../engine/fontManager'
+import { renderSignature } from '../../engine/compose'
+import { hashString } from '../../engine/random'
 import { SignaturePreview } from '../SignaturePreview'
 import { ExportBar } from './ExportBar'
 import { PracticeSheet } from './PracticeSheet'
@@ -27,6 +30,47 @@ function tweakedParams(base: GenerationParams, sig: GeneratedSignature): Generat
     flourishIntensity: Math.min(1.5, base.flourishIntensity * t.flourish),
     sizeScale: base.sizeScale * t.size
   }
+}
+
+/** Paraaf-parameters: zelfde stijl en afstemming, maar gedempt zwierwerk —
+ *  een paraaf moet snel en zakelijk blijven. */
+export function paraafParams(base: GenerationParams): GenerationParams {
+  return { ...base, flourishIntensity: base.flourishIntensity * 0.5 }
+}
+
+function ParaafStrip({
+  signature,
+  style,
+  params,
+  initials
+}: {
+  signature: GeneratedSignature
+  style: SignatureStyle
+  params: GenerationParams
+  initials: string
+}) {
+  const seed = hashString(`${signature.id}::paraaf`)
+  const pParams = paraafParams(params)
+  const ink = signature.ink ?? INK
+
+  const exportParaaf = async (kind: 'png' | 'svg') => {
+    await ensureStyleAssets(style)
+    const render = renderSignature(style, pParams, initials, seed)
+    if (!render) return
+    if (kind === 'png') await downloadPng(render, safeFilename(initials, '-paraaf.png'), undefined, ink)
+    else downloadSvg(render, safeFilename(initials, '-paraaf.svg'), ink)
+  }
+
+  return (
+    <div className="paraaf-strip" style={{ color: ink }}>
+      <span className="paraaf-label">Paraaf</span>
+      <SignaturePreview style={style} params={pParams} text={initials} seed={seed} className="paraaf-sig" />
+      <span className="paraaf-actions">
+        <button className="btn-small" title="Paraaf als PNG (transparant)" onClick={() => exportParaaf('png')}>PNG</button>
+        <button className="btn-small" title="Paraaf als SVG" onClick={() => exportParaaf('svg')}>SVG</button>
+      </span>
+    </div>
+  )
 }
 
 function TuningPanel({ signature }: { signature: GeneratedSignature }) {
@@ -151,6 +195,12 @@ export function ResultsPage() {
                   <span className="result-label">{style.label}</span>
                   <span className="result-text">{sig.text}</span>
                 </div>
+                <ParaafStrip
+                  signature={sig}
+                  style={style}
+                  params={sigParams}
+                  initials={initialsFor(answers.fullName ?? sig.text)}
+                />
                 <TuningPanel signature={sig} />
                 <ExportBar
                   signature={sig}

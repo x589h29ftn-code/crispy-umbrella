@@ -40,6 +40,9 @@ export function LandingPage() {
               Ga verder waar je was
             </button>
           )}
+          <button className="btn-ghost" onClick={() => setPhase('draw')}>
+            Of teken je eigen handtekening →
+          </button>
         </div>
       </header>
 
