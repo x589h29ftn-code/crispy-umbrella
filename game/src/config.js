@@ -21,6 +21,7 @@ window.G = (function () {
     BOOKSHELF: 40, CHAIR: 41, TABLE: 42, BED: 43, CRYSTAL: 44,
     LAVENDER: 45, PALM_LEAVES: 46, PALM_LOG: 47, RAIL: 48,
     CACTUS: 49, DEAD_BUSH: 50, MUSHROOM_STEM: 51, MUSHROOM_CAP: 52, MYCELIUM: 53, CLOTH: 54,
+    SWORD: 55,
   };
   const B = G.B;
 
@@ -42,6 +43,8 @@ window.G = (function () {
     B.CHAIR, B.TABLE, B.BED, B.CRYSTAL, B.LAVENDER, B.RAIL, B.DEAD_BUSH]);
   // Blokken met een eigen vorm (deels gevuld) — collision via Chunks.solidShapeAt
   G.SHAPED = new Set([B.STAIRS, B.SLAB, B.DOOR, B.FENCE_GATE, B.CHAIR, B.TABLE, B.BED]);
+  // Hotbar-items die je niet plaatst (gereedschap/wapen)
+  G.NON_PLACEABLE = new Set([B.SWORD]);
 
   G.isSolid = (id) => id !== undefined && !G.NON_SOLID.has(id);
   G.isCross = (id) => G.CROSS_BLOCKS.has(id);
@@ -57,10 +60,10 @@ window.G = (function () {
     [B.LANTERN]: 'Lantaarn',
     [B.BOOKSHELF]: 'Boekenkast', [B.CHAIR]: 'Stoel', [B.TABLE]: 'Tafel', [B.BED]: 'Bed',
     [B.CRYSTAL]: 'Kristal', [B.LAVENDER]: 'Lavendel', [B.RAIL]: 'Rails', [B.CACTUS]: 'Cactus',
-    [B.CLOTH]: 'Doek', [B.MUSHROOM_CAP]: 'Paddenstoelhoed',
+    [B.CLOTH]: 'Doek', [B.MUSHROOM_CAP]: 'Paddenstoelhoed', [B.SWORD]: 'Zwaard',
   };
   // Bouw-set voorop op 1–9; overige blokken via scrollwiel
-  G.HOTBAR = [B.STONE_BRICK, B.STONE_BRICK_MOSSY, B.STAIRS, B.SLAB, B.PLANKS, B.DOOR, B.GLASS, B.FENCE, B.TORCH,
+  G.HOTBAR = [B.SWORD, B.STONE_BRICK, B.STONE_BRICK_MOSSY, B.STAIRS, B.SLAB, B.PLANKS, B.DOOR, B.GLASS, B.FENCE, B.TORCH,
     B.LANTERN, B.FENCE_GATE, B.CAMPFIRE, B.CHAIR, B.TABLE, B.BED, B.BOOKSHELF, B.CRYSTAL, B.LAVENDER,
     B.RAIL, B.CLOTH, B.CACTUS, B.FARMLAND, B.CROP, B.WATER, B.COBBLE, B.LOG, B.GRASS, B.DIRT, B.SAND];
 

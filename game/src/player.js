@@ -12,14 +12,19 @@ window.Player = (function () {
   P.yaw = 0; P.pitch = 0;
   P.onGround = false;
   P.inWater = false;
-  P.hotbarSel = 0;
+  P.hotbarSel = 1;         // start op een bouwblok; slot 1 (zwaard) kies je zelf
   P.holdingTorch = false;
   P.ridingBoat = null;
   P.ridingTrain = null;
+  P.maxHealth = 6;
+  P.health = 6;
+  P.hurtT = 0;          // korte onkwetsbaarheid na een klap
+  P.regenT = 0;         // tot volgende hartje herstel
+  P.swingT = 0;         // zwaai-animatie van het zwaard
 
   let camera = null, dom = null;
   const keys = {};
-  let torchLight = null, torchModel = null;
+  let torchLight = null, torchModel = null, swordModel = null;
   let stepDist = 0;
 
   P.init = function (theCamera, theDom, scene) {
@@ -47,6 +52,22 @@ window.Player = (function () {
     torchModel.visible = false;
     camera.add(torchModel);
     torchModel.position.set(0.32, -0.28, -0.5);
+
+    // zwaard in de hand (zichtbaar wanneer het zwaard geselecteerd is)
+    swordModel = new THREE.Group();
+    const blade = new THREE.Mesh(new THREE.BoxGeometry(0.05, 0.5, 0.11),
+      new THREE.MeshLambertMaterial({ color: 0xc8d0dc }));
+    blade.position.y = 0.32;
+    const guard = new THREE.Mesh(new THREE.BoxGeometry(0.05, 0.06, 0.28),
+      new THREE.MeshLambertMaterial({ color: 0x9a9ba4 }));
+    const grip = new THREE.Mesh(new THREE.BoxGeometry(0.05, 0.16, 0.06),
+      new THREE.MeshLambertMaterial({ color: 0x6e4a2e }));
+    grip.position.y = -0.1;
+    swordModel.add(blade); swordModel.add(guard); swordModel.add(grip);
+    swordModel.visible = false;
+    camera.add(swordModel);
+    swordModel.position.set(0.42, -0.42, -0.6);
+    swordModel.rotation.set(0.2, 0.2, 0.2);
 
     // ---- input ----
     document.addEventListener('keydown', (e) => {
@@ -94,8 +115,10 @@ window.Player = (function () {
 
     dom.addEventListener('mousedown', (e) => {
       if (G.state !== 'playing' || document.pointerLockElement !== dom) return;
-      if (e.button === 0) breakBlock();
-      else if (e.button === 2) placeBlock();
+      if (e.button === 0) {
+        if (G.HOTBAR[P.hotbarSel] === B.SWORD) swingSword();
+        else breakBlock();
+      } else if (e.button === 2) placeBlock();
     });
     dom.addEventListener('contextmenu', (e) => e.preventDefault());
 
@@ -122,6 +145,9 @@ window.Player = (function () {
     P.ridingTrain = null;
     P.yaw = Math.PI * 0.25;
     P.pitch = -0.05;
+    P.health = P.maxHealth;
+    P.hurtT = 0; P.regenT = 0;
+    if (window.UI && UI.updateHealth) UI.updateHealth();
   };
 
   // ---- collision helpers ----
@@ -178,6 +204,46 @@ window.Player = (function () {
       else { z += stepZ; t = tMaxZ; tMaxZ += tDZ; face = [0, 0, -stepZ]; }
     }
     return null;
+  };
+
+  // ---- vechten & gezondheid ----
+  function swingSword() {
+    P.swingT = 0.32;
+    if (window.Sfx) Sfx.swing();
+    const hits = (window.Entities && Entities.damageBearsInFront)
+      ? Entities.damageBearsInFront(P.pos, P.yaw, 2, 3.4) : 0;
+    if (hits && window.Sfx) Sfx.hit();
+  }
+
+  // Is de speler beschut (dak boven zich)? Dan vallen beren niet aan.
+  P.sheltered = function () {
+    const bx = Math.floor(P.pos.x), bz = Math.floor(P.pos.z);
+    const y0 = Math.floor(P.pos.y) + 2;      // net boven het hoofd
+    for (let y = y0; y <= y0 + 7 && y < G.CH; y++) {
+      if (G.occludes(Chunks.getBlock(bx, y, bz))) return true;
+    }
+    return false;
+  };
+
+  P.hurt = function (dmg) {
+    if (P.hurtT > 0 || P.health <= 0) return;
+    P.health = Math.max(0, P.health - dmg);
+    P.hurtT = 0.7; P.regenT = 12;
+    if (window.Sfx) Sfx.hurt();
+    if (window.UI) { UI.updateHealth(); UI.hurtFlash(); }
+    if (P.health <= 0) P.die();
+  };
+
+  P.die = function () {
+    UI.toast('Je bent bezweken in de nacht… je wordt wakker bij zonsopgang.');
+    // door naar de volgende zonsopkomst zodat het weer veilig is
+    const cyc = G.cycleLen();
+    const tt = ((G.timeSec % cyc) + cyc) % cyc;
+    G.timeSec += (cyc - tt) + 0.5;
+    if (window.Entities && Entities.clearBears) Entities.clearBears();
+    P.health = P.maxHealth; P.hurtT = 1.5; P.regenT = 0;
+    P.spawn();
+    if (window.UI) UI.updateHealth();
   };
 
   function breakBlock() {
@@ -252,6 +318,7 @@ window.Player = (function () {
     if (hit.block === B.BED) { P.sitOn(hit.x, hit.y, hit.z, true); return; }
 
     const id = G.HOTBAR[P.hotbarSel];
+    if (G.NON_PLACEABLE && G.NON_PLACEABLE.has(id)) return;   // zwaard e.d. plaats je niet
     let tx = hit.x + hit.face[0], ty = hit.y + hit.face[1], tz = hit.z + hit.face[2];
     const target = Chunks.getBlock(tx, ty, tz);
     if (target === undefined) return;
@@ -488,6 +555,27 @@ window.Player = (function () {
         P.pos.z - Math.cos(P.yaw) * 0.4);
       torchLight.intensity = 1.3 + Math.sin(t * 11) * 0.15 + Math.sin(t * 27) * 0.07;
       torchModel.rotation.z = Math.sin(t * 2.2) * 0.05;
+    }
+
+    // zwaard in de hand + zwaai-animatie
+    const holdSword = G.HOTBAR[P.hotbarSel] === B.SWORD;
+    swordModel.visible = holdSword;
+    if (holdSword) {
+      if (P.swingT > 0) {
+        P.swingT -= dt;
+        const s = Math.max(0, P.swingT / 0.32);
+        swordModel.rotation.x = 0.2 - Math.sin((1 - s) * Math.PI) * 1.5;   // uithaal
+        swordModel.rotation.z = 0.2 + Math.sin((1 - s) * Math.PI) * 0.5;
+      } else {
+        swordModel.rotation.set(0.2, 0.2, 0.2);
+      }
+    }
+
+    // gezondheid: korte onkwetsbaarheid aftellen + langzaam herstel
+    if (P.hurtT > 0) P.hurtT -= dt;
+    if (P.health < P.maxHealth) {
+      P.regenT -= dt;
+      if (P.regenT <= 0) { P.health = Math.min(P.maxHealth, P.health + 1); P.regenT = 9; if (window.UI) UI.updateHealth(); }
     }
   };
 

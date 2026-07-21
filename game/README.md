@@ -67,6 +67,11 @@ Firefox). Lokaal serveren kan met `python3 -m http.server` in deze map.
   in een klein logboek.
 - **Bewoners groeten** — druk op <kbd>G</kbd> bij een bewoner: hij of zij draait
   naar je toe, zwaait en zegt via een tekstballon iets vriendelijks (met naam).
+- **Beren & overleven** — 's avonds en 's nachts sluipen er beren rond die je
+  achtervolgen en aanvallen; je verliest dan hartjes (linksboven de hotbar).
+  Verdedig je met het **zwaard** (linkermuisknop) of ren weg — je bent **veilig
+  onder een dak**, dus bouw op tijd een huisje. Overdag trekken de beren zich
+  terug. Verlies je al je harten, dan word je bij zonsopgang weer wakker.
 - **Seizoenen** — lente, zomer, herfst en winter wisselen elkaar af (instelbaar
   aantal dagen per seizoen); gras en bladeren verkleuren en in de winter ligt er
   rijp over het land.

@@ -61,7 +61,7 @@ window.Textures = (function () {
     FERN: 32, MUSHROOM: 33, LILYPAD: 34, PEBBLES: 35, LEAVES_CHERRY: 36, LANTERN: 37,
     BOOKSHELF: 38, CRYSTAL: 39, LAVENDER: 40, PALM_LEAVES: 41, PALM_SIDE: 42, BED: 43,
     RAIL: 44, CACTUS_SIDE: 45, CACTUS_TOP: 46, DEAD_BUSH: 47, MUSHROOM_STEM: 48,
-    MUSHROOM_CAP: 49, MYCELIUM: 50, CLOTH: 51,
+    MUSHROOM_CAP: 49, MYCELIUM: 50, CLOTH: 51, SWORD: 52,
   };
 
   function draw() {
@@ -718,6 +718,22 @@ window.Textures = (function () {
       for (let y = 0; y < TILE; y += 2) for (let x = 0; x < TILE; x++) px(tx, ty, x, y, 180, 74, 56, 0.4);
       for (let x = 0; x < TILE; x += 2) for (let y = 0; y < TILE; y++) px(tx, ty, x, y, 216, 104, 84, 0.3);
     }
+
+    // ZWAARD: diagonaal stalen lemmet met houten gevest (icoon)
+    {
+      const idx = TI.SWORD, tx = idx % COLS, ty = (idx / COLS) | 0;
+      clearTile(tx, ty);
+      for (let i = 0; i < 20; i++) {
+        const x = 8 + i, y = 23 - i;
+        for (let w = -1; w <= 1; w++) { const v = (R() - 0.5) * 20; px(tx, ty, x + w, y, 198 + v, 206 + v, 220 + v); }
+        px(tx, ty, x - 1, y + 1, 150, 158, 172);
+      }
+      px(tx, ty, 27, 4, 240, 245, 255); px(tx, ty, 28, 3, 255, 255, 255);
+      const g = [96, 70, 42];
+      for (let k = -3; k <= 3; k++) px(tx, ty, 6 - k, 22 + k, 120, 122, 130);   // pareerstang
+      for (let k = 0; k < 5; k++) { px(tx, ty, 6 - k, 26 + k, g[0], g[1], g[2]); px(tx, ty, 5 - k, 26 + k, g[0], g[1], g[2]); }
+      px(tx, ty, 2, 30, 210, 180, 90); px(tx, ty, 3, 29, 210, 180, 90);
+    }
   }
   draw();
 
@@ -783,6 +799,7 @@ window.Textures = (function () {
       case B.MUSHROOM_CAP: return TI2.MUSHROOM_CAP;
       case B.MYCELIUM: return face === 2 ? TI2.MYCELIUM : (face === 3 ? TI2.DIRT : TI2.DIRT);
       case B.CLOTH: return TI2.CLOTH;
+      case B.SWORD: return TI2.SWORD;
       case B.FERN: return TI2.FERN;
       case B.MUSHROOM: return TI2.MUSHROOM;
       case B.LILYPAD: return TI2.LILYPAD;

@@ -53,6 +53,24 @@ window.UI = (function () {
     toastTimer = setTimeout(() => { t.style.opacity = 0; }, 2600);
   };
 
+  // ---- gezondheid (harten) ----
+  U.updateHealth = function () {
+    const el = $('health');
+    if (!el || !window.Player) return;
+    const cur = Player.health || 0, max = Player.maxHealth || 6;
+    let html = '';
+    for (let i = 0; i < max; i++) html += '<span class="hp' + (i < cur ? '' : ' empty') + '">❤️</span>';
+    el.innerHTML = html;
+    el.style.display = (G.state === 'playing' && !U._hudHidden) ? 'flex' : 'none';
+  };
+  U.hurtFlash = function () {
+    const f = $('hurtflash');
+    if (!f) return;
+    f.style.opacity = 1;
+    clearTimeout(U._hurtT);
+    U._hurtT = setTimeout(() => { f.style.opacity = 0; }, 120);
+  };
+
   // ---- pratende tekstballonnen boven bewoners ----
   const bubbles = [];
   const _v3 = { x: 0, y: 0, z: 0 };
@@ -370,6 +388,7 @@ window.UI = (function () {
   U._hudHidden = false;
   U.setHud = function (visible) {
     $('hud').style.display = (visible && !U._hudHidden) ? 'block' : 'none';
+    U.updateHealth();
   };
   U.toggleHud = function () {
     U._hudHidden = !U._hudHidden;

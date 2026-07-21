@@ -59,6 +59,13 @@
     background:rgba(255,255,255,.92);color:#20232a;padding:6px 11px;border-radius:12px;
     font-size:13px;max-width:220px;text-align:center;line-height:1.25;
     box-shadow:0 3px 10px rgba(0,0,0,.35);white-space:normal;}
+  #health{position:absolute;left:50%;bottom:74px;transform:translateX(-50%);
+    display:none;gap:3px;font-size:22px;line-height:1;z-index:6;filter:drop-shadow(0 1px 2px rgba(0,0,0,.6));}
+  #health .hp{opacity:1;}
+  #health .hp.empty{opacity:.28;filter:grayscale(1);}
+  #hurtflash{position:absolute;inset:0;pointer-events:none;z-index:9;opacity:0;
+    background:radial-gradient(ellipse at center,rgba(180,20,20,0) 45%,rgba(160,10,10,.55) 100%);
+    transition:opacity .5s;}
   .bubble b{display:block;font-size:12px;color:#3a6ea5;margin-bottom:1px;}
   .bubble::after{content:"";position:absolute;left:50%;top:100%;transform:translateX(-50%);
     border:7px solid transparent;border-top-color:rgba(255,255,255,.92);}
@@ -110,12 +117,14 @@
 <!-- HUD -->
 <div id="hud">
   <div id="crosshair"></div>
+  <div id="health"></div>
   <div id="hotbar"></div>
   <div id="clockwrap"><span id="clockicon">☀️</span><span id="clocktxt">Dag 1 — 08:00</span><span id="weathericon"></span></div>
   <div id="helphint"><kbd>H</kbd> hulp &nbsp; <kbd>Esc</kbd> menu</div>
   <div id="fps">– fps</div>
   <div id="hint"></div>
   <div id="toast"></div>
+  <div id="hurtflash"></div>
 </div>
 
 <!-- Hoofdmenu -->
@@ -218,7 +227,7 @@
       <span><kbd>Muis</kbd></span><span>Rondkijken</span>
       <span><kbd>Spatie</kbd></span><span>Springen / zwemmen</span>
       <span><kbd>Shift</kbd></span><span>Rennen</span>
-      <span><kbd>Linkermuisknop</kbd></span><span>Blok weghalen</span>
+      <span><kbd>Linkermuisknop</kbd></span><span>Blok weghalen · met zwaard: aanvallen (beren)</span>
       <span><kbd>Rechtermuisknop</kbd></span><span>Blok plaatsen · deur openen · zitten op stoel · slapen op bed</span>
       <span><kbd>1–9</kbd> / <kbd>scroll</kbd></span><span>Blok kiezen (o.a. meubels, kristal, lavendel)</span>
       <span><kbd>F</kbd></span><span>Fakkel vasthouden</span>

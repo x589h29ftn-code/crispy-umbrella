@@ -308,6 +308,58 @@ window.Sfx = (function () {
   };
   A.splash = function () { thud(300, 0.1, 0.25, 'sine'); };
 
+  // ---- gevecht & beren ----
+  A.growl = function (vol) {
+    if (!ctx) return;
+    const t0 = ctx.currentTime, v = (vol || 1) * 0.5;
+    const o = ctx.createOscillator(); o.type = 'sawtooth';
+    o.frequency.setValueAtTime(90, t0);
+    o.frequency.linearRampToValueAtTime(60, t0 + 0.45);
+    const f = ctx.createBiquadFilter(); f.type = 'lowpass'; f.frequency.value = 320; f.Q.value = 3;
+    const g = ctx.createGain();
+    g.gain.setValueAtTime(0, t0);
+    g.gain.linearRampToValueAtTime(v * 0.5, t0 + 0.05);
+    g.gain.setValueAtTime(v * 0.5, t0 + 0.3);
+    g.gain.exponentialRampToValueAtTime(0.001, t0 + 0.6);
+    o.connect(f); f.connect(g); g.connect(sfxBus);
+    o.start(t0); o.stop(t0 + 0.65);
+  };
+  A.hurt = function () {
+    if (!ctx) return;
+    const t0 = ctx.currentTime;
+    const o = ctx.createOscillator(); o.type = 'triangle';
+    o.frequency.setValueAtTime(420, t0);
+    o.frequency.exponentialRampToValueAtTime(120, t0 + 0.22);
+    const g = ctx.createGain();
+    g.gain.setValueAtTime(0.28, t0);
+    g.gain.exponentialRampToValueAtTime(0.001, t0 + 0.26);
+    o.connect(g); g.connect(sfxBus);
+    o.start(t0); o.stop(t0 + 0.3);
+  };
+  A.swing = function () {
+    if (!ctx) return;
+    const t0 = ctx.currentTime;
+    const src = ctx.createBufferSource(); src.buffer = makeNoiseBuffer(0.2);
+    const f = ctx.createBiquadFilter(); f.type = 'bandpass'; f.Q.value = 1.2;
+    f.frequency.setValueAtTime(900, t0);
+    f.frequency.exponentialRampToValueAtTime(2600, t0 + 0.16);
+    const g = ctx.createGain();
+    g.gain.setValueAtTime(0.16, t0);
+    g.gain.exponentialRampToValueAtTime(0.001, t0 + 0.18);
+    src.connect(f); f.connect(g); g.connect(sfxBus);
+    src.start(t0); src.stop(t0 + 0.2);
+  };
+  A.hit = function () {
+    if (!ctx) return;
+    thud(140, 0.16, 0.14);
+    const t0 = ctx.currentTime;
+    const src = ctx.createBufferSource(); src.buffer = makeNoiseBuffer(0.1);
+    const f = ctx.createBiquadFilter(); f.type = 'lowpass'; f.frequency.value = 1200;
+    const g = ctx.createGain(); g.gain.setValueAtTime(0.18, t0); g.gain.exponentialRampToValueAtTime(0.001, t0 + 0.1);
+    src.connect(f); f.connect(g); g.connect(sfxBus);
+    src.start(t0); src.stop(t0 + 0.12);
+  };
+
   // zachte uilenroep in de nacht
   A.owl = function () {
     if (!ctx) return;

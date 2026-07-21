@@ -535,6 +535,115 @@ window.Entities = (function () {
     }
   }
 
+  // ---- beren: 's nachts achtervolgen ze de speler en vallen aan ----------------------
+  const bears = [];
+  let bearTimer = 8;
+
+  function buildBear() {
+    const g = new THREE.Group();
+    const fur = 0x4a3728, fur2 = 0x5c4634, snout = 0x74593f;
+    const body = new THREE.Mesh(box(1.1, 1.0, 1.8), mat(fur)); body.position.y = 1.05; body.castShadow = true; g.add(body);
+    const hump = new THREE.Mesh(box(1.0, 0.5, 0.7), mat(fur)); hump.position.set(0, 1.55, 0.35); g.add(hump);
+    const head = new THREE.Mesh(box(0.8, 0.75, 0.8), mat(fur2)); head.position.set(0, 1.4, 1.05); g.add(head);
+    const sn = new THREE.Mesh(box(0.42, 0.36, 0.36), mat(snout)); sn.position.set(0, 1.3, 1.5); g.add(sn);
+    for (const sx of [-0.28, 0.28]) { const ear = new THREE.Mesh(box(0.22, 0.22, 0.14), mat(fur)); ear.position.set(sx, 1.82, 0.95); g.add(ear); }
+    const legs = [];
+    for (const [lx, lz] of [[-0.38, 0.66], [0.38, 0.66], [-0.38, -0.66], [0.38, -0.66]]) {
+      const leg = new THREE.Mesh(box(0.36, 0.8, 0.36), mat(fur2)); leg.position.set(lx, 0.42, lz); g.add(leg); legs.push(leg);
+    }
+    g.traverse((o) => { if (o.isMesh) o.castShadow = true; });
+    return { group: g, head, legs };
+  }
+
+  function removeBear(b) { scene.remove(b.mesh); const i = bears.indexOf(b); if (i >= 0) bears.splice(i, 1); }
+  E.clearBears = function () { for (const b of bears) scene.remove(b.mesh); bears.length = 0; };
+  E._bears = bears;
+  E.spawnBearNow = function (playerPos) { bearTimer = 0; trySpawnBear(playerPos, 1); };
+
+  function trySpawnBear(playerPos, nightAmt) {
+    if (bears.length >= 3 || nightAmt < 0.3) return;    // alleen in de schemer/nacht
+    for (let attempt = 0; attempt < 8; attempt++) {
+      const a = rng() * Math.PI * 2, d = 28 + rng() * 24;
+      const x = Math.floor(playerPos.x + Math.cos(a) * d) + 0.5;
+      const z = Math.floor(playerPos.z + Math.sin(a) * d) + 0.5;
+      const gy = Chunks.groundY(x, z);
+      const surf = Chunks.getBlock(Math.floor(x), gy, Math.floor(z));
+      if (surf === undefined || surf === B.WATER) continue;
+      const parts = buildBear();
+      const b = { parts, mesh: parts.group, x, z, y: gy + 1, hp: 6, speed: 2.2 + rng() * 0.5,
+        attackCD: 1.0, phase: rng() * 10, heading: 0, lunge: 0 };
+      parts.group.position.set(x, b.y, z);
+      scene.add(parts.group);
+      bears.push(b);
+      return;
+    }
+  }
+
+  E.damageBearsInFront = function (pos, yaw, dmg, reach) {
+    const fx = -Math.sin(yaw), fz = -Math.cos(yaw);
+    let hits = 0;
+    for (let i = bears.length - 1; i >= 0; i--) {
+      const b = bears[i];
+      const dx = b.x - pos.x, dz = b.z - pos.z, d = Math.hypot(dx, dz) || 1;
+      if (d > reach) continue;
+      if ((dx / d) * fx + (dz / d) * fz < 0.3) continue;   // moet grofweg vóór je staan
+      b.hp -= dmg; hits++;
+      b.x += (dx / d) * 0.9; b.z += (dz / d) * 0.9;         // terugstoot
+      b.flash = 0.15;
+      if (b.hp <= 0) removeBear(b);
+    }
+    return hits;
+  };
+
+  function updateBear(b, dt, t, playerPos, nightAmt) {
+    b.attackCD -= dt;
+    if (b.flash > 0) b.flash -= dt;
+    const dx = playerPos.x - b.x, dz = playerPos.z - b.z, d = Math.hypot(dx, dz) || 1;
+    const day = nightAmt < 0.15;
+    const sheltered = window.Player && Player.sheltered && Player.sheltered();
+    const aggro = !day && d < 46 && !sheltered;
+
+    let mvx, mvz, spd;
+    if (aggro) { mvx = dx / d; mvz = dz / d; spd = b.speed; b.heading = Math.atan2(dx, dz); }
+    else { mvx = -dx / d; mvz = -dz / d; spd = b.speed * 0.5; b.heading = Math.atan2(mvx, mvz); }
+
+    if (aggro ? d > 1.5 : true) {
+      const step = spd * dt;
+      // probeer recht vooruit, anders langs het obstakel schuiven (huisjes blijven blokkeren)
+      const tries = [[mvx, mvz], [mvz, -mvx], [-mvz, mvx]];
+      let moved = false;
+      for (const [ax, az] of tries) {
+        const nx = b.x + ax * step, nz = b.z + az * step;
+        const gy = Chunks.walkGroundY(nx, nz, b.y);
+        const bl = Chunks.getBlock(Math.floor(nx), gy, Math.floor(nz));
+        if (bl !== B.WATER && bl !== undefined && Math.abs((gy + 1) - b.y) < 1.3) {
+          b.x = nx; b.z = nz; b.y += ((gy + 1) - b.y) * Math.min(1, dt * 10);
+          b.heading = Math.atan2(ax, az); moved = true; break;
+        }
+      }
+      if (!moved) b.heading += 1.6;
+    }
+
+    if (aggro && d < 2.1 && b.attackCD <= 0) {
+      b.attackCD = 1.3; b.lunge = 0.25;
+      if (window.Player) Player.hurt(1);
+      if (window.Sfx) Sfx.growl();
+    }
+    if (aggro && b.growlT === undefined) b.growlT = 2 + rng() * 4;
+    if (aggro) { b.growlT -= dt; if (b.growlT <= 0) { b.growlT = 3 + rng() * 5; if (window.Sfx && d < 30) Sfx.growl(0.5); } }
+
+    // verdwijnen als het dag wordt of als de speler ver weg is
+    if ((day && d > 26) || d > 95) { removeBear(b); return; }
+
+    const m = b.mesh;
+    m.position.set(b.x, b.y, b.z);
+    m.rotation.y += (b.heading - m.rotation.y) * Math.min(1, dt * 6);
+    const sw = Math.sin(t * 8 + b.phase) * 0.6;
+    b.parts.legs[0].rotation.x = sw; b.parts.legs[3].rotation.x = sw;
+    b.parts.legs[1].rotation.x = -sw; b.parts.legs[2].rotation.x = -sw;
+    b.parts.head.rotation.x = b.lunge > 0 ? (b.lunge -= dt, -0.6 * Math.sin((b.lunge / 0.25) * Math.PI)) : Math.sin(t * 2 + b.phase) * 0.08;
+  }
+
   // ---- dieren --------------------------------------------------------------------------
   function buildSheep(seedN) {
     const r = Noise.rng(seedN);
@@ -1148,6 +1257,8 @@ window.Entities = (function () {
     travelers.length = 0;
     for (const tn of trains) scene.remove(tn.mesh);
     trains.length = 0;
+    for (const b of bears) scene.remove(b.mesh);
+    bears.length = 0;
     for (const f of flocks) for (const b of f.birds) scene.remove(b.parts.g);
     flocks.length = 0;
     populatedVillages.clear();
@@ -1198,6 +1309,11 @@ window.Entities = (function () {
     trainTimer -= dt;
     if (trainTimer <= 0) { trainTimer = 25 + Math.random() * 40; trySpawnTrain(playerPos); }
     for (let i = trains.length - 1; i >= 0; i--) updateTrain(trains[i], dt, t);
+
+    // beren: 's nachts jagen ze op de speler
+    bearTimer -= dt;
+    if (bearTimer <= 0) { bearTimer = 7 + Math.random() * 9; trySpawnBear(playerPos, nightAmt); }
+    for (let i = bears.length - 1; i >= 0; i--) updateBear(bears[i], dt, t, playerPos, nightAmt);
 
     // dieren
     animalSpawnTimer -= dt;
