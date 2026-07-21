@@ -4554,3 +4554,164 @@ button.group-row__date:hover {
   color: var(--text-dim);
   font-style: italic;
 }
+
+/* ---------- Ondertekenen ---------- */
+
+.signing-card {
+  max-width: 900px;
+  width: 92vw;
+}
+
+.signing-badge {
+  display: inline-flex;
+  align-items: center;
+  padding: 2px 8px;
+  border-radius: 999px;
+  font-size: 11px;
+  font-weight: 600;
+  border: 1px solid var(--border-soft);
+  color: var(--text-dim);
+}
+.signing-badge--concept { color: var(--text-dim); }
+.signing-badge--verzonden { color: var(--accent); border-color: color-mix(in srgb, var(--accent) 45%, transparent); }
+.signing-badge--gedeeltelijk { color: #c98a00; border-color: color-mix(in srgb, #c98a00 45%, transparent); }
+.signing-badge--ondertekend { color: var(--success); border-color: color-mix(in srgb, var(--success) 45%, transparent); }
+
+.signing-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  padding: 1px 7px;
+  border-radius: 999px;
+  font-size: 11px;
+  background: var(--panel-2);
+  border: 1px solid var(--border-soft);
+  color: var(--text-dim);
+}
+.signing-chip--self { color: var(--accent); }
+.signing-chip--signed { color: var(--success); border-color: color-mix(in srgb, var(--success) 40%, transparent); }
+.signing-chip--pending { color: var(--text-dim); }
+.signing-chip--declined { color: var(--danger); }
+
+.signing-item .templates-item__meta {
+  display: flex;
+  gap: 6px;
+  align-items: center;
+  flex-wrap: wrap;
+  margin-top: 4px;
+}
+.signing-overdue {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 11px;
+  color: #c98a00;
+}
+
+.signing-method {
+  display: flex;
+  gap: 14px;
+  flex-wrap: wrap;
+  align-items: center;
+  margin: var(--space-3) 0;
+  padding: var(--space-2) var(--space-3);
+  background: var(--panel-2);
+  border-radius: var(--radius-md);
+}
+.signing-method__title { font-weight: 600; font-size: 13px; }
+.signing-method__opt { display: inline-flex; align-items: center; gap: 5px; font-size: 13px; cursor: pointer; }
+
+.signing-parties { margin: var(--space-3) 0; }
+.signing-parties__title { font-weight: 600; font-size: 13px; margin-bottom: var(--space-2); }
+.signing-party-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 6px;
+}
+.signing-party-row__name { flex: 1 1 40%; }
+.signing-party-row__email { flex: 1 1 40%; }
+.signing-party-row input {
+  padding: 5px 8px;
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--border-soft);
+  background: var(--panel);
+  color: var(--text);
+}
+
+.signing-place { display: flex; gap: var(--space-4); align-items: stretch; min-height: 420px; }
+.signing-place__side { width: 230px; display: flex; flex-direction: column; gap: 8px; }
+.signing-place__hint { font-size: 12px; color: var(--text-dim); }
+.signing-place__party {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 3px;
+  padding: 7px 9px;
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--border-soft);
+  background: var(--panel-2);
+  cursor: pointer;
+  text-align: left;
+}
+.signing-place__party--active { border-color: var(--accent); }
+.signing-place__placed { font-size: 11px; color: var(--text-dim); }
+.signing-place__pager { display: flex; align-items: center; gap: 8px; font-size: 12px; }
+.signing-place__canvas {
+  flex: 1;
+  display: flex;
+  justify-content: center;
+  align-items: flex-start;
+  overflow: auto;
+  background: var(--bg);
+  border-radius: var(--radius-md);
+  padding: var(--space-3);
+}
+.signing-place__page { position: relative; cursor: crosshair; box-shadow: 0 2px 10px rgba(0,0,0,0.25); }
+.signing-place__mark {
+  position: absolute;
+  border: 2px solid var(--accent);
+  background: color-mix(in srgb, var(--accent) 15%, transparent);
+  font-size: 10px;
+  color: var(--accent);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  pointer-events: none;
+}
+.signing-place__dragbox {
+  position: absolute;
+  border: 2px dashed var(--accent);
+  background: color-mix(in srgb, var(--accent) 12%, transparent);
+  pointer-events: none;
+}
+.signing-place__loading { color: var(--text-dim); padding: var(--space-5); }
+
+.signing-detail__head { display: flex; align-items: center; gap: 10px; margin-bottom: var(--space-3); }
+.signing-detail__file { color: var(--text-dim); font-size: 13px; }
+.signing-detail__parties { display: flex; flex-direction: column; gap: 6px; margin-bottom: var(--space-3); }
+.signing-detail__party { display: flex; align-items: center; gap: 10px; font-size: 13px; }
+.signing-detail__email { color: var(--text-dim); }
+.signing-detail__pstatus { margin-left: auto; color: var(--text-dim); font-size: 12px; }
+.signing-detail__timeline { margin-top: var(--space-3); }
+.signing-detail__timeline-title { font-weight: 600; font-size: 13px; margin-bottom: var(--space-2); }
+.signing-detail__event {
+  display: flex;
+  gap: 10px;
+  align-items: center;
+  padding: 4px 0;
+  font-size: 12px;
+  border-bottom: 1px solid var(--border-soft);
+}
+.signing-detail__event-type { text-transform: capitalize; font-weight: 600; }
+.signing-detail__event-note { color: var(--text-dim); }
+.signing-detail__event-when { margin-left: auto; color: var(--text-dim); }
+
+.signing-cert__status {
+  padding: var(--space-2) var(--space-3);
+  background: var(--panel-2);
+  border-radius: var(--radius-md);
+  font-size: 13px;
+  margin-bottom: var(--space-3);
+}
+.signing-cert__status--none { color: var(--text-dim); }

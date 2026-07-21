@@ -46,8 +46,11 @@ const api = {
   saveToOneDrive: (defaultName: string, data: Uint8Array): Promise<SaveResult & { reason?: string }> =>
     ipcRenderer.invoke('onedrive:savePdf', defaultName, data),
   openPath: (path: string): Promise<{ ok: boolean; error?: string }> => ipcRenderer.invoke('shell:openPath', path),
-  mailPdf: (name: string, data: Uint8Array): Promise<{ ok: boolean; fallback?: boolean }> =>
-    ipcRenderer.invoke('mail:pdf', name, data),
+  mailPdf: (
+    name: string,
+    data: Uint8Array,
+    opts?: { to?: string; subject?: string; body?: string }
+  ): Promise<{ ok: boolean; fallback?: boolean }> => ipcRenderer.invoke('mail:pdf', name, data, opts),
   openDocumentWindow: (payload: unknown): Promise<{ ok: boolean }> =>
     ipcRenderer.invoke('window:openDocument', payload),
   consumeHandoff: (id: string): Promise<unknown> => ipcRenderer.invoke('window:consumeHandoff', id),
@@ -66,6 +69,31 @@ const api = {
     ipcRenderer.invoke('templates:save', metaJson, docx),
   templatesDelete: (id: string): Promise<{ ok: boolean }> => ipcRenderer.invoke('templates:delete', id),
   templatesLoadDocx: (id: string): Promise<Uint8Array | null> => ipcRenderer.invoke('templates:loadDocx', id),
+  signingList: (): Promise<unknown[]> => ipcRenderer.invoke('signing:list'),
+  signingSaveDossier: (metaJson: string): Promise<{ ok: boolean; error?: string }> =>
+    ipcRenderer.invoke('signing:saveDossier', metaJson),
+  signingDeleteDossier: (id: string): Promise<{ ok: boolean }> => ipcRenderer.invoke('signing:deleteDossier', id),
+  signingSaveDoc: (id: string, kind: 'orig' | 'signed', data: Uint8Array): Promise<{ ok: boolean }> =>
+    ipcRenderer.invoke('signing:saveDoc', id, kind, data),
+  signingLoadDoc: (id: string, kind: 'orig' | 'signed'): Promise<Uint8Array | null> =>
+    ipcRenderer.invoke('signing:loadDoc', id, kind),
+  signingCertStatus: (): Promise<{ exists: boolean; subject?: string; validTo?: number; isSelfSigned?: boolean }> =>
+    ipcRenderer.invoke('signing:certStatus'),
+  signingCreateSelfCert: (
+    name: string,
+    org?: string
+  ): Promise<{ ok: boolean; subject?: string; validTo?: number; error?: string }> =>
+    ipcRenderer.invoke('signing:createSelfCert', name, org),
+  signingImportP12: (
+    data: Uint8Array,
+    passphrase: string
+  ): Promise<{ ok: boolean; subject?: string; validTo?: number; error?: string }> =>
+    ipcRenderer.invoke('signing:importP12', data, passphrase),
+  signingSignPades: (
+    data: Uint8Array,
+    opts: { reason?: string; name?: string; location?: string; contactInfo?: string }
+  ): Promise<{ ok: boolean; data?: Uint8Array; error?: string }> =>
+    ipcRenderer.invoke('signing:signPades', data, opts),
   onFilesOpened: (callback: (files: LoadedFile[]) => void): (() => void) => {
     const listener = (_evt: unknown, files: LoadedFile[]): void => callback(files)
     ipcRenderer.on('files:opened', listener)

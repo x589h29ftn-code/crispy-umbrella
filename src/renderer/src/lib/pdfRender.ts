@@ -212,6 +212,55 @@ export async function visualRectToContentRect(
   }
 }
 
+export interface RenderedPagePreview {
+  dataUrl: string
+  /** Afmetingen in PDF-punten (scale 1). */
+  pdfWidth: number
+  pdfHeight: number
+  /** Afmetingen van de gerenderde afbeelding in pixels. */
+  pxWidth: number
+  pxHeight: number
+  pageCount: number
+}
+
+/**
+ * Rendert één pagina van ruwe PDF-bytes naar een PNG-data-URL op een doelbreedte.
+ * Losstaand van het store-bronmodel — gebruikt door het ondertekendashboard om
+ * een voorbeeld te tonen waarop de gebruiker tekenvakken plaatst. Geeft zowel de
+ * PDF-punt- als pixelafmetingen terug zodat een rechthoek exact naar
+ * PDF-coördinaten (pivot linksonder) is om te rekenen.
+ */
+export async function renderPdfBytesPage(
+  bytes: Uint8Array,
+  pageIndex: number,
+  targetWidthPx: number
+): Promise<RenderedPagePreview> {
+  const doc = await pdfjsLib.getDocument({ data: cloneBytes(bytes) }).promise
+  try {
+    const clampedIndex = Math.min(Math.max(0, pageIndex), doc.numPages - 1)
+    const page = await doc.getPage(clampedIndex + 1)
+    const base = page.getViewport({ scale: 1 })
+    const scale = targetWidthPx / base.width
+    const viewport = page.getViewport({ scale })
+    const canvas = document.createElement('canvas')
+    canvas.width = Math.ceil(viewport.width)
+    canvas.height = Math.ceil(viewport.height)
+    const ctx = canvas.getContext('2d')
+    if (!ctx) throw new Error('Geen 2D-context')
+    await page.render({ canvasContext: ctx, viewport }).promise
+    return {
+      dataUrl: canvas.toDataURL('image/png'),
+      pdfWidth: base.width,
+      pdfHeight: base.height,
+      pxWidth: canvas.width,
+      pxHeight: canvas.height,
+      pageCount: doc.numPages
+    }
+  } finally {
+    void doc.destroy()
+  }
+}
+
 export async function visualRectToSignaturePlacement(
   source: SourceFile,
   pageIndex: number,

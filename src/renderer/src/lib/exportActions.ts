@@ -42,6 +42,16 @@ function exportOptions(): {
   return { formValues: state.formValues, flattenForms: state.flattenForms, cleanMetadata: state.cleanMetadata }
 }
 
+/** Bouwt het actieve document als PDF-bytes + nette bestandsnaam (voor het
+ *  ondertekendashboard). Geeft null terug als er geen document is. */
+export async function buildActiveGroupPdf(): Promise<{ bytes: Uint8Array; name: string } | null> {
+  const state = useStudioStore.getState()
+  const group = state.groups.find((g) => g.id === state.activeGroupId) ?? state.groups[0]
+  if (!group || !group.pages.length) return null
+  const bytes = await exportGroup(group, state.sources, exportOptions())
+  return { bytes, name: sanitizeFileName(group.name) }
+}
+
 /** Exports the active document as a single PDF via a save dialog. */
 export async function exportActivePdf(): Promise<void> {
   const state = useStudioStore.getState()

@@ -30,6 +30,7 @@ import {
   IconSearch,
   IconShield,
   IconSignature,
+  IconStamp,
   IconSparkles,
   IconSun,
   IconSettings,
@@ -97,6 +98,7 @@ export default function Toolbar({ zoomPct, onZoomIn, onZoomOut, onZoomReset, onZ
   const setPrivacyScanOpen = useStudioStore((s) => s.setPrivacyScanOpen)
   const setSmartDialogOpen = useStudioStore((s) => s.setSmartDialogOpen)
   const setTemplatesDialogOpen = useStudioStore((s) => s.setTemplatesDialogOpen)
+  const setSigningDialogOpen = useStudioStore((s) => s.setSigningDialogOpen)
   const setShortcutsOpen = useStudioStore((s) => s.setShortcutsOpen)
   const setPreferencesOpen = useStudioStore((s) => s.setPreferencesOpen)
   const setTrashPanelOpen = useStudioStore((s) => s.setTrashPanelOpen)
@@ -301,6 +303,16 @@ export default function Toolbar({ zoomPct, onZoomIn, onZoomOut, onZoomReset, onZ
       >
         <IconForm size={15} />
         <span className="sidebar-btn__label">Sjablonen</span>
+      </button>
+
+      <button
+        type="button"
+        className="sidebar-btn"
+        onClick={() => setSigningDialogOpen(true)}
+        title="Ondertekenen: zelf tekenen of een tweede partij laten tekenen, verzenden en herinneren"
+      >
+        <IconStamp size={15} />
+        <span className="sidebar-btn__label">Ondertekenen</span>
       </button>
 
       <button

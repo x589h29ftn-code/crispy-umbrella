@@ -471,6 +471,93 @@ app.whenReady().then(() => {
     }
   })
 
+  // ---- Ondertekendossiers: dossiers.json + {id}.{orig|signed}.pdf ----
+  // Alles in een 'signing'-submap van de sjablonenbibliotheek, zodat het hele
+  // kantoor hetzelfde ondertekendashboard deelt (net als de sjablonen).
+  const signingSubdirAsync = async (): Promise<string> => join(await templatesDirAsync(), 'signing')
+  const signingIndexPathAsync = async (): Promise<string> => join(await signingSubdirAsync(), 'dossiers.json')
+
+  ipcMain.handle('signing:list', async () => {
+    try {
+      return JSON.parse(await readFile(await signingIndexPathAsync(), 'utf-8'))
+    } catch {
+      return []
+    }
+  })
+
+  ipcMain.handle('signing:saveDossier', async (_evt, metaJson: string) => {
+    try {
+      const dir = await signingSubdirAsync()
+      await mkdir(dir, { recursive: true })
+      const meta = JSON.parse(metaJson) as { id: string }
+      let list: { id: string }[] = []
+      try {
+        list = JSON.parse(await readFile(await signingIndexPathAsync(), 'utf-8'))
+      } catch {
+        /* nog geen index */
+      }
+      const idx = list.findIndex((d) => d.id === meta.id)
+      if (idx >= 0) list[idx] = meta
+      else list.unshift(meta)
+      await writeFile(await signingIndexPathAsync(), JSON.stringify(list, null, 1), 'utf-8')
+      return { ok: true }
+    } catch (error) {
+      return { ok: false, error: String(error) }
+    }
+  })
+
+  ipcMain.handle('signing:deleteDossier', async (_evt, id: string) => {
+    try {
+      let list: { id: string }[] = []
+      try {
+        list = JSON.parse(await readFile(await signingIndexPathAsync(), 'utf-8'))
+      } catch {
+        /* geen index */
+      }
+      await writeFile(await signingIndexPathAsync(), JSON.stringify(list.filter((d) => d.id !== id), null, 1), 'utf-8')
+      const dir = await signingSubdirAsync()
+      await unlink(join(dir, `${id}.orig.pdf`)).catch(() => undefined)
+      await unlink(join(dir, `${id}.signed.pdf`)).catch(() => undefined)
+      return { ok: true }
+    } catch {
+      return { ok: false }
+    }
+  })
+
+  ipcMain.handle('signing:saveDoc', async (_evt, id: string, kind: string, data: Uint8Array) => {
+    if (kind !== 'orig' && kind !== 'signed') return { ok: false }
+    try {
+      const dir = await signingSubdirAsync()
+      await mkdir(dir, { recursive: true })
+      await writeFile(join(dir, `${id}.${kind}.pdf`), Buffer.from(data))
+      return { ok: true }
+    } catch {
+      return { ok: false }
+    }
+  })
+
+  ipcMain.handle('signing:loadDoc', async (_evt, id: string, kind: string) => {
+    if (kind !== 'orig' && kind !== 'signed') return null
+    try {
+      return await readFile(join(await signingSubdirAsync(), `${id}.${kind}.pdf`))
+    } catch {
+      return null
+    }
+  })
+
+  // Certificaatbeheer + PAdES-ondertekening (lazy import: node-forge/@signpdf
+  // laden pas wanneer er echt ondertekend wordt).
+  ipcMain.handle('signing:certStatus', async () => (await import('./signing')).certStatus())
+  ipcMain.handle('signing:createSelfCert', async (_evt, name: string, org?: string) =>
+    (await import('./signing')).createSelfCert(name, org)
+  )
+  ipcMain.handle('signing:importP12', async (_evt, data: Uint8Array, passphrase: string) =>
+    (await import('./signing')).importP12(data, passphrase)
+  )
+  ipcMain.handle('signing:signPades', async (_evt, data: Uint8Array, opts: unknown) =>
+    (await import('./signing')).signPades(data, (opts as Record<string, string>) ?? {})
+  )
+
   ipcMain.handle('dialog:savePdf', async (_evt, defaultName: string, data: Uint8Array) => {
     const result = await dialog.showSaveDialog({
       defaultPath: defaultName,
@@ -495,32 +582,44 @@ app.whenReady().then(() => {
   })
 
   // Mail als bijlage: opent een nieuw Outlook-bericht met de PDF eraan (COM).
+  // Optioneel worden ontvanger, onderwerp en tekst vooraf ingevuld (gebruikt
+  // door het ondertekendashboard voor verzendingen en herinneringen).
   // Zonder Outlook valt het terug op de Verkenner met het bestand geselecteerd.
-  ipcMain.handle('mail:pdf', async (_evt, name: string, data: Uint8Array) => {
-    const dir = await mkdtemp(join(tmpdir(), 'pdfstudio-mail-'))
-    const file = join(dir, name.replace(/[\\/:*?"<>|]/g, '_'))
-    await writeFile(file, Buffer.from(data))
-    if (process.platform === 'win32') {
-      try {
-        await new Promise<void>((resolve, reject) => {
-          execFile(
-            'powershell.exe',
-            [
-              '-NoProfile',
-              '-Command',
-              `$ol = New-Object -ComObject Outlook.Application; $m = $ol.CreateItem(0); $m.Attachments.Add('${file.replace(/'/g, "''")}') | Out-Null; $m.Display()`
-            ],
-            (err) => (err ? reject(err) : resolve())
-          )
-        })
-        return { ok: true }
-      } catch {
-        // Outlook niet beschikbaar — val terug op de Verkenner.
+  ipcMain.handle(
+    'mail:pdf',
+    async (_evt, name: string, data: Uint8Array, opts?: { to?: string; subject?: string; body?: string }) => {
+      const dir = await mkdtemp(join(tmpdir(), 'pdfstudio-mail-'))
+      const file = join(dir, name.replace(/[\\/:*?"<>|]/g, '_'))
+      await writeFile(file, Buffer.from(data))
+      if (process.platform === 'win32') {
+        try {
+          const esc = (s: string): string => s.replace(/'/g, "''")
+          const lines = [
+            `$ol = New-Object -ComObject Outlook.Application`,
+            `$m = $ol.CreateItem(0)`,
+            `$m.Attachments.Add('${file.replace(/'/g, "''")}') | Out-Null`
+          ]
+          if (opts?.to) lines.push(`$m.To = '${esc(opts.to)}'`)
+          if (opts?.subject) lines.push(`$m.Subject = '${esc(opts.subject)}'`)
+          if (opts?.body) {
+            const html = esc(opts.body.replace(/\r?\n/g, '<br>'))
+            lines.push(`$m.HTMLBody = '${html}' + $m.HTMLBody`)
+          }
+          lines.push(`$m.Display()`)
+          await new Promise<void>((resolve, reject) => {
+            execFile('powershell.exe', ['-NoProfile', '-Command', lines.join('; ')], (err) =>
+              err ? reject(err) : resolve()
+            )
+          })
+          return { ok: true }
+        } catch {
+          // Outlook niet beschikbaar — val terug op de Verkenner.
+        }
       }
+      shell.showItemInFolder(file)
+      return { ok: true, fallback: true }
     }
-    shell.showItemInFolder(file)
-    return { ok: true, fallback: true }
-  })
+  )
 
   // Opent een bestand in de standaard-app (bv. het geëxporteerde Excel-bestand).
   ipcMain.handle('shell:openPath', async (_evt, path: string) => {

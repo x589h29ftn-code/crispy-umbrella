@@ -521,3 +521,21 @@ export function IconSparkles({ size = 16, className }: IconProps): JSX.Element {
     </svg>
   )
 }
+
+export function IconClock({ size = 16, className }: IconProps): JSX.Element {
+  return (
+    <svg width={size} height={size} viewBox="0 0 24 24" className={className} {...base}>
+      <circle cx="12" cy="12" r="9" />
+      <path d="M12 7v5l3.5 2" />
+    </svg>
+  )
+}
+
+export function IconSend({ size = 16, className }: IconProps): JSX.Element {
+  return (
+    <svg width={size} height={size} viewBox="0 0 24 24" className={className} {...base}>
+      <path d="M21 3L10.5 13.5" />
+      <path d="M21 3l-6.5 18-4-8-8-4z" />
+    </svg>
+  )
+}

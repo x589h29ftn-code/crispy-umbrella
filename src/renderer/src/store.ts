@@ -236,6 +236,9 @@ interface StudioState {
   /** Documentsjablonen: Word-sjablonen met {variabelen} invullen en genereren. */
   templatesDialogOpen: boolean
   setTemplatesDialogOpen: (open: boolean) => void
+  /** Ondertekendashboard: zelf tekenen, verzenden en herinneren. */
+  signingDialogOpen: boolean
+  setSigningDialogOpen: (open: boolean) => void
   /** Sneltoetsen-overzicht (help). */
   shortcutsOpen: boolean
   setShortcutsOpen: (open: boolean) => void
@@ -998,6 +1001,8 @@ export const useStudioStore = create<StudioState>((set, get) => ({
   setSmartDialogOpen: (open) => set({ smartDialogOpen: open }),
   templatesDialogOpen: false,
   setTemplatesDialogOpen: (open) => set({ templatesDialogOpen: open }),
+  signingDialogOpen: false,
+  setSigningDialogOpen: (open) => set({ signingDialogOpen: open }),
   shortcutsOpen: false,
   setShortcutsOpen: (open) => set({ shortcutsOpen: open }),
   preferencesOpen: false,

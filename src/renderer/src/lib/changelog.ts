@@ -4,6 +4,16 @@
  */
 export const APP_CHANGELOG: { version: string; items: string[] }[] = [
   {
+    version: '1.10.0',
+    items: [
+      'Nieuw: Ondertekenen (knop "Ondertekenen") — een dashboard in ValidSign-stijl waarin je ziet wat je verstuurd hebt en of de tweede partij al getekend heeft. Maak een ondertekenverzoek van het huidige document of een gekozen bestand, plaats per ondertekenaar een tekenvak op de pagina, en volg de status (Concept, Verzonden, Gedeeltelijk, Ondertekend)',
+      'Zelf ondertekenen kan op twee manieren tegelijk: een zichtbare handtekening-afbeelding én een echte digitale ondertekening (PAdES). Voor de gratis start maak je bij "Certificaat" een zelf-ondertekend certificaat aan; later kun je een AATL/gekwalificeerd .p12-certificaat importeren voor een vertrouwde handtekening',
+      'Laat een tweede partij op een andere plek in het document tekenen: verstuur het via je eigen Outlook (ontvanger, onderwerp en begeleidende tekst worden vooraf ingevuld) en importeer het getekende bestand terug in het dashboard — de status springt dan automatisch op "Ondertekend"',
+      'Herinneringen: bij een verzonden, nog niet getekend document toont het dashboard "x dagen geleden verzonden" en een knop die een herinneringsmail via Outlook klaarzet',
+      'Elk dossier heeft een tijdlijn (aangemaakt, zelf-getekend, verzonden, herinnering, geïmporteerd) en de dossiers worden — net als de sjablonen — in de gedeelde bibliotheekmap bewaard, zodat het hele kantoor hetzelfde overzicht heeft'
+    ]
+  },
+  {
     version: '1.9.0',
     items: [
       'Vernieuwd verschilrapport: kleurcodering (rood = verwijderd, groen = toegevoegd, geel = gewijzigd), oude en nieuwe tekst netjes onder elkaar, een kop per hoofdstuk met paginaverwijzing en een legenda — professioneel om te delen (geen gele "markeerstift-vlek" meer)',
