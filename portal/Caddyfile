@@ -1,0 +1,20 @@
+# Automatische HTTPS (Let's Encrypt) + veilige headers.
+# Het domein komt uit de omgevingsvariabele PORTAL_DOMAIN.
+
+{$PORTAL_DOMAIN} {
+	encode gzip
+	reverse_proxy web:3000
+
+	header {
+		Strict-Transport-Security "max-age=63072000; includeSubDomains; preload"
+		X-Content-Type-Options "nosniff"
+		X-Frame-Options "DENY"
+		Referrer-Policy "strict-origin-when-cross-origin"
+		-Server
+	}
+
+	# Uploadlimiet in lijn met de app (documenten tot ~18 MB).
+	request_body {
+		max_size 25MB
+	}
+}

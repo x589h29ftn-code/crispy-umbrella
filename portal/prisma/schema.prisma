@@ -1,0 +1,195 @@
+// Datamodel van het ondertekenportaal. PostgreSQL. Alle tijdstempels in UTC.
+
+generator client {
+  provider      = "prisma-client-js"
+  binaryTargets = ["native", "debian-openssl-3.0.x"]
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum Role {
+  MEDEWERKER
+  BEHEERDER
+}
+
+enum PartyRole {
+  ZELF
+  EXTERN
+}
+
+enum PartyStatus {
+  PENDING
+  SIGNED
+  DECLINED
+}
+
+enum FieldKind {
+  SIGNATURE
+  DATE
+  INITIALS
+}
+
+enum DossierStatus {
+  CONCEPT
+  VERZONDEN
+  GEDEELTELIJK
+  ONDERTEKEND
+  GEWEIGERD
+  VERLOPEN
+}
+
+/// Medewerker/accountant van het kantoor.
+model Accountant {
+  id           String   @id @default(cuid())
+  email        String   @unique
+  name         String
+  passwordHash String
+  role         Role     @default(MEDEWERKER)
+  totpSecret   String? // versleuteld opgeslagen (AES-256-GCM)
+  totpEnabled  Boolean  @default(false)
+  signaturePng String? // opgeslagen handtekening (data-URL of opslagsleutel)
+  active       Boolean  @default(true)
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  sessions    Session[]
+  dossiers    Dossier[]
+  auditEvents AuditEvent[]
+}
+
+/// Intrekbare serversessie. Alleen de hash van het sessietoken wordt bewaard.
+model Session {
+  id           String     @id @default(cuid())
+  accountantId String
+  accountant   Accountant @relation(fields: [accountantId], references: [id], onDelete: Cascade)
+  tokenHash    String     @unique
+  expiresAt    DateTime
+  createdAt    DateTime   @default(now())
+  lastSeenAt   DateTime   @default(now())
+  ip           String?
+  userAgent    String?
+
+  @@index([accountantId])
+}
+
+/// Cliëntendatabase van het kantoor (voor automatisch invullen van ontvangers).
+model Client {
+  id          String   @id @default(cuid())
+  displayName String
+  companyName String?
+  contactName String?
+  email       String?
+  phone       String?
+  kvk         String?
+  address     String?
+  postalCode  String?
+  city        String?
+  country     String   @default("Nederland")
+  notes       String?
+  active      Boolean  @default(true)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  recipients Recipient[]
+
+  @@index([displayName])
+  @@index([email])
+}
+
+/// Eén ondertekenverzoek/-workflow.
+model Dossier {
+  id             String        @id @default(cuid())
+  title          String
+  fileName       String
+  status         DossierStatus @default(CONCEPT)
+  ownerId        String
+  owner          Accountant    @relation(fields: [ownerId], references: [id])
+  originalKey    String? // opslagsleutel: bron-PDF (na eventuele Word-conversie)
+  workingKey     String? // opslagsleutel: PDF met reeds gezette handtekeningen
+  sealedKey      String? // opslagsleutel: definitieve, verzegelde PDF
+  documentSha256 String?
+  message        String? // optioneel begeleidend bericht in de e-mail
+  expiresAt      DateTime?
+  sentAt         DateTime?
+  lastReminderAt DateTime?
+  completedAt    DateTime?
+  createdAt      DateTime      @default(now())
+  updatedAt      DateTime      @updatedAt
+
+  recipients  Recipient[]
+  fields      SignatureField[]
+  auditEvents AuditEvent[]
+
+  @@index([ownerId, status])
+}
+
+/// Een partij die moet tekenen (accountant zelf of externe ontvanger).
+model Recipient {
+  id             String      @id @default(cuid())
+  dossierId      String
+  dossier        Dossier     @relation(fields: [dossierId], references: [id], onDelete: Cascade)
+  clientId       String?
+  client         Client?     @relation(fields: [clientId], references: [id])
+  role           PartyRole   @default(EXTERN)
+  name           String
+  email          String
+  order          Int         @default(0)
+  status         PartyStatus @default(PENDING)
+  signedAt       DateTime?
+  declinedReason String?
+
+  // E-mail-OTP (2e factor voor de ondertekenaar) — gehasht opgeslagen.
+  otpHash       String?
+  otpExpiresAt  DateTime?
+  otpAttempts   Int       @default(0)
+  otpVerifiedAt DateTime?
+
+  // Eenmalige, kortlevende tekentoken — alleen de hash bewaren.
+  tokenHash      String?   @unique
+  tokenExpiresAt DateTime?
+  tokenUsedAt    DateTime?
+
+  createdAt DateTime         @default(now())
+  fields    SignatureField[]
+
+  @@index([dossierId])
+}
+
+/// Een geplaatst tekenvak (PDF-punten, pivot linksonder).
+model SignatureField {
+  id          String     @id @default(cuid())
+  dossierId   String
+  dossier     Dossier    @relation(fields: [dossierId], references: [id], onDelete: Cascade)
+  recipientId String? // null = eigen veld van de accountant
+  recipient   Recipient? @relation(fields: [recipientId], references: [id], onDelete: Cascade)
+  kind        FieldKind  @default(SIGNATURE)
+  page        Int
+  x           Float
+  y           Float
+  width       Float
+  height      Float
+  filled      Boolean    @default(false)
+
+  @@index([dossierId])
+}
+
+/// Append-only auditspoor.
+model AuditEvent {
+  id           String      @id @default(cuid())
+  dossierId    String?
+  dossier      Dossier?    @relation(fields: [dossierId], references: [id], onDelete: Cascade)
+  accountantId String?
+  accountant   Accountant? @relation(fields: [accountantId], references: [id])
+  recipientId  String?
+  type         String
+  message      String?
+  ipAddress    String?
+  userAgent    String?
+  metadata     Json?
+  createdAt    DateTime    @default(now())
+
+  @@index([dossierId])
+}
