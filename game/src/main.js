@@ -263,7 +263,14 @@ window.Main = (function () {
     UI.toast('Verbonden 🌐 — samen spelen!');
   };
   function applyNetEdits(edits) {
-    for (const e of edits) Chunks.setBlock(e.x, e.y, e.z, e.b, true, e.m || 0);
+    // Eerst in de edit-store vastleggen zodat ook bewerkingen op nog niet
+    // geladen chunks bewaard blijven (Chunks.setBlock negeert die anders), en
+    // vervolgens direct toepassen op de al geladen chunks.
+    for (const e of edits) {
+      G.recordEdit(e.x, e.y, e.z, e.b);
+      G.setMeta(e.x, e.y, e.z, e.m || 0);
+      Chunks.setBlock(e.x, e.y, e.z, e.b, true, e.m || 0);
+    }
   }
 
   function netStatus(kind, data) {

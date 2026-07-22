@@ -101,6 +101,11 @@ window.Net = (function () {
     if (!window.Chunks) return;
     const prev = Chunks.getBlock(m.x, m.y, m.z);
     suppressBroadcast = true;
+    // Altijd in de edit-store vastleggen: Chunks.setBlock negeert bewerkingen op
+    // chunks die (nog) niet geladen zijn, dus zonder dit zou een bouwsel van een
+    // medespeler buiten je zichtbereik verloren gaan zodra die chunk instreamt.
+    G.recordEdit(m.x, m.y, m.z, m.b);
+    G.setMeta(m.x, m.y, m.z, m.m || 0);
     Chunks.setBlock(m.x, m.y, m.z, m.b, true, m.m || 0);
     suppressBroadcast = false;
     // stam weggehaald → laat bijbehorende bladeren ook hier vervallen
