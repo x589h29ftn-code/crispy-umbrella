@@ -256,6 +256,10 @@ window.Player = (function () {
       const by = (m & 8) ? hit.y - 1 : hit.y;
       Chunks.setBlock(hit.x, by, hit.z, B.AIR);
       Chunks.setBlock(hit.x, by + 1, hit.z, B.AIR);
+      if (window.Net && Net.connected()) {
+        Net.sendEdit(hit.x, by, hit.z, B.AIR, 0);
+        Net.sendEdit(hit.x, by + 1, hit.z, B.AIR, 0);
+      }
       Sfx.dig(B.PLANKS);
       return;
     }
@@ -270,6 +274,7 @@ window.Player = (function () {
     if (G.LOG_BLOCKS && G.LOG_BLOCKS.has(hit.block) && Chunks.decayLeavesAfterLog) {
       Chunks.decayLeavesAfterLog(hit.x, hit.y, hit.z);
     }
+    if (window.Net && Net.connected()) Net.sendEdit(hit.x, hit.y, hit.z, B.AIR, 0);
     Sfx.dig(hit.block);
   }
 
@@ -303,6 +308,10 @@ window.Player = (function () {
     const tm = Chunks.getMeta(hit.x, by + 1, hit.z);
     Chunks.setBlock(hit.x, by, hit.z, B.DOOR, true, bm ^ 1);
     Chunks.setBlock(hit.x, by + 1, hit.z, B.DOOR, true, tm ^ 1);
+    if (window.Net && Net.connected()) {
+      Net.sendEdit(hit.x, by, hit.z, B.DOOR, bm ^ 1);
+      Net.sendEdit(hit.x, by + 1, hit.z, B.DOOR, tm ^ 1);
+    }
     Sfx.dig(B.PLANKS);
   }
 
@@ -314,6 +323,7 @@ window.Player = (function () {
     if (hit.block === B.FENCE_GATE) {
       const m = Chunks.getMeta(hit.x, hit.y, hit.z);
       Chunks.setBlock(hit.x, hit.y, hit.z, B.FENCE_GATE, true, m ^ 1);
+      if (window.Net && Net.connected()) Net.sendEdit(hit.x, hit.y, hit.z, B.FENCE_GATE, m ^ 1);
       Sfx.dig(B.PLANKS);
       return;
     }
@@ -375,6 +385,11 @@ window.Player = (function () {
       Chunks.setBlock(tx, ty, tz, id);
     }
     if (window.WaterSim && id !== B.WATER) WaterSim.onEdit(tx, ty, tz);
+    // wijziging doorsturen naar medespelers
+    if (window.Net && Net.connected()) {
+      Net.sendEdit(tx, ty, tz, Chunks.getBlock(tx, ty, tz), Chunks.getMeta(tx, ty, tz));
+      if (id === B.DOOR) Net.sendEdit(tx, ty + 1, tz, Chunks.getBlock(tx, ty + 1, tz), Chunks.getMeta(tx, ty + 1, tz));
+    }
     Sfx.place(id);
   }
 

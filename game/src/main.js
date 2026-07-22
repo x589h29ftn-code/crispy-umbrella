@@ -57,6 +57,7 @@ window.Main = (function () {
     Post.init(renderer, scene, camera);
     setupReflection();
     camera.layers.enable(1);      // hoofdcamera ziet ook het water (laag 1)
+    if (window.Net) Net.init(scene);
     UI.init();
 
     // Pointer lock kwijt = pauze; klik op het canvas pakt de lock (weer) op
@@ -213,6 +214,9 @@ window.Main = (function () {
     // speler netjes op de grond zetten
     const gy = Chunks.groundY(Player.pos.x, Player.pos.z);
     if (Player.pos.y < gy + 1) Player.pos.y = gy + 2;
+    // multiplayer: edits van de host toepassen die vóór het laden binnenkwamen
+    if (pendingNetEdits && pendingNetEdits.length) { applyNetEdits(pendingNetEdits); }
+    pendingNetEdits = null;
     UI.setLoading(false);
     loadingWorld = false;
     M.resume();
@@ -233,6 +237,42 @@ window.Main = (function () {
     if (!data || data.seed === undefined) { UI.toast('Ongeldig wereldbestand.'); return; }
     initWorld(data.seed >>> 0, data);
   };
+
+  // ---- multiplayer ----
+  let pendingNetEdits = null;
+  M.hostMultiplayer = function (opts) {
+    const seed = (opts.seed >>> 0) || (Math.random() * 1e9) >>> 0;
+    initWorld(seed, null);
+    Net.connect({ url: opts.url, room: opts.room, name: opts.name, host: true, seed }, netStatus);
+  };
+  M.joinMultiplayer = function (opts) {
+    // wereld wordt opgebouwd zodra we de seed van de host ontvangen (onNetWelcome)
+    UI.setLoading(true, 0, 'Verbinden met de server…');
+    loadingWorld = true;
+    Net.connect({ url: opts.url, room: opts.room, name: opts.name, host: false }, netStatus);
+  };
+  M.onNetWelcome = function (msg) {
+    if (msg.host) {
+      // wij zijn de host; onze wereld staat al klaar. eventuele edits toepassen.
+      if (msg.edits && msg.edits.length) applyNetEdits(msg.edits);
+    } else {
+      // joiner: bouw de wereld met de seed van de host en pas de edits toe
+      pendingNetEdits = msg.edits || [];
+      initWorld(msg.seed >>> 0, null);
+    }
+    UI.toast('Verbonden 🌐 — samen spelen!');
+  };
+  function applyNetEdits(edits) {
+    for (const e of edits) Chunks.setBlock(e.x, e.y, e.z, e.b, true, e.m || 0);
+  }
+
+  function netStatus(kind, data) {
+    const el = document.getElementById('mp-status');
+    if (kind === 'error') { if (el) el.textContent = 'Fout: ' + (data || 'verbinding mislukt'); loadingWorld = false; UI.setLoading(false); }
+    else if (kind === 'full') { if (el) el.textContent = 'De kamer zit vol (max ' + (data && data.max || 5) + ').'; loadingWorld = false; UI.setLoading(false); }
+    else if (kind === 'closed') { UI.toast('Verbinding met de server verbroken.'); }
+    else if (kind === 'joined') { if (el) el.textContent = 'Verbonden!'; }
+  }
 
   // screenshot van het huidige beeld (voor de fotomodus)
   M.captureScreenshot = function () {
@@ -375,6 +415,7 @@ window.Main = (function () {
     Sfx.setCampfireLevel(Math.max(0, fireLvl));
     Sfx.updateCampfire(dt);
 
+    if (window.Net) Net.update(dt);
     UI.updateClock();
     UI.updateBubbles(camera);
 

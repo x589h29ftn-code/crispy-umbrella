@@ -135,10 +135,38 @@
     <button class="btn primary" id="btn-new">🌱 Nieuwe wereld</button>
     <button class="btn" id="btn-continue" style="display:none">▶️ Verdergaan (autosave)</button>
     <button class="btn" id="btn-load-menu">📂 Wereld laden</button>
+    <button class="btn" id="btn-mp-menu">👥 Multiplayer (max 5)</button>
     <button class="btn" id="btn-settings-main">⚙️ Instellingen</button>
     <div class="divider"></div>
     <div class="row"><label>Seed (optioneel)</label></div>
     <input type="text" id="seed-input" placeholder="Laat leeg voor willekeurige seed">
+  </div>
+</div>
+
+<!-- Multiplayer-lobby -->
+<div id="mpmenu" class="overlay">
+  <div class="panel">
+    <h2>👥 Multiplayer</h2>
+    <div class="sub">Speel samen met maximaal 5 spelers in dezelfde wereld. De
+      host start een wereld; anderen sluiten aan met hetzelfde serveradres en
+      dezelfde kamernaam.</div>
+    <div class="row"><label>Serveradres</label></div>
+    <input type="text" id="mp-url" placeholder="ws://localhost:8080">
+    <div class="row"><label>Kamernaam</label></div>
+    <input type="text" id="mp-room" placeholder="bijv. vrienden">
+    <div class="row"><label>Jouw naam</label></div>
+    <input type="text" id="mp-name" placeholder="Speler">
+    <div class="row"><label>Seed (host, optioneel)</label></div>
+    <input type="text" id="mp-seed" placeholder="Laat leeg voor willekeurige seed">
+    <div id="mp-status" style="font-size:13px;color:var(--ui-dim);margin:10px 0;"></div>
+    <div class="divider"></div>
+    <button class="btn primary" id="btn-mp-host">🌱 Nieuwe wereld hosten</button>
+    <button class="btn" id="btn-mp-join">🔗 Aansluiten bij kamer</button>
+    <button class="btn" id="btn-mp-back">← Terug</button>
+    <div class="sub" style="margin-top:14px;">Zelf de server draaien:
+      <code>cd game &amp;&amp; node server/mp-server.js</code> (of
+      <code>npm run server</code>). Anderen verbinden dan via
+      <code>ws://JOUW-IP:8080</code>.</div>
   </div>
 </div>
 
@@ -268,6 +296,7 @@
 <script src="src/post.js"></script>
 <script src="src/audio.js"></script>
 <script src="src/player.js"></script>
+<script src="src/net.js"></script>
 <script src="src/ui.js"></script>
 <script src="src/main.js"></script>
 </body>

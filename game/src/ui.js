@@ -349,6 +349,30 @@ window.UI = (function () {
     $('btn-load-menu').onclick = () => { renderSlots('load-slots', 'load'); show('loadmenu'); settingsReturnTo = 'mainmenu'; };
     $('btn-settings-main').onclick = () => { settingsReturnTo = 'mainmenu'; show('settingsmenu'); };
 
+    // ---- multiplayer-lobby ----
+    const parseSeed = (txt) => {
+      txt = (txt || '').trim();
+      if (txt === '') return (Math.random() * 0xffffffff) >>> 0;
+      if (/^\d+$/.test(txt)) return parseInt(txt, 10) >>> 0;
+      let s = 0; for (let i = 0; i < txt.length; i++) s = (s * 31 + txt.charCodeAt(i)) >>> 0; return s;
+    };
+    $('btn-mp-menu').onclick = () => {
+      if (!$('mp-url').value) $('mp-url').value = 'ws://localhost:8080';
+      $('mp-status').textContent = '';
+      show('mpmenu');
+    };
+    $('btn-mp-back').onclick = () => show('mainmenu');
+    const startMP = (host) => {
+      const url = $('mp-url').value.trim() || 'ws://localhost:8080';
+      const room = $('mp-room').value.trim() || 'wereld';
+      const nm = $('mp-name').value.trim() || 'Speler';
+      $('mp-status').textContent = 'Verbinden met ' + url + '…';
+      if (host) Main.hostMultiplayer({ url, room, name: nm, seed: parseSeed($('mp-seed').value) });
+      else Main.joinMultiplayer({ url, room, name: nm });
+    };
+    $('btn-mp-host').onclick = () => startMP(true);
+    $('btn-mp-join').onclick = () => startMP(false);
+
     $('btn-resume').onclick = () => Main.resume();
     $('btn-save-menu').onclick = () => { renderSlots('save-slots', 'save'); show('savemenu'); };
     $('btn-load-menu2').onclick = () => { renderSlots('load-slots', 'load'); show('loadmenu'); settingsReturnTo = 'pausemenu'; };

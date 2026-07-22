@@ -8,6 +8,7 @@
   "main": "electron-main.cjs",
   "scripts": {
     "start": "electron .",
+    "server": "node server/mp-server.js",
     "dist:win": "electron-builder --win --x64",
     "dist:winportable": "electron-builder --win portable --x64",
     "dist:dir": "electron-builder --dir"

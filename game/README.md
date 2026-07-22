@@ -29,6 +29,30 @@ Blokkenwereld draait als volwaardige Windows-desktopapp via Electron.
 Je kunt `index.html` ook gewoon in een moderne browser openen (Chrome, Edge,
 Firefox). Lokaal serveren kan met `python3 -m http.server` in deze map.
 
+### Samen spelen (multiplayer, max 5)
+
+Blokkenwereld heeft een lichte multiplayer-modus voor maximaal 5 spelers in
+dezelfde wereld. Omdat de wereld deterministisch uit de seed wordt opgebouwd,
+hoeft alleen het volgende gedeeld te worden: spelerposities en blok-wijzigingen.
+
+1. Start eerst de relay-server (afhankelijkheidsvrij, pure Node — geen `npm
+   install` nodig):
+
+   ```
+   npm run server        # of:  node server/mp-server.js
+   ```
+
+   De server luistert standaard op poort `8080` (aanpasbaar met `PORT=...`).
+
+2. Open het spel, kies in het hoofdmenu **👥 Multiplayer (max 5)**.
+3. Eén speler klikt **Wereld hosten** (bepaalt de seed); de anderen vullen
+   hetzelfde serveradres en dezelfde kamernaam in en klikken **Meedoen**.
+
+Serveradres is standaard `ws://localhost:8080`. Voor spelen over het netwerk
+draai je de server op één machine en gebruiken de anderen `ws://<ip>:8080`.
+Andere spelers verschijnen als avatars met hun naam erboven; blokken die
+iemand plaatst of weghaalt (inclusief boomkap met bladverval) zie je meteen.
+
 ## Wat zit erin
 
 - **Oneindige, willekeurig gegenereerde wereld** — bergen, bossen, rivieren,
@@ -173,5 +197,7 @@ geluidsvolume, schaduwen en wolken. Instellingen worden automatisch bewaard.
 - `src/entities.js` — bewoners, dieren, vogels, vuurvliegjes, fakkel-lichtpool
 - `src/audio.js` — gesynthetiseerde muziek en geluiden (WebAudio)
 - `src/player.js` — besturing, fysica, bouwen
+- `src/net.js` — multiplayer-client (WebSocket): avatars, pose- en edit-sync
 - `src/ui.js` — menu's, HUD, save/load
 - `src/main.js` — renderer en spelloop
+- `server/mp-server.js` — afhankelijkheidsvrije multiplayer-relay (pure Node)
