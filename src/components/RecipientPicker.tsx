@@ -6,6 +6,8 @@ export interface PickedClient {
   id?: string
   name: string
   email: string
+  phone?: string | null
+  verificationMethod?: 'EMAIL' | 'SMS'
 }
 
 interface Suggestion {
@@ -14,6 +16,8 @@ interface Suggestion {
   companyName: string | null
   contactName: string | null
   email: string | null
+  phone: string | null
+  verificationMethod: 'EMAIL' | 'SMS'
 }
 
 /** Autocomplete op de cliëntendatabase + handmatige invoer van een ontvanger. */
@@ -22,6 +26,8 @@ export function RecipientPicker({ onAdd }: { onAdd: (r: PickedClient) => void })
   const [name, setName] = useState('')
   const [email, setEmail] = useState('')
   const [clientId, setClientId] = useState<string | undefined>()
+  const [phone, setPhone] = useState<string | null>(null)
+  const [method, setMethod] = useState<'EMAIL' | 'SMS'>('EMAIL')
   const [suggestions, setSuggestions] = useState<Suggestion[]>([])
   const [open, setOpen] = useState(false)
   const timer = useRef<ReturnType<typeof setTimeout> | null>(null)
@@ -50,17 +56,27 @@ export function RecipientPicker({ onAdd }: { onAdd: (r: PickedClient) => void })
     setName(s.contactName || s.displayName)
     setEmail(s.email ?? '')
     setClientId(s.id)
+    setPhone(s.phone)
+    setMethod(s.verificationMethod)
     setQ(s.displayName)
     setOpen(false)
   }
 
   function add() {
     if (!name.trim() || !/.+@.+\..+/.test(email)) return
-    onAdd({ id: clientId, name: name.trim(), email: email.trim().toLowerCase() })
+    onAdd({
+      id: clientId,
+      name: name.trim(),
+      email: email.trim().toLowerCase(),
+      phone,
+      verificationMethod: method
+    })
     setQ('')
     setName('')
     setEmail('')
     setClientId(undefined)
+    setPhone(null)
+    setMethod('EMAIL')
     setSuggestions([])
   }
 

@@ -32,6 +32,14 @@ const schema = z.object({
   POSTMARK_TOKEN: z.string().optional(),
   RESEND_API_KEY: z.string().optional(),
 
+  // Sms (optioneel; alleen nodig als cliënten sms-verificatie kiezen).
+  SMS_PROVIDER: z.enum(['none', 'messagebird', 'twilio']).default('none'),
+  SMS_ORIGINATOR: z.string().optional(),
+  MESSAGEBIRD_API_KEY: z.string().optional(),
+  TWILIO_ACCOUNT_SID: z.string().optional(),
+  TWILIO_AUTH_TOKEN: z.string().optional(),
+  TWILIO_FROM: z.string().optional(),
+
   SIGN_LINK_TTL_DAYS: z.coerce.number().int().positive().default(14),
   OTP_TTL_MINUTES: z.coerce.number().int().positive().default(10)
 })

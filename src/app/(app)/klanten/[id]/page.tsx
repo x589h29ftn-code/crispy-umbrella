@@ -32,7 +32,8 @@ export default async function KlantBewerkenPage({ params }: { params: { id: stri
             postalCode: client.postalCode ?? '',
             city: client.city ?? '',
             country: client.country ?? 'Nederland',
-            notes: client.notes ?? ''
+            notes: client.notes ?? '',
+            verificationMethod: client.verificationMethod
           }}
         />
       </div>

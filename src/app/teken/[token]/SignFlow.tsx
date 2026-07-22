@@ -32,7 +32,8 @@ export function SignFlow({
   const [step, setStep] = useState<Step>('intro')
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
-  const [maskedEmail, setMaskedEmail] = useState<string | null>(null)
+  const [destination, setDestination] = useState<string | null>(null)
+  const [channel, setChannel] = useState<'email' | 'sms'>('email')
   const [code, setCode] = useState('')
   const [mode, setMode] = useState<'draw' | 'type'>('draw')
   const [signature, setSignature] = useState<string | null>(null)
@@ -44,7 +45,8 @@ export function SignFlow({
       const res = await fetch(`/api/sign/${token}/otp`, { method: 'POST' })
       const data = await res.json()
       if (!res.ok) throw new Error(data.error ?? 'Er ging iets mis.')
-      setMaskedEmail(data.email ?? null)
+      setDestination(data.destination ?? null)
+      setChannel(data.channel === 'sms' ? 'sms' : 'email')
       setStep('otp')
     } catch (e) {
       setError((e as Error).message)
@@ -119,8 +121,8 @@ export function SignFlow({
       {step === 'intro' && (
         <div className="card space-y-4 p-6">
           <p className="text-slate-600">
-            Om uw identiteit te bevestigen sturen we een verificatiecode naar uw e-mailadres. Daarna kunt u het
-            document bekijken en ondertekenen.
+            Om uw identiteit te bevestigen sturen we u een verificatiecode. Daarna kunt u het document bekijken en
+            ondertekenen.
           </p>
           <button className="btn-primary" onClick={requestOtp} disabled={busy}>
             {busy ? <Loader2 className="h-4 w-4 animate-spin" /> : <Mail className="h-4 w-4" />} Verstuur verificatiecode
@@ -131,7 +133,8 @@ export function SignFlow({
       {step === 'otp' && (
         <div className="card space-y-4 p-6">
           <p className="text-slate-600">
-            We hebben een 6-cijferige code gestuurd naar {maskedEmail ?? 'uw e-mailadres'}. Voer die hieronder in.
+            We hebben een 6-cijferige code {channel === 'sms' ? 'per sms' : 'per e-mail'} gestuurd naar{' '}
+            {destination ?? (channel === 'sms' ? 'uw telefoon' : 'uw e-mailadres')}. Voer die hieronder in.
           </p>
           <input
             className="input max-w-[220px] text-center text-lg tracking-[0.4em]"

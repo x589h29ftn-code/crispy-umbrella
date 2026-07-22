@@ -16,6 +16,7 @@ type Values = Partial<{
   city: string
   country: string
   notes: string
+  verificationMethod: string
 }>
 
 function Save({ label }: { label: string }) {
@@ -74,6 +75,23 @@ export function ClientForm({
         <Field name="postalCode" label="Postcode" defaultValue={values?.postalCode} />
         <Field name="city" label="Plaats" defaultValue={values?.city} />
         <Field name="country" label="Land" defaultValue={values?.country ?? 'Nederland'} />
+      </div>
+      <div className="max-w-xs">
+        <label className="label" htmlFor="verificationMethod">
+          Verificatie bij ondertekenen
+        </label>
+        <select
+          id="verificationMethod"
+          name="verificationMethod"
+          defaultValue={values?.verificationMethod ?? 'EMAIL'}
+          className="input"
+        >
+          <option value="EMAIL">Code via e-mail (standaard)</option>
+          <option value="SMS">Code via sms (telefoonnummer vereist)</option>
+        </select>
+        <p className="mt-1 text-xs text-slate-500">
+          Bepaalt hoe deze cliënt de verificatiecode ontvangt om te tekenen.
+        </p>
       </div>
       <div>
         <label className="label" htmlFor="notes">

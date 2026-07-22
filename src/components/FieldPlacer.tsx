@@ -171,8 +171,10 @@ export function FieldPlacer({
       recipients: usedRecipients.map((r) => ({
         name: r.name,
         email: r.email,
+        phone: r.phone ?? null,
         clientId: r.id ?? null,
         role: 'EXTERN' as const,
+        verificationMethod: r.verificationMethod ?? 'EMAIL',
         fields: fields.filter((f) => f.target === r.tempId).map(toPlacement)
       }))
     }
@@ -199,6 +201,9 @@ export function FieldPlacer({
                 <span className="flex items-center gap-2">
                   <span className="h-3 w-3 rounded-full" style={{ background: r.color }} />
                   {r.name} <span className="text-xs text-slate-400">{r.email}</span>
+                  {r.verificationMethod === 'SMS' && (
+                    <span className="badge bg-slate-100 text-slate-600 ring-slate-200">sms</span>
+                  )}
                 </span>
                 <button type="button" onClick={() => removeRecipient(r.tempId)} className="text-slate-400 hover:text-rose-600">
                   <X className="h-4 w-4" />

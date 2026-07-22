@@ -129,10 +129,11 @@ export async function finalizeIfComplete(dossierId: string): Promise<void> {
   })
   await writeAudit({ type: 'VERZEGELD', dossierId, metadata: { sha256 } })
 
-  // Voltooiingsmails met de verzegelde PDF aan ontvangers en de eigenaar.
+  // Voltooiingsmails met de verzegelde PDF. De eigenaar/verzender krijgt hem
+  // altijd; de ontvangers alleen als de kopie-optie voor dit dossier aanstaat.
   const attachment = { filename: dossier.fileName, content: Buffer.from(sealedBytes) }
   const targets = [
-    ...dossier.recipients.map((r) => ({ name: r.name, email: r.email })),
+    ...(dossier.sendCopyToRecipient ? dossier.recipients.map((r) => ({ name: r.name, email: r.email })) : []),
     { name: dossier.owner.name, email: dossier.owner.email }
   ]
   for (const t of targets) {
