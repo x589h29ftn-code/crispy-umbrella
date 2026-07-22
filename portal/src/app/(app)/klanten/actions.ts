@@ -22,7 +22,8 @@ function readClient(formData: FormData) {
     postalCode: formData.get('postalCode'),
     city: formData.get('city'),
     country: formData.get('country'),
-    notes: formData.get('notes')
+    notes: formData.get('notes'),
+    verificationMethod: formData.get('verificationMethod') ?? 'EMAIL'
   })
 }
 
@@ -48,7 +49,8 @@ export async function createClientAction(_prev: FormState, formData: FormData): 
       postalCode: clean(d.postalCode),
       city: clean(d.city),
       country: clean(d.country) ?? 'Nederland',
-      notes: clean(d.notes)
+      notes: clean(d.notes),
+      verificationMethod: d.verificationMethod
     }
   })
   revalidatePath('/klanten')
@@ -73,7 +75,8 @@ export async function updateClientAction(id: string, _prev: FormState, formData:
       postalCode: clean(d.postalCode),
       city: clean(d.city),
       country: clean(d.country) ?? 'Nederland',
-      notes: clean(d.notes)
+      notes: clean(d.notes),
+      verificationMethod: d.verificationMethod
     }
   })
   revalidatePath('/klanten')

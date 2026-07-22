@@ -41,6 +41,11 @@ enum DossierStatus {
   VERLOPEN
 }
 
+enum VerificationMethod {
+  EMAIL
+  SMS
+}
+
 /// Medewerker/accountant van het kantoor.
 model Accountant {
   id           String   @id @default(cuid())
@@ -89,6 +94,8 @@ model Client {
   city        String?
   country     String   @default("Nederland")
   notes       String?
+  // Voorkeur voor identiteitsverificatie bij ondertekenen (standaard e-mail).
+  verificationMethod VerificationMethod @default(EMAIL)
   active      Boolean  @default(true)
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
@@ -112,6 +119,8 @@ model Dossier {
   sealedKey      String? // opslagsleutel: definitieve, verzegelde PDF
   documentSha256 String?
   message        String? // optioneel begeleidend bericht in de e-mail
+  // Ontvanger na afronding ook een kopie mailen (standaard aan).
+  sendCopyToRecipient Boolean @default(true)
   expiresAt      DateTime?
   sentAt         DateTime?
   lastReminderAt DateTime?
@@ -136,6 +145,8 @@ model Recipient {
   role           PartyRole   @default(EXTERN)
   name           String
   email          String
+  phone          String?
+  verificationMethod VerificationMethod @default(EMAIL)
   order          Int         @default(0)
   status         PartyStatus @default(PENDING)
   signedAt       DateTime?

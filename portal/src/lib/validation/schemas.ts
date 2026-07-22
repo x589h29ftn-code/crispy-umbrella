@@ -14,7 +14,8 @@ export const clientSchema = z.object({
   postalCode: z.string().trim().max(16).optional().or(z.literal('')),
   city: z.string().trim().max(120).optional().or(z.literal('')),
   country: z.string().trim().max(80).optional().or(z.literal('')),
-  notes: z.string().trim().max(2000).optional().or(z.literal(''))
+  notes: z.string().trim().max(2000).optional().or(z.literal('')),
+  verificationMethod: z.enum(['EMAIL', 'SMS']).default('EMAIL')
 })
 export type ClientInput = z.infer<typeof clientSchema>
 
@@ -34,8 +35,10 @@ export const placementSchema = z.object({
 export const recipientInputSchema = z.object({
   name: naam,
   email,
+  phone: z.string().trim().max(60).optional().nullable(),
   clientId: z.string().cuid().optional().nullable(),
   role: z.enum(['ZELF', 'EXTERN']).default('EXTERN'),
+  verificationMethod: z.enum(['EMAIL', 'SMS']).default('EMAIL'),
   // Elke ontvanger heeft één of meer tekenvakken.
   fields: z.array(placementSchema).min(1, 'Plaats minstens één tekenveld voor deze ontvanger')
 })

@@ -24,7 +24,15 @@ export async function GET(req: NextRequest) {
     },
     orderBy: { displayName: 'asc' },
     take: 20,
-    select: { id: true, displayName: true, companyName: true, contactName: true, email: true }
+    select: {
+      id: true,
+      displayName: true,
+      companyName: true,
+      contactName: true,
+      email: true,
+      phone: true,
+      verificationMethod: true
+    }
   })
   return NextResponse.json({ clients })
 }

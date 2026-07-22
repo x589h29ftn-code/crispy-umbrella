@@ -69,7 +69,9 @@ export async function createDossierAction(_prev: FormState, formData: FormData):
       status: 'CONCEPT',
       originalKey,
       workingKey,
-      message: parsed.data.message?.trim() || null
+      message: parsed.data.message?.trim() || null,
+      // Checkbox 'ontvanger ook een kopie mailen' (standaard aangevinkt).
+      sendCopyToRecipient: formData.get('sendCopyToRecipient') === 'on'
     }
   })
   await writeAudit({ type: 'AANGEMAAKT', dossierId: dossier.id, accountantId: acc.id, ...requestContext() })
@@ -104,6 +106,8 @@ export async function saveFieldsAction(
           role: 'EXTERN',
           name: r.name,
           email: r.email.toLowerCase(),
+          phone: r.phone ?? null,
+          verificationMethod: r.verificationMethod,
           order: i
         }
       })
