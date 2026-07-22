@@ -30,6 +30,8 @@ window.G = (function () {
     B.FERN, B.MUSHROOM, B.LAVENDER, B.DEAD_BUSH]);
   // Bladeren (krijgen doorschijnende backlight-shading)
   G.LEAF_BLOCKS = new Set([B.LEAVES, B.LEAVES_BIRCH, B.LEAVES_PINE, B.LEAVES_WILLOW, B.LEAVES_CHERRY, B.PALM_LEAVES]);
+  // Boomstammen (voor bladverval als de stam weg is)
+  G.LOG_BLOCKS = new Set([B.LOG, B.LOG_BIRCH, B.PALM_LOG]);
   // Meubel-blokken met een eigen (lage) vorm — collision via Chunks.solidShapeAt
   G.FURNITURE = new Set([B.CHAIR, B.TABLE, B.BED]);
   // Blokken waar je doorheen kunt lopen (incl. bladeren — alleen stammen blokkeren)

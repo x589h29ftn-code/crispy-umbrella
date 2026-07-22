@@ -512,7 +512,7 @@ window.Entities = (function () {
     const gy = Chunks.groundY(Math.floor(start.x), Math.floor(start.z));
     mesh.position.set(start.x, gy + 1.15, start.z);
     scene.add(mesh);
-    trains.push({ mesh, seg, t: t0, dir, speed: 7 + rng() * 3, y: gy + 1.15, smokeT: 0 });
+    trains.push({ mesh, seg, t: t0, dir, speed: 3.4 + rng() * 1.2, y: gy + 1.15, smokeT: 0 });
   }
 
   function updateTrain(tr, dt, t) {

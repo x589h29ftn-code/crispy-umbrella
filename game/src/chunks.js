@@ -971,5 +971,59 @@ window.Chunks = (function () {
     return out;
   };
 
+  // ---- bladverval: bladeren zonder verbinding met een stam verdwijnen stuk voor stuk ----
+  const decayQueue = [];
+  let decayTimer = 0;
+  const FACE6 = [[1, 0, 0], [-1, 0, 0], [0, 1, 0], [0, -1, 0], [0, 0, 1], [0, 0, -1]];
+
+  // Na het weghakken van een stamblok: markeer losgeraakte bladeren voor verval.
+  C.decayLeavesAfterLog = function (ox, oy, oz) {
+    const rad = 6, up = 9, MAXD = 5;
+    const key = (x, y, z) => x + ',' + y + ',' + z;
+    // 1. bladeren in de omgeving verzamelen
+    const leaves = [];
+    for (let dy = -3; dy <= up; dy++) for (let dz = -rad; dz <= rad; dz++) for (let dx = -rad; dx <= rad; dx++) {
+      const x = ox + dx, y = oy + dy, z = oz + dz;
+      if (G.LEAF_BLOCKS.has(C.getBlock(x, y, z))) leaves.push([x, y, z]);
+    }
+    if (!leaves.length) return;
+    // 2. vanaf resterende stammen door de bladeren "stromen" (diepte MAXD) → ondersteund
+    const supported = new Set();
+    const seen = new Set();
+    let frontier = [];
+    for (let dy = -4; dy <= up + 1; dy++) for (let dz = -rad - 1; dz <= rad + 1; dz++) for (let dx = -rad - 1; dx <= rad + 1; dx++) {
+      const x = ox + dx, y = oy + dy, z = oz + dz;
+      if (G.LOG_BLOCKS.has(C.getBlock(x, y, z))) { frontier.push([x, y, z, 0]); seen.add(key(x, y, z)); }
+    }
+    while (frontier.length) {
+      const [x, y, z, d] = frontier.shift();
+      if (d >= MAXD) continue;
+      for (const [ax, ay, az] of FACE6) {
+        const nx = x + ax, ny = y + ay, nz = z + az, k = key(nx, ny, nz);
+        if (seen.has(k)) continue;
+        if (G.LEAF_BLOCKS.has(C.getBlock(nx, ny, nz))) { seen.add(k); supported.add(k); frontier.push([nx, ny, nz, d + 1]); }
+      }
+    }
+    // 3. onondersteunde bladeren in willekeurige volgorde in de vervalrij zetten
+    const doomed = leaves.filter((p) => !supported.has(key(p[0], p[1], p[2])));
+    for (let i = doomed.length - 1; i > 0; i--) { const j = (Math.random() * (i + 1)) | 0; const t = doomed[i]; doomed[i] = doomed[j]; doomed[j] = t; }
+    for (const p of doomed) decayQueue.push(p);
+  };
+
+  // Elke frame één blaadje laten vervallen (gedoseerd, "stuk voor stuk").
+  C.updateDecay = function (dt) {
+    if (!decayQueue.length) return;
+    decayTimer -= dt;
+    let budget = 0;
+    while (decayTimer <= 0 && decayQueue.length && budget < 3) {
+      decayTimer += 0.08;   // ~12 blaadjes per seconde
+      budget++;
+      const [x, y, z] = decayQueue.shift();
+      if (!G.LEAF_BLOCKS.has(C.getBlock(x, y, z))) continue;
+      C.setBlock(x, y, z, B.AIR, true);
+      if (window.Sfx && Math.random() < 0.25) Sfx.dig(B.LEAVES);
+    }
+  };
+
   return C;
 })();

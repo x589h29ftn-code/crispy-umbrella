@@ -326,6 +326,7 @@ window.Main = (function () {
       } else highlightBox.visible = false;
     }
     WaterSim.update(dt);
+    Chunks.updateDecay(dt);
     Crops.update(dt);
     Fishing.update(dt, Player.pos);
 

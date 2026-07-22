@@ -266,6 +266,10 @@ window.Player = (function () {
       Chunks.setBlock(hit.x, hit.y + 1, hit.z, B.AIR);
     }
     if (window.WaterSim) WaterSim.onEdit(hit.x, hit.y, hit.z);
+    // stam weggehakt → losgeraakte bladeren vervallen stuk voor stuk
+    if (G.LOG_BLOCKS && G.LOG_BLOCKS.has(hit.block) && Chunks.decayLeavesAfterLog) {
+      Chunks.decayLeavesAfterLog(hit.x, hit.y, hit.z);
+    }
     Sfx.dig(hit.block);
   }
 
