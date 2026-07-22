@@ -81,6 +81,7 @@ window.Net = (function () {
     } else if (m.t === 'join') {
       addAvatar(m.id, m.name);
       if (window.UI) UI.toast((m.name || 'Een speler') + ' kwam erbij 👋');
+      if (isHost) sendTime();   // nieuwe speler meteen de juiste tijd geven
     } else if (m.t === 'leave') {
       removeAvatar(m.id);
     } else if (m.t === 'host') {
@@ -91,7 +92,11 @@ window.Net = (function () {
     } else if (m.t === 'edit') {
       applyRemoteEdit(m);
     } else if (m.t === 'time') {
-      if (!isHost && typeof m.timeSec === 'number') G.timeSec = m.timeSec;
+      // alleen de host bepaalt de tijd; gasten volgen (dagteller volgt vanzelf)
+      if (!isHost && typeof m.timeSec === 'number') {
+        G.timeSec = m.timeSec;
+        if (typeof m.dayMin === 'number' && m.dayMin > 0) G.settings.dayMinutes = m.dayMin;
+      }
     } else if (m.t === 'chat') {
       if (window.UI) UI.toast((m.name || 'Speler') + ': ' + m.msg);
     }
@@ -120,6 +125,11 @@ window.Net = (function () {
     ws.send(JSON.stringify({ t: 'edit', x, y, z, b, m: meta || 0 }));
   };
   N.sendChat = function (msg) { if (N.connected()) ws.send(JSON.stringify({ t: 'chat', msg })); };
+  // host deelt de tijd + daglengte zodat iedereen dezelfde dag/nacht ziet
+  function sendTime() {
+    if (!N.connected()) return;
+    ws.send(JSON.stringify({ t: 'time', timeSec: G.timeSec, dayMin: G.settings.dayMinutes }));
+  }
 
   // Per frame: pose sturen + avatars vloeiend interpoleren + host-tijd delen
   N.update = function (dt) {
@@ -132,7 +142,7 @@ window.Net = (function () {
     }
     if (isHost) {
       timeTimer -= dt;
-      if (timeTimer <= 0) { timeTimer = 3; ws.send(JSON.stringify({ t: 'time', timeSec: G.timeSec })); }
+      if (timeTimer <= 0) { timeTimer = 2; sendTime(); }
     }
     const k = Math.min(1, dt * 10);
     avatars.forEach((a) => {

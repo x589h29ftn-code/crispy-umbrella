@@ -282,6 +282,11 @@ window.Player = (function () {
   // alleen de camera zakt naar de zit-/lighoogte tot je weer beweegt.
   P.resting = null;
   P.sitOn = function (x, y, z, bed) {
+    // in multiplayer bepaalt de host de tijd → slapen (tijd doorspoelen) kan niet
+    if (bed && window.Net && Net.connected()) {
+      UI.hint('Slapen kan niet in multiplayer 🌙 — de host bepaalt de tijd.');
+      return;
+    }
     P.resting = { x: x + 0.5, z: z + 0.5, eyeY: y + (bed ? 0.5 : 1.05), bed };
     P.vel.set(0, 0, 0);
     if (bed) {

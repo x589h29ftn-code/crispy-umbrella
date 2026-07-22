@@ -106,7 +106,7 @@ function handleMessage(client, txt) {
     }
   } else if (m.t === 'time') {
     const r = rooms.get(client.room);
-    if (r && client.id === r.hostId) broadcast(client.room, { t: 'time', timeSec: m.timeSec }, client.id);
+    if (r && client.id === r.hostId) broadcast(client.room, { t: 'time', timeSec: m.timeSec, dayMin: m.dayMin }, client.id);
   } else if (m.t === 'chat') {
     broadcast(client.room, { t: 'chat', id: client.id, name: client.name, msg: ('' + m.msg).slice(0, 120) });
   }
