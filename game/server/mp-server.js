@@ -13,13 +13,13 @@ const MAX_PER_ROOM = 5;
 const GUID = '258EAFA5-E914-47DA-95CA-C5AB0DC85B11';
 
 const rooms = new Map();   // room -> { seed, hostId, clients:Map(id->client), edits:[] }
+const allClients = new Set();   // alle open verbindingen (ook nog niet in een kamer)
 let nextId = 1;
 
 function log(...a) { console.log('[mp]', ...a); }
 
 // ---- WebSocket-frames ----
-function encodeFrame(str) {
-  const payload = Buffer.from(str, 'utf8');
+function buildFrame(opcode, payload) {
   const len = payload.length;
   let header;
   if (len < 126) {
@@ -32,16 +32,17 @@ function encodeFrame(str) {
     header = Buffer.alloc(10);
     header[1] = 127; header.writeUInt32BE(0, 2); header.writeUInt32BE(len, 6);
   }
-  header[0] = 0x81;   // FIN + tekstframe
+  header[0] = 0x80 | opcode;   // FIN + opcode (0x1=tekst, 0x9=ping, 0xA=pong)
   return Buffer.concat([header, payload]);
 }
+function encodeFrame(str) { return buildFrame(0x1, Buffer.from(str, 'utf8')); }
 
 function send(client, obj) {
   try { client.sock.write(encodeFrame(JSON.stringify(obj))); } catch (e) { /* dichte socket */ }
 }
 
 // parse zoveel volledige frames als er in de buffer zitten; retourneert rest
-function parseFrames(buf, onMsg, onClose) {
+function parseFrames(buf, onMsg, onClose, onPing, onPong) {
   let off = 0;
   while (off + 2 <= buf.length) {
     const b0 = buf[off], b1 = buf[off + 1];
@@ -57,9 +58,10 @@ function parseFrames(buf, onMsg, onClose) {
     const data = buf.slice(p, p + len);
     if (masked) for (let i = 0; i < data.length; i++) data[i] ^= mask[i & 3];
     off = p + len;
-    if (opcode === 0x8) { onClose(); return buf.slice(off); }        // close
-    if (opcode === 0x1 || opcode === 0x0) { onMsg(data.toString('utf8')); }
-    // opcode 0x9 (ping) / 0xA (pong) negeren we
+    if (opcode === 0x8) { onClose(); return buf.slice(off); }              // close
+    else if (opcode === 0x9) { onPing && onPing(Buffer.from(data)); }      // ping → pong terug
+    else if (opcode === 0xA) { onPong && onPong(); }                       // pong ontvangen
+    else if (opcode === 0x1 || opcode === 0x0) { onMsg(data.toString('utf8')); }
   }
   return buf.slice(off);
 }
@@ -90,7 +92,10 @@ function handleMessage(client, txt) {
     client.room = roomName; client.name = (m.name || 'Speler').slice(0, 20);
     const peers = [...r.clients.values()].map((c) => ({ id: c.id, name: c.name }));
     r.clients.set(client.id, client);
-    send(client, { t: 'welcome', id: client.id, seed: r.seed, host: client.id === r.hostId, peers, edits: r.edits });
+    send(client, { t: 'welcome', id: client.id, seed: r.seed, host: client.id === r.hostId, peers, editCount: r.edits.length });
+    // edit-historie in stukjes nasturen zodat één frame niet gigantisch wordt
+    const BATCH = 2000;
+    for (let i = 0; i < r.edits.length; i += BATCH) send(client, { t: 'edits', list: r.edits.slice(i, i + BATCH) });
     broadcast(roomName, { t: 'join', id: client.id, name: client.name }, client.id);
     log('join', client.id, client.name, 'room', roomName, '(' + r.clients.size + '/' + MAX_PER_ROOM + ')');
   } else if (!client.room) {
@@ -117,7 +122,7 @@ const server = http.createServer((req, res) => {
   res.end('Blokkenwereld multiplayer-relay draait. Verbind via WebSocket.\n');
 });
 
-server.on('upgrade', (req, sock) => {
+server.on('upgrade', (req, sock, head) => {
   const key = req.headers['sec-websocket-key'];
   if (!key) { sock.destroy(); return; }
   const accept = crypto.createHash('sha1').update(key + GUID).digest('base64');
@@ -125,14 +130,34 @@ server.on('upgrade', (req, sock) => {
     'Upgrade: websocket\r\nConnection: Upgrade\r\n' +
     'Sec-WebSocket-Accept: ' + accept + '\r\n\r\n');
 
-  const client = { id: nextId++, sock, room: null, name: '' };
-  let buf = Buffer.alloc(0);
-  sock.on('data', (chunk) => {
-    buf = Buffer.concat([buf, chunk]);
-    buf = parseFrames(buf, (txt) => handleMessage(client, txt), () => { leave(client); sock.destroy(); });
-  });
-  sock.on('close', () => leave(client));
-  sock.on('error', () => leave(client));
+  const client = { id: nextId++, sock, room: null, name: '', alive: true };
+  allClients.add(client);
+  // bytes die al mét de handshake meekwamen mogen niet verloren gaan
+  let buf = (head && head.length) ? Buffer.from(head) : Buffer.alloc(0);
+  const pump = (chunk) => {
+    if (chunk && chunk.length) buf = Buffer.concat([buf, chunk]);
+    buf = parseFrames(
+      buf,
+      (txt) => handleMessage(client, txt),
+      () => { leave(client); sock.destroy(); },
+      (payload) => { try { sock.write(buildFrame(0xA, payload)); } catch (e) {} },   // ping → pong
+      () => { client.alive = true; }                                                 // pong ontvangen
+    );
+  };
+  sock.on('data', pump);
+  sock.on('close', () => { allClients.delete(client); leave(client); });
+  sock.on('error', () => { allClients.delete(client); leave(client); });
+  if (buf.length) pump(null);   // meegestuurde frames meteen verwerken
 });
+
+// keepalive: periodiek pingen en niet-reagerende verbindingen opruimen
+const HEARTBEAT_MS = 30000;
+setInterval(() => {
+  for (const c of allClients) {
+    if (c.alive === false) { try { c.sock.destroy(); } catch (e) {} continue; }
+    c.alive = false;
+    try { c.sock.write(buildFrame(0x9, Buffer.alloc(0))); } catch (e) {}
+  }
+}, HEARTBEAT_MS);
 
 server.listen(PORT, () => log('luistert op poort ' + PORT + ' (max ' + MAX_PER_ROOM + ' per kamer)'));

@@ -91,6 +91,9 @@ window.Net = (function () {
       a.tx = m.x; a.ty = m.y; a.tz = m.z; a.tyaw = m.yaw || 0;
     } else if (m.t === 'edit') {
       applyRemoteEdit(m);
+    } else if (m.t === 'edits') {
+      // edit-historie in stukjes (voor laat-toegetreden spelers)
+      if (Array.isArray(m.list)) for (const e of m.list) applyEditRecord(e);
     } else if (m.t === 'time') {
       // alleen de host bepaalt de tijd; gasten volgen (dagteller volgt vanzelf)
       if (!isHost && typeof m.timeSec === 'number') {
@@ -102,17 +105,23 @@ window.Net = (function () {
     }
   }
 
+  // Legt een bewerking vast in de edit-store én past 'm toe op geladen chunks.
+  // recordEdit is essentieel: Chunks.setBlock negeert bewerkingen op chunks die
+  // (nog) niet geladen zijn, dus zonder dit zou een bouwsel buiten je zichtbereik
+  // verloren gaan zodra die chunk instreamt.
+  function applyEditRecord(e) {
+    if (!window.Chunks) return;
+    suppressBroadcast = true;
+    G.recordEdit(e.x, e.y, e.z, e.b);
+    G.setMeta(e.x, e.y, e.z, e.m || 0);
+    Chunks.setBlock(e.x, e.y, e.z, e.b, true, e.m || 0);
+    suppressBroadcast = false;
+  }
+
   function applyRemoteEdit(m) {
     if (!window.Chunks) return;
     const prev = Chunks.getBlock(m.x, m.y, m.z);
-    suppressBroadcast = true;
-    // Altijd in de edit-store vastleggen: Chunks.setBlock negeert bewerkingen op
-    // chunks die (nog) niet geladen zijn, dus zonder dit zou een bouwsel van een
-    // medespeler buiten je zichtbereik verloren gaan zodra die chunk instreamt.
-    G.recordEdit(m.x, m.y, m.z, m.b);
-    G.setMeta(m.x, m.y, m.z, m.m || 0);
-    Chunks.setBlock(m.x, m.y, m.z, m.b, true, m.m || 0);
-    suppressBroadcast = false;
+    applyEditRecord(m);
     // stam weggehaald → laat bijbehorende bladeren ook hier vervallen
     if (m.b === G.B.AIR && G.LOG_BLOCKS && G.LOG_BLOCKS.has(prev) && Chunks.decayLeavesAfterLog) {
       Chunks.decayLeavesAfterLog(m.x, m.y, m.z);
