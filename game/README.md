@@ -53,6 +53,10 @@ draai je de server op één machine en gebruiken de anderen `ws://<ip>:8080`.
 Andere spelers verschijnen als avatars met hun naam erboven; blokken die
 iemand plaatst of weghaalt (inclusief boomkap met bladverval) zie je meteen.
 
+Wil je de server permanent (24/7) op je eigen server hosten met een beveiligd
+`wss://`-adres? Zie **[SERVER-HOSTEN.md](SERVER-HOSTEN.md)** — met kant-en-klare
+pm2- en reverse-proxy-configs voor Nginx en Apache.
+
 ## Wat zit erin
 
 - **Oneindige, willekeurig gegenereerde wereld** — bergen, bossen, rivieren,
