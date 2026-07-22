@@ -221,6 +221,79 @@ export async function stampSignatureImage(
   return doc.save()
 }
 
+/**
+ * Bouwt de PDF die naar een tweede partij wordt gestuurd: op elk tekenvak van
+ * een externe partij komt een zichtbaar kader met de (vooraf ingevulde)
+ * klantnaam én een écht interactief handtekeningveld (AcroForm /Sig-widget).
+ * De ontvanger opent het in Adobe Reader, klikt op het veld en ondertekent.
+ */
+export async function buildSignatureRequestPdf(
+  pdfBytes: Uint8Array,
+  parties: SignParty[]
+): Promise<Uint8Array> {
+  const { PDFDocument, StandardFonts, rgb, PDFName, PDFNumber, PDFString } = await import('@cantoo/pdf-lib')
+  const doc = await PDFDocument.load(pdfBytes.slice(), { ignoreEncryption: true })
+  const font = await doc.embedFont(StandardFonts.Helvetica)
+  const fontBold = await doc.embedFont(StandardFonts.HelveticaBold)
+  const pages = doc.getPages()
+  const form = doc.getForm()
+  const ctx = doc.context
+  const accent = rgb(0.11, 0.35, 0.82)
+  const targets = parties.filter((p) => p.role === 'other' && p.status !== 'signed')
+
+  targets.forEach((party, idx) => {
+    const page = pages[party.placement.page] ?? pages[0]
+    const { x, y, width, height } = party.placement
+    // Zichtbaar kader + labels (ook leesbaar in viewers zonder formulieren).
+    page.drawRectangle({
+      x,
+      y,
+      width,
+      height,
+      borderColor: accent,
+      borderWidth: 1.2,
+      color: rgb(0.95, 0.97, 1)
+    })
+    const label = party.name ? `Handtekening — ${party.name}` : 'Handtekening'
+    page.drawText(label.slice(0, 48), {
+      x: x + 6,
+      y: y + height - 13,
+      size: 8,
+      font: fontBold,
+      color: accent
+    })
+    page.drawText('Klik hier om te ondertekenen (Adobe Reader)', {
+      x: x + 6,
+      y: y + 6,
+      size: 7,
+      font,
+      color: rgb(0.4, 0.4, 0.4)
+    })
+
+    // Interactief, nog niet ondertekend handtekeningveld.
+    const fieldName = `Handtekening_${idx + 1}_${(party.name || 'partij').replace(/[^\w]/g, '_').slice(0, 20)}`
+    const sigDict = ctx.obj({
+      FT: PDFName.of('Sig'),
+      Type: PDFName.of('Annot'),
+      Subtype: PDFName.of('Widget'),
+      T: PDFString.of(fieldName),
+      F: PDFNumber.of(4),
+      Rect: ctx.obj([x, y, x + width, y + height]),
+      P: page.ref
+    })
+    const sigRef = ctx.register(sigDict)
+    page.node.addAnnot(sigRef)
+    form.acroForm.addField(sigRef)
+  })
+
+  if (targets.length) {
+    // SigFlags 3 = document bevat handtekeningvelden en mag alleen als
+    // toevoeging (incremental) worden opgeslagen — zo herkent Adobe ze.
+    form.acroForm.dict.set(PDFName.of('SigFlags'), PDFNumber.of(3))
+  }
+  return doc.save()
+}
+
 // ---- Coördinaatomrekening tekenvak → PDF-punten ----
 
 /**
@@ -303,8 +376,12 @@ export function buildRequestEmail(dossier: SigningDossier, party: SignParty, sen
       groet,
       '',
       `Bijgaand ontvangt u "${dossier.fileName}" ter ondertekening.`,
-      'In het document is een tekenvak aangegeven op de plek waar uw handtekening hoort.',
-      'Wilt u het ondertekende document per e-mail retourneren?',
+      'In het document staat een blauw gemarkeerd handtekeningveld op de plek waar uw handtekening hoort.',
+      '',
+      'Zo ondertekent u:',
+      '1. Open de bijlage in Adobe Acrobat Reader (gratis).',
+      '2. Klik op het blauwe handtekeningveld; Adobe helpt u zo nodig gratis een digitale ID aan te maken.',
+      '3. Sla het ondertekende document op en stuur het per e-mail retour.',
       '',
       'Met vriendelijke groet,',
       senderName || ''

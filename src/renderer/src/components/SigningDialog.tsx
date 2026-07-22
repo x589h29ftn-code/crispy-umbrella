@@ -6,6 +6,7 @@ import { loadOfficeValues } from '../lib/templates'
 import {
   buildReminderEmail,
   buildRequestEmail,
+  buildSignatureRequestPdf,
   certStatus,
   createSelfCert,
   daysSince,
@@ -199,8 +200,20 @@ export default function SigningDialog(): JSX.Element {
     }
   }
 
+  // Bouwt de te versturen PDF met een klikbaar handtekeningveld voor de tweede
+  // partij. Basis: bij een zichtbare handtekening mag de al-getekende versie mee;
+  // bij digitale (PAdES) ondertekening gebruiken we het origineel, anders zou het
+  // toevoegen van het veld de cryptografische handtekening ongeldig maken.
+  async function requestBytes(dossier: SigningDossier): Promise<Uint8Array | null> {
+    const base =
+      (dossier.method === 'image' ? await loadDoc(dossier.id, 'signed') : null) ??
+      (await loadDoc(dossier.id, 'orig'))
+    if (!base) return null
+    return buildSignatureRequestPdf(base, dossier.parties)
+  }
+
   async function sendTo(dossier: SigningDossier, party: SignParty): Promise<void> {
-    const bytes = (await loadDoc(dossier.id, 'signed')) ?? (await loadDoc(dossier.id, 'orig'))
+    const bytes = await requestBytes(dossier)
     if (!bytes) return
     const mail = buildRequestEmail(dossier, party, signer)
     await mailDocument(dossier.fileName, bytes, { to: party.email, subject: mail.subject, body: mail.body })
@@ -213,7 +226,7 @@ export default function SigningDialog(): JSX.Element {
   }
 
   async function remind(dossier: SigningDossier, party: SignParty): Promise<void> {
-    const bytes = (await loadDoc(dossier.id, 'signed')) ?? (await loadDoc(dossier.id, 'orig'))
+    const bytes = await requestBytes(dossier)
     if (!bytes) return
     const mail = buildReminderEmail(dossier, party, signer)
     await mailDocument(dossier.fileName, bytes, { to: party.email, subject: mail.subject, body: mail.body })
