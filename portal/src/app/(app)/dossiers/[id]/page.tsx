@@ -5,8 +5,10 @@ import { prisma } from '@/lib/db'
 import { requireOnboarded } from '@/lib/auth/session'
 import { StatusBadge } from '@/components/StatusBadge'
 import { DossierActions } from './DossierActions'
+import { ArchiveFolderCard } from './ArchiveFolderCard'
 import { PARTY_LABEL } from '@/lib/status'
 import { currentSigners } from '@/lib/signflow'
+import { archiveEnabled, buildDefaultFolder } from '@/lib/archive'
 import { formatDateTime } from '@/lib/utils'
 
 const AUDIT_LABEL: Record<string, string> = {
@@ -29,7 +31,7 @@ export default async function DossierDetailPage({ params }: { params: { id: stri
   const dossier = await prisma.dossier.findUnique({
     where: { id: params.id },
     include: {
-      recipients: { orderBy: { order: 'asc' } },
+      recipients: { orderBy: { order: 'asc' }, include: { client: true } },
       auditEvents: { orderBy: { createdAt: 'asc' } },
       documents: { orderBy: { order: 'asc' } },
       owner: { select: { name: true } }
@@ -41,6 +43,17 @@ export default async function DossierDetailPage({ params }: { params: { id: stri
   const active = currentSigners(dossier, dossier.recipients)
   const activeIds = new Set(active.map((a) => a.id))
   const showWaiting = ['VERZONDEN', 'GEDEELTELIJK'].includes(dossier.status) && active.length > 0
+
+  // Standaard-archiefbestemming (klantmap + boekjaar) voor het overzicht.
+  const showArchive = archiveEnabled()
+  const clientRec = dossier.recipients.find((r) => r.client)
+  const archiveYear = dossier.documents.map((d) => d.detectedYear).find((y) => y != null) ?? null
+  const defaultArchiveFolder = buildDefaultFolder({
+    clientBaseFolder: clientRec?.client?.archiveFolder ?? null,
+    clientName: clientRec?.client?.displayName ?? clientRec?.name ?? dossier.title,
+    clientNumber: clientRec?.client?.clientNumber ?? null,
+    year: archiveYear
+  })
 
   return (
     <div className="space-y-6">
@@ -111,6 +124,15 @@ export default async function DossierDetailPage({ params }: { params: { id: stri
               ))}
             </ul>
           </section>
+
+          {showArchive && (
+            <ArchiveFolderCard
+              dossierId={dossier.id}
+              defaultFolder={defaultArchiveFolder}
+              current={dossier.archiveFolder}
+              locked={dossier.status === 'ONDERTEKEND'}
+            />
+          )}
 
           <section className="card p-6">
             <div className="mb-4 flex items-center justify-between">

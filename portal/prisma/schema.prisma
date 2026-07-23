@@ -118,6 +118,8 @@ model Client {
   city        String?
   country     String   @default("Nederland")
   notes       String?
+  // Basismap voor deze klant in het archief (leeg = "<klantnummer> - <naam>").
+  archiveFolder String?
   // Voorkeur voor identiteitsverificatie bij ondertekenen (standaard e-mail).
   verificationMethod VerificationMethod @default(EMAIL)
   active      Boolean  @default(true)
@@ -139,6 +141,7 @@ model Dossier {
   ownerId        String
   owner          Accountant    @relation(fields: [ownerId], references: [id])
   message        String? // optioneel begeleidend bericht in de e-mail
+  archiveFolder  String? // overschrijft de archiefbestemming voor dit dossier
   // Ontvanger na afronding ook een kopie mailen (standaard aan).
   sendCopyToRecipient Boolean @default(true)
   // Volgorde van ondertekenen: iedereen tegelijk of één voor één.

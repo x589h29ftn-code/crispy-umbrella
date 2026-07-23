@@ -11,7 +11,7 @@ import { writeAudit } from '@/lib/audit'
 import { sendMail } from '@/lib/email/transport'
 import { requestEmail, completedEmail, officeTurnEmail } from '@/lib/email/templates'
 import { renderTemplate, firstNameFrom } from '@/lib/docanalyze/templates'
-import { archiveDossier, archiveEnabled } from '@/lib/archive'
+import { archiveDossier, archiveEnabled, buildDefaultFolder } from '@/lib/archive'
 
 export type ResolveResult =
   | { ok: true; recipient: Recipient; dossier: Dossier }
@@ -287,10 +287,19 @@ async function finalize(dossierId: string): Promise<void> {
   // Getekende stukken automatisch in de klantmap zetten (indien ingesteld).
   if (archiveEnabled() && attachments.length > 0) {
     const clientRec = dossier.recipients.find((r) => r.client)
-    const clientName = clientRec?.client?.displayName ?? clientRec?.name ?? dossier.title
-    const clientNumber = clientRec?.client?.clientNumber ?? null
+    const client = clientRec?.client
+    const year = dossier.documents.map((d) => d.detectedYear).find((y) => y != null) ?? null
+    // Dossier-override wint; anders klantmap + boekjaar als submap.
+    const folder =
+      dossier.archiveFolder?.trim() ||
+      buildDefaultFolder({
+        clientBaseFolder: client?.archiveFolder ?? null,
+        clientName: client?.displayName ?? clientRec?.name ?? dossier.title,
+        clientNumber: client?.clientNumber ?? null,
+        year
+      })
     try {
-      const res = await archiveDossier({ clientName, clientNumber, dossierTitle: dossier.title, files: attachments })
+      const res = await archiveDossier({ folder, files: attachments })
       await writeAudit({ type: 'GEARCHIVEERD', dossierId, message: `${res.archived} bestand(en) naar ${res.driver}`, metadata: { target: res.target } })
     } catch (e) {
       console.error('[finalize archief]', e)

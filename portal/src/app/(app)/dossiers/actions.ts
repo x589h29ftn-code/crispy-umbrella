@@ -197,6 +197,15 @@ export async function createDossierAction(_prev: FormState, formData: FormData):
   redirect(`/dossiers/${dossier.id}/voorbereiden`)
 }
 
+/** Stelt de archiefbestemming voor dit dossier in (override op de standaard). */
+export async function setArchiveFolderAction(dossierId: string, folder: string): Promise<{ ok: boolean; error?: string }> {
+  const owned = await ownedDossier(dossierId)
+  if (!owned) return { ok: false, error: 'Dossier niet gevonden.' }
+  await prisma.dossier.update({ where: { id: dossierId }, data: { archiveFolder: folder.trim() || null } })
+  revalidatePath(`/dossiers/${dossierId}`)
+  return { ok: true }
+}
+
 export async function saveFieldsAction(
   dossierId: string,
   payload: SaveFieldsInput
