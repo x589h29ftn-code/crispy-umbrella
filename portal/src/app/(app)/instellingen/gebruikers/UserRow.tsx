@@ -1,7 +1,7 @@
 'use client'
 
 import { useState, useTransition } from 'react'
-import { toggleUserActiveAction, resetPasswordAction } from './actions'
+import { toggleUserActiveAction, resetPasswordAction, reset2faAction } from './actions'
 
 export function UserRow({
   id,
@@ -20,6 +20,7 @@ export function UserRow({
 }) {
   const [pending, start] = useTransition()
   const [temp, setTemp] = useState<string | null>(null)
+  const [notice, setNotice] = useState<string | null>(null)
 
   return (
     <tr className="hover:bg-slate-50">
@@ -41,6 +42,7 @@ export function UserRow({
             Nieuw wachtwoord: <span className="font-mono font-semibold">{temp}</span>
           </span>
         )}
+        {notice && <span className="mr-3 text-xs text-emerald-600">{notice}</span>}
         <button
           type="button"
           className="btn-ghost text-xs"
@@ -53,6 +55,19 @@ export function UserRow({
           }
         >
           Wachtwoord resetten
+        </button>
+        <button
+          type="button"
+          className="btn-ghost text-xs"
+          disabled={pending}
+          onClick={() =>
+            start(async () => {
+              const res = await reset2faAction(id)
+              if (res.ok) setNotice('2FA gereset. Gebruiker stelt het opnieuw in bij inloggen.')
+            })
+          }
+        >
+          2FA resetten
         </button>
         {!isSelf && (
           <button

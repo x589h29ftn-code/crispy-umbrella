@@ -5,12 +5,14 @@ import { prisma } from '@/lib/db'
 import { requireAccountant, createSession } from '@/lib/auth/session'
 import { verifyTotp, decryptTotpSecret } from '@/lib/auth/totp'
 import { hashPassword, verifyPassword } from '@/lib/auth/password'
+import { generateBackupCodes } from '@/lib/auth/backupCodes'
 import { totpVerifySchema } from '@/lib/validation/schemas'
 import { writeAudit } from '@/lib/audit'
 
 export interface FormState {
   error?: string
   ok?: boolean
+  backupCodes?: string[] // eenmalig getoond na activeren/opnieuw genereren
 }
 
 export async function enable2faAction(_prev: FormState, formData: FormData): Promise<FormState> {
@@ -20,9 +22,23 @@ export async function enable2faAction(_prev: FormState, formData: FormData): Pro
   if (!parsed.success) return { error: 'Voer de 6-cijferige code in.' }
   const secret = decryptTotpSecret(acc.totpSecret)
   if (!verifyTotp(secret, parsed.data.code)) return { error: 'Onjuiste code. Probeer opnieuw.' }
-  await prisma.accountant.update({ where: { id: acc.id }, data: { totpEnabled: true } })
+  const { plain, hashes } = generateBackupCodes()
+  await prisma.accountant.update({
+    where: { id: acc.id },
+    data: { totpEnabled: true, totpBackupCodes: hashes }
+  })
   revalidatePath('/instellingen')
-  return { ok: true }
+  return { ok: true, backupCodes: plain }
+}
+
+/// Genereert een nieuwe set herstelcodes (de oude vervallen daarmee).
+export async function regenerateBackupCodesAction(): Promise<FormState> {
+  const acc = await requireAccountant()
+  if (!acc.totpEnabled) return { error: 'Schakel eerst tweefactorauthenticatie in.' }
+  const { plain, hashes } = generateBackupCodes()
+  await prisma.accountant.update({ where: { id: acc.id }, data: { totpBackupCodes: hashes } })
+  revalidatePath('/instellingen')
+  return { ok: true, backupCodes: plain }
 }
 
 export async function disable2faAction(_prev: FormState, formData: FormData): Promise<FormState> {
@@ -34,7 +50,7 @@ export async function disable2faAction(_prev: FormState, formData: FormData): Pr
   }
   await prisma.accountant.update({
     where: { id: acc.id },
-    data: { totpEnabled: false, totpSecret: null }
+    data: { totpEnabled: false, totpSecret: null, totpBackupCodes: [] }
   })
   await writeAudit({ type: 'INGETROKKEN', accountantId: acc.id, message: '2FA uitgeschakeld' })
   revalidatePath('/instellingen')

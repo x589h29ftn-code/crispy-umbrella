@@ -51,7 +51,12 @@ export default async function InstellingenPage() {
 
       <section className="card p-6">
         <h2 className="mb-3 text-lg font-semibold">Tweefactorauthenticatie</h2>
-        <TwoFactorSetup enabled={acc.totpEnabled} qrDataUrl={qr} secret={secretBase32} />
+        <TwoFactorSetup
+          enabled={acc.totpEnabled}
+          qrDataUrl={qr}
+          secret={secretBase32}
+          backupCodesLeft={acc.totpBackupCodes.length}
+        />
       </section>
 
       <section className="card p-6">

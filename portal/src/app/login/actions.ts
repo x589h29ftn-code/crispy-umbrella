@@ -4,6 +4,7 @@ import { redirect } from 'next/navigation'
 import { prisma } from '@/lib/db'
 import { verifyPassword } from '@/lib/auth/password'
 import { verifyTotp, decryptTotpSecret } from '@/lib/auth/totp'
+import { consumeBackupCode, looksLikeBackupCode } from '@/lib/auth/backupCodes'
 import {
   createSession,
   setPending2fa,
@@ -12,7 +13,8 @@ import {
   requestContext
 } from '@/lib/auth/session'
 import { consume } from '@/lib/ratelimit'
-import { loginSchema, totpVerifySchema } from '@/lib/validation/schemas'
+import { loginSchema } from '@/lib/validation/schemas'
+import { writeAudit } from '@/lib/audit'
 
 export interface FormState {
   error?: string
@@ -49,8 +51,8 @@ export async function verify2faAction(_prev: FormState, formData: FormData): Pro
   const accountantId = getPending2fa()
   if (!accountantId) redirect('/login')
 
-  const parsed = totpVerifySchema.safeParse({ code: formData.get('code') })
-  if (!parsed.success) return { error: 'Voer de 6-cijferige code in.' }
+  const code = String(formData.get('code') ?? '').trim()
+  if (!code) return { error: 'Voer de code in.' }
 
   const { ip } = requestContext()
   const ok = await consume('totp', `${ip ?? 'onbekend'}:${accountantId}`)
@@ -58,8 +60,17 @@ export async function verify2faAction(_prev: FormState, formData: FormData): Pro
 
   const accountant = await prisma.accountant.findUnique({ where: { id: accountantId } })
   if (!accountant?.totpSecret) redirect('/login')
-  const secret = decryptTotpSecret(accountant.totpSecret)
-  if (!verifyTotp(secret, parsed.data.code)) return { error: 'Onjuiste of verlopen code.' }
+
+  // Herstelcode (bij geen toegang tot de app) of gewone 6-cijferige TOTP-code.
+  if (looksLikeBackupCode(code)) {
+    const remaining = consumeBackupCode(code, accountant.totpBackupCodes)
+    if (!remaining) return { error: 'Onjuiste of al gebruikte herstelcode.' }
+    await prisma.accountant.update({ where: { id: accountant.id }, data: { totpBackupCodes: remaining } })
+    await writeAudit({ type: 'INGELOGD', accountantId: accountant.id, message: 'Ingelogd met herstelcode' })
+  } else {
+    const secret = decryptTotpSecret(accountant.totpSecret)
+    if (!/^\d{6}$/.test(code) || !verifyTotp(secret, code)) return { error: 'Onjuiste of verlopen code.' }
+  }
 
   clearPending2fa()
   await createSession(accountant.id)
