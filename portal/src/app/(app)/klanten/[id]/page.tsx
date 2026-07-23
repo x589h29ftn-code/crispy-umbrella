@@ -27,7 +27,9 @@ export default async function KlantBewerkenPage({ params }: { params: { id: stri
     <div className="space-y-6">
       <header>
         <h1 className="text-2xl font-semibold">{client.displayName}</h1>
-        <p className="text-slate-500">Cliëntgegevens en ondertekendossiers.</p>
+        <p className="text-slate-500">
+          {client.clientNumber ? `Klantnummer ${client.clientNumber} · ` : ''}Cliëntgegevens en ondertekendossiers.
+        </p>
       </header>
 
       <section className="card overflow-hidden">
@@ -70,6 +72,7 @@ export default async function KlantBewerkenPage({ params }: { params: { id: stri
           submitLabel="Wijzigingen opslaan"
           values={{
             displayName: client.displayName,
+            clientNumber: client.clientNumber ?? '',
             companyName: client.companyName ?? '',
             contactName: client.contactName ?? '',
             firstName: client.firstName ?? '',

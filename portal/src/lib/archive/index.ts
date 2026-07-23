@@ -14,6 +14,7 @@ export interface ArchiveFile {
 }
 export interface ArchiveInput {
   clientName: string
+  clientNumber?: string | null
   dossierTitle: string
   files: ArchiveFile[]
 }
@@ -28,13 +29,19 @@ function safeName(s: string): string {
   return (s || 'onbekend').replace(/[\\/:*?"<>|]/g, '_').replace(/\s+/g, ' ').trim().slice(0, 120) || 'onbekend'
 }
 
+/** Mapnaam van de klant: "<klantnummer> - <naam>" als er een nummer is. */
+function clientFolder(input: ArchiveInput): string {
+  const num = (input.clientNumber ?? '').trim()
+  return safeName(num ? `${num} - ${input.clientName}` : input.clientName)
+}
+
 export function archiveEnabled(): boolean {
   return env.ARCHIVE_DRIVER !== 'none'
 }
 
 /** Schrijft de bestanden naar `<ARCHIVE_DIR>/<klant>/<dossier>/`. */
 async function archiveToFolder(input: ArchiveInput): Promise<ArchiveResult> {
-  const dir = join(env.ARCHIVE_DIR, safeName(input.clientName), safeName(input.dossierTitle))
+  const dir = join(env.ARCHIVE_DIR, clientFolder(input), safeName(input.dossierTitle))
   await mkdir(dir, { recursive: true })
   for (const f of input.files) {
     await writeFile(join(dir, safeName(f.filename)), f.content)
@@ -70,7 +77,7 @@ async function archiveToSharePoint(input: ArchiveInput): Promise<ArchiveResult> 
   }
   const token = await graphToken()
   const base = env.SHAREPOINT_BASE_FOLDER ? `${env.SHAREPOINT_BASE_FOLDER.replace(/^\/+|\/+$/g, '')}/` : ''
-  const folder = `${base}${safeName(input.clientName)}/${safeName(input.dossierTitle)}`
+  const folder = `${base}${clientFolder(input)}/${safeName(input.dossierTitle)}`
   // Een PUT naar een pad maakt ontbrekende tussenmappen automatisch aan.
   for (const f of input.files) {
     const path = `${folder}/${safeName(f.filename)}`.split('/').map(encodeURIComponent).join('/')

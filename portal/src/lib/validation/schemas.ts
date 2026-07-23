@@ -5,6 +5,7 @@ const naam = z.string().trim().min(1, 'Verplicht').max(200)
 
 export const clientSchema = z.object({
   displayName: naam,
+  clientNumber: z.string().trim().max(40).optional().or(z.literal('')),
   companyName: z.string().trim().max(200).optional().or(z.literal('')),
   contactName: z.string().trim().max(200).optional().or(z.literal('')),
   firstName: z.string().trim().max(100).optional().or(z.literal('')),

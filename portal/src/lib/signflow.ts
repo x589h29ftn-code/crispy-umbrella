@@ -288,8 +288,9 @@ async function finalize(dossierId: string): Promise<void> {
   if (archiveEnabled() && attachments.length > 0) {
     const clientRec = dossier.recipients.find((r) => r.client)
     const clientName = clientRec?.client?.displayName ?? clientRec?.name ?? dossier.title
+    const clientNumber = clientRec?.client?.clientNumber ?? null
     try {
-      const res = await archiveDossier({ clientName, dossierTitle: dossier.title, files: attachments })
+      const res = await archiveDossier({ clientName, clientNumber, dossierTitle: dossier.title, files: attachments })
       await writeAudit({ type: 'GEARCHIVEERD', dossierId, message: `${res.archived} bestand(en) naar ${res.driver}`, metadata: { target: res.target } })
     } catch (e) {
       console.error('[finalize archief]', e)

@@ -18,7 +18,8 @@ export default async function ImporterenPage() {
         <div className="mt-6 rounded-lg bg-slate-50 p-4 text-sm text-slate-600">
           <p className="mb-1 font-medium text-slate-700">Herkende kolomkoppen</p>
           <p>
-            <span className="font-mono text-xs">Klantnaam</span> of <span className="font-mono text-xs">Bedrijfsnaam</span>,{' '}
+            <span className="font-mono text-xs">Klantnummer</span>, <span className="font-mono text-xs">Klantnaam</span> of{' '}
+            <span className="font-mono text-xs">Bedrijfsnaam</span>,{' '}
             <span className="font-mono text-xs">Contactpersoon</span>, <span className="font-mono text-xs">Voornaam</span>,{' '}
             <span className="font-mono text-xs">E-mail</span>,{' '}
             <span className="font-mono text-xs">Telefoon</span>, <span className="font-mono text-xs">KvK</span>,{' '}
