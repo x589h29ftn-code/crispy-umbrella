@@ -129,6 +129,27 @@ export function completedEmail(opts: { recipientName: string; documentTitle: str
   return { subject, html, text }
 }
 
+export function passwordResetEmail(opts: { name: string; url: string; ttlMinutes: number }): {
+  subject: string
+  html: string
+  text: string
+} {
+  const subject = 'Wachtwoord opnieuw instellen'
+  const html = layout(
+    'Wachtwoord opnieuw instellen',
+    `<p>Beste ${escapeHtml(opts.name)},</p>
+     <p>U heeft gevraagd om uw wachtwoord voor het ondertekenportaal opnieuw in te stellen. Klik op de knop hieronder
+     om een nieuw wachtwoord te kiezen. Deze link is ${opts.ttlMinutes} minuten geldig en werkt eenmalig.</p>
+     <p style="margin:24px 0">${button(opts.url, 'Nieuw wachtwoord instellen')}</p>
+     <p style="color:#64748b;font-size:13px">Werkt de knop niet? Kopieer deze link:<br>${opts.url}</p>
+     <p style="color:#64748b;font-size:13px">Heeft u dit niet aangevraagd? Dan kunt u deze e-mail negeren; er verandert
+     niets aan uw account.</p>
+     <p>Met vriendelijke groet,<br>Otto Visser &amp; Partners</p>`
+  )
+  const text = `Beste ${opts.name},\n\nU heeft gevraagd uw wachtwoord opnieuw in te stellen. Gebruik deze link (${opts.ttlMinutes} minuten geldig, eenmalig):\n${opts.url}\n\nHeeft u dit niet aangevraagd? Negeer deze e-mail.\n\nMet vriendelijke groet,\nOtto Visser & Partners`
+  return { subject, html, text }
+}
+
 function escapeHtml(s: string): string {
   return s.replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]!))
 }

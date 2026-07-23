@@ -7,7 +7,8 @@ const limiters = {
   totp: new RateLimiterMemory({ points: 5, duration: 300, blockDuration: 900 }),
   otpRequest: new RateLimiterMemory({ points: 5, duration: 600 }),
   otpVerify: new RateLimiterMemory({ points: 5, duration: 600, blockDuration: 900 }),
-  token: new RateLimiterMemory({ points: 30, duration: 600 })
+  token: new RateLimiterMemory({ points: 30, duration: 600 }),
+  passwordReset: new RateLimiterMemory({ points: 5, duration: 900 })
 }
 
 export type LimitKey = keyof typeof limiters

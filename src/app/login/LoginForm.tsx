@@ -1,5 +1,6 @@
 'use client'
 
+import Link from 'next/link'
 import { useFormState, useFormStatus } from 'react-dom'
 import { loginAction, type FormState } from './actions'
 
@@ -39,6 +40,11 @@ export function LoginForm() {
       </div>
       {state.error && <p className="text-sm text-rose-600">{state.error}</p>}
       <SubmitButton />
+      <p className="text-center text-sm">
+        <Link href="/wachtwoord-vergeten" className="text-slate-500 hover:underline">
+          Wachtwoord vergeten?
+        </Link>
+      </p>
     </form>
   )
 }

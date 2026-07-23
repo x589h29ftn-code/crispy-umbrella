@@ -30,3 +30,14 @@ export function generateOtp(): { code: string; hash: string } {
 export function hashOtp(code: string): string {
   return createHmac('sha256', env.SIGNING_TOKEN_SECRET).update(`otp:${code}`).digest('hex')
 }
+
+// Wachtwoord-herstel: eenmalige, kortlevende token. Ruwe token alleen in de
+// e-maillink; in de database staat uitsluitend de HMAC-hash.
+export function generatePasswordResetToken(): { raw: string; hash: string } {
+  const raw = randomBytes(32).toString('base64url')
+  return { raw, hash: hashPasswordResetToken(raw) }
+}
+
+export function hashPasswordResetToken(raw: string): string {
+  return createHmac('sha256', env.SESSION_SECRET).update(`pwreset:${raw}`).digest('hex')
+}
