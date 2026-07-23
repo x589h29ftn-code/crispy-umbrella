@@ -16,12 +16,12 @@ const DATE_FMT = new Intl.DateTimeFormat('nl-NL', {
 const DATE_ONLY = new Intl.DateTimeFormat('nl-NL', { day: '2-digit', month: 'long', year: 'numeric' })
 
 export function formatDateTime(d: Date | string | number | null | undefined): string {
-  if (!d) return '—'
+  if (!d) return '-'
   return DATE_FMT.format(new Date(d))
 }
 
 export function formatDate(d: Date | string | number | null | undefined): string {
-  if (!d) return '—'
+  if (!d) return '-'
   return DATE_ONLY.format(new Date(d))
 }
 

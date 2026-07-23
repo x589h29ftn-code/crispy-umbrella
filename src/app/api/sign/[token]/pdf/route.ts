@@ -5,7 +5,7 @@ import { storage } from '@/lib/storage'
 import { consume } from '@/lib/ratelimit'
 import { reqContext } from '@/lib/reqctx'
 
-// Levert het te ondertekenen document — alléén nadat de e-mailcode is geverifieerd.
+// Levert het te ondertekenen document - alléén nadat de e-mailcode is geverifieerd.
 export async function GET(req: NextRequest, { params }: { params: { token: string } }) {
   if (!(await consume('token', reqContext(req).ip ?? 'onbekend'))) {
     return NextResponse.json({ error: 'Te veel verzoeken.' }, { status: 429 })

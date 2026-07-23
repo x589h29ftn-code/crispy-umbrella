@@ -35,7 +35,7 @@ const NL = new Intl.DateTimeFormat('nl-NL', {
 })
 
 function fmt(d?: Date | null): string {
-  return d ? NL.format(d) : '—'
+  return d ? NL.format(d) : '-'
 }
 
 export async function sealDocument(input: SealInput): Promise<SealResult> {
@@ -62,7 +62,7 @@ export async function sealDocument(input: SealInput): Promise<SealResult> {
 
   page.drawRectangle({ x: 0, y: height - 8, width, height: 8, color: accent })
   line('Ondertekencertificaat', { size: 20, f: bold, gap: 30 })
-  line('Otto Visser & Partners — Ondertekenportaal', { size: 10, color: grey, gap: 24 })
+  line('Otto Visser & Partners - Ondertekenportaal', { size: 10, color: grey, gap: 24 })
 
   line('Document', { size: 12, f: bold, gap: 18 })
   line(`Titel: ${input.dossierTitle}`)
@@ -77,8 +77,8 @@ export async function sealDocument(input: SealInput): Promise<SealResult> {
     line(`${i + 1}. ${s.name}  <${s.email}>`, { f: bold, size: 11 })
     line(`    Ondertekend op: ${fmt(s.signedAt)}`, { size: 9, color: grey })
     line(`    Identiteit geverifieerd (e-mailcode) op: ${fmt(s.otpVerifiedAt)}`, { size: 9, color: grey })
-    line(`    IP-adres: ${s.ip ?? '—'}`, { size: 9, color: grey })
-    const ua = (s.userAgent ?? '—').slice(0, 90)
+    line(`    IP-adres: ${s.ip ?? '-'}`, { size: 9, color: grey })
+    const ua = (s.userAgent ?? '-').slice(0, 90)
     line(`    Apparaat: ${ua}`, { size: 9, color: grey, gap: 16 })
   })
 

@@ -76,7 +76,7 @@ export async function requireAccountant(): Promise<Accountant> {
 /**
  * Vereist een ingelogde, volledig ingerichte medewerker. Zolang het wachtwoord
  * nog gewijzigd moet worden of 2FA niet actief is, wordt naar Instellingen
- * geleid — zo is tweefactorauthenticatie in de praktijk verplicht.
+ * geleid - zo is tweefactorauthenticatie in de praktijk verplicht.
  */
 export async function requireOnboarded(): Promise<Accountant> {
   const acc = await requireAccountant()

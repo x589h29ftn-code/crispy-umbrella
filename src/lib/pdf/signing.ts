@@ -1,5 +1,5 @@
 // PDF-tekenhulpfuncties, server-side. Geport uit de desktop-app
-// (src/renderer/src/lib/signing.ts) — puur @cantoo/pdf-lib, zonder de
+// (src/renderer/src/lib/signing.ts) - puur @cantoo/pdf-lib, zonder de
 // desktop-specifieke opslag/IPC. Alleen wat het portaal echt nodig heeft.
 
 /** Tekenvak in PDF-punten met pivot linksonder (pdf-lib-conventie). */
@@ -60,7 +60,7 @@ export function pixelRectToPlacement(
   }
 }
 
-/** Geeft de afmetingen (PDF-punten) van elke pagina — voor coördinaatomrekening. */
+/** Geeft de afmetingen (PDF-punten) van elke pagina - voor coördinaatomrekening. */
 export async function pageSizes(pdfBytes: Uint8Array): Promise<{ width: number; height: number }[]> {
   const { PDFDocument } = await import('@cantoo/pdf-lib')
   const doc = await PDFDocument.load(Uint8Array.from(pdfBytes), { ignoreEncryption: true })

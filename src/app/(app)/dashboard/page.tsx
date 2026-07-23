@@ -101,7 +101,7 @@ export default async function DashboardPage({ searchParams }: { searchParams: { 
                       </Link>
                     </td>
                     <td className="px-4 py-3 text-slate-600">
-                      {d.recipients.length > 0 ? `${signed}/${d.recipients.length} ondertekend` : '—'}
+                      {d.recipients.length > 0 ? `${signed}/${d.recipients.length} ondertekend` : '-'}
                     </td>
                     {isBeheerder && <td className="px-4 py-3 text-slate-600">{d.owner.name}</td>}
                     <td className="px-4 py-3">

@@ -21,7 +21,7 @@ export function safeEqualHash(a: string, b: string): boolean {
   return timingSafeEqual(ba, bb)
 }
 
-// E-mail-OTP (6 cijfers) — gehasht opgeslagen, net als de tekentoken.
+// E-mail-OTP (6 cijfers) - gehasht opgeslagen, net als de tekentoken.
 export function generateOtp(): { code: string; hash: string } {
   const code = String(randomInt(100000, 1000000))
   return { code, hash: hashOtp(code) }

@@ -1,14 +1,16 @@
 // Nederlandse e-mailsjablonen. Sober, professioneel, huisstijl-blauw.
+import { env } from '@/env'
 
-const BRAND = '#1d4ed8'
+const BRAND = '#2b6cad' // logoblauw Otto Visser & Partners
 
 function layout(title: string, bodyHtml: string): string {
+  const logo = `${env.APP_URL}/logo-full.jpg`
   return `<!doctype html><html lang="nl"><body style="margin:0;background:#f1f5f9;font-family:Segoe UI,Arial,sans-serif;color:#0f172a">
   <div style="max-width:560px;margin:0 auto;padding:24px">
     <div style="background:#fff;border-radius:12px;overflow:hidden;box-shadow:0 1px 3px rgba(16,24,40,.1)">
       <div style="background:${BRAND};height:6px"></div>
       <div style="padding:28px 32px">
-        <div style="font-size:13px;color:#64748b;letter-spacing:.4px;text-transform:uppercase;margin-bottom:12px">Otto Visser &amp; Partners</div>
+        <img src="${logo}" alt="Otto Visser &amp; Partners" style="height:44px;margin-bottom:16px" />
         <h1 style="font-size:20px;margin:0 0 16px">${title}</h1>
         ${bodyHtml}
       </div>
@@ -40,7 +42,7 @@ export function requestEmail(opts: {
     'Verzoek om te ondertekenen',
     `<p>Beste ${escapeHtml(opts.recipientName)},</p>
      ${intro}
-     <p>U tekent veilig online in uw browser — er is geen software nodig. Voor de zekerheid ontvangt u eerst een verificatiecode per e-mail.</p>
+     <p>U tekent veilig online in uw browser - er is geen software nodig. Voor de zekerheid ontvangt u eerst een verificatiecode per e-mail.</p>
      <p style="margin:24px 0">${button(opts.url, 'Document openen en ondertekenen')}</p>
      <p style="color:#64748b;font-size:13px">Werkt de knop niet? Kopieer deze link:<br>${opts.url}</p>
      <p>Met vriendelijke groet,<br>${escapeHtml(opts.senderName)}<br>Otto Visser &amp; Partners</p>`
