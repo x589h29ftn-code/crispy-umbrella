@@ -70,14 +70,37 @@ export async function createDossierAction(_prev: FormState, formData: FormData):
     })
   }
 
+  const base = {
+    ownerId: acc.id,
+    status: 'CONCEPT' as const,
+    message: parsed.data.message?.trim() || null,
+    linkTtlDays: parsed.data.linkTtlDays,
+    sendCopyToRecipient: formData.get('sendCopyToRecipient') === 'on'
+  }
+
+  // Verzendwijze: alles in één verzoek (standaard) of elk document apart.
+  const separate = formData.get('deliveryMode') === 'separate' && prepared.length > 1
+  const ctx = requestContext()
+
+  if (separate) {
+    // Eén dossier per document; elk krijgt zijn eigen e-mail/link en status.
+    for (const [i, p] of prepared.entries()) {
+      const d = await prisma.dossier.create({
+        data: {
+          ...base,
+          title: p.title || `${parsed.data.title} (${i + 1})`,
+          documents: { create: [{ title: p.title, fileName: p.fileName, order: 0, originalKey: p.originalKey, workingKey: p.workingKey }] }
+        }
+      })
+      await writeAudit({ type: 'AANGEMAAKT', dossierId: d.id, accountantId: acc.id, ...ctx })
+    }
+    redirect('/dashboard?nieuw=apart')
+  }
+
   const dossier = await prisma.dossier.create({
     data: {
+      ...base,
       title: parsed.data.title,
-      ownerId: acc.id,
-      status: 'CONCEPT',
-      message: parsed.data.message?.trim() || null,
-      linkTtlDays: parsed.data.linkTtlDays,
-      sendCopyToRecipient: formData.get('sendCopyToRecipient') === 'on',
       documents: {
         create: prepared.map((p, i) => ({
           title: p.title,
@@ -89,7 +112,7 @@ export async function createDossierAction(_prev: FormState, formData: FormData):
       }
     }
   })
-  await writeAudit({ type: 'AANGEMAAKT', dossierId: dossier.id, accountantId: acc.id, ...requestContext() })
+  await writeAudit({ type: 'AANGEMAAKT', dossierId: dossier.id, accountantId: acc.id, ...ctx })
   redirect(`/dossiers/${dossier.id}/voorbereiden`)
 }
 

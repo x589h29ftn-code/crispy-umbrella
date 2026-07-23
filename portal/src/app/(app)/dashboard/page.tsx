@@ -9,7 +9,7 @@ import { formatDateTime } from '@/lib/utils'
 
 const FILTERS: (DossierStatus | 'ALLE')[] = ['ALLE', 'CONCEPT', 'VERZONDEN', 'GEDEELTELIJK', 'ONDERTEKEND']
 
-export default async function DashboardPage({ searchParams }: { searchParams: { status?: string } }) {
+export default async function DashboardPage({ searchParams }: { searchParams: { status?: string; nieuw?: string } }) {
   const acc = await requireOnboarded()
   const isBeheerder = acc.role === 'BEHEERDER'
   const statusFilter = FILTERS.includes(searchParams.status as DossierStatus) ? (searchParams.status as DossierStatus) : null
@@ -48,6 +48,13 @@ export default async function DashboardPage({ searchParams }: { searchParams: { 
           <Plus className="h-4 w-4" /> Nieuw dossier
         </Link>
       </header>
+
+      {searchParams.nieuw === 'apart' && (
+        <div className="rounded-lg border border-blue-200 bg-blue-50 p-4 text-sm text-blue-800">
+          De losse verzoeken zijn als concept aangemaakt. Open ze hieronder om per stuk de tekenvelden te plaatsen en te
+          versturen.
+        </div>
+      )}
 
       <div className="flex flex-wrap gap-2">
         {FILTERS.map((f) => {
