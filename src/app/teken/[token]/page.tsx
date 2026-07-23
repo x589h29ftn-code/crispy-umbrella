@@ -44,13 +44,26 @@ export default async function TekenPage({ params }: { params: { token: string } 
 
   const fields = await prisma.signatureField.findMany({
     where: { dossierId: dossier.id, recipientId: recipient.id },
-    select: { page: true, x: true, y: true, width: true, height: true }
+    select: { documentId: true, page: true, x: true, y: true, width: true, height: true }
+  })
+  // Alleen de documenten waarop deze ondertekenaar een tekenvak heeft.
+  const docIds = Array.from(new Set(fields.map((f) => f.documentId)))
+  const documents = await prisma.document.findMany({
+    where: { id: { in: docIds } },
+    orderBy: { order: 'asc' },
+    select: { id: true, title: true }
   })
 
   return (
     <main className="min-h-screen bg-slate-100 py-8">
       <div className="px-4">
-        <SignFlow token={params.token} recipientName={recipient.name} dossierTitle={dossier.title} fields={fields} />
+        <SignFlow
+          token={params.token}
+          recipientName={recipient.name}
+          dossierTitle={dossier.title}
+          documents={documents}
+          fields={fields}
+        />
       </div>
     </main>
   )

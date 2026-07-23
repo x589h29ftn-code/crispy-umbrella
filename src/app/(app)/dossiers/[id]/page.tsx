@@ -1,6 +1,6 @@
 import Link from 'next/link'
 import { notFound } from 'next/navigation'
-import { Download, PencilRuler, CheckCircle2, Clock, XCircle } from 'lucide-react'
+import { Download, PencilRuler, CheckCircle2, Clock, XCircle, FileText } from 'lucide-react'
 import { prisma } from '@/lib/db'
 import { requireOnboarded } from '@/lib/auth/session'
 import { StatusBadge } from '@/components/StatusBadge'
@@ -31,13 +31,13 @@ export default async function DossierDetailPage({ params }: { params: { id: stri
     include: {
       recipients: { orderBy: { order: 'asc' } },
       auditEvents: { orderBy: { createdAt: 'asc' } },
+      documents: { orderBy: { order: 'asc' } },
       owner: { select: { name: true } }
     }
   })
   if (!dossier) notFound()
   if (dossier.ownerId !== acc.id && acc.role !== 'BEHEERDER') notFound()
 
-  const canDownload = !!dossier.sealedKey || !!dossier.workingKey
   const active = currentSigners(dossier, dossier.recipients)
   const activeIds = new Set(active.map((a) => a.id))
   const showWaiting = ['VERZONDEN', 'GEDEELTELIJK'].includes(dossier.status) && active.length > 0
@@ -59,11 +59,6 @@ export default async function DossierDetailPage({ params }: { params: { id: stri
             <Link href={`/dossiers/${dossier.id}/voorbereiden`} className="btn-secondary">
               <PencilRuler className="h-4 w-4" /> Velden bewerken
             </Link>
-          )}
-          {canDownload && (
-            <a href={`/api/dossiers/${dossier.id}/download`} className="btn-secondary">
-              <Download className="h-4 w-4" /> Download PDF
-            </a>
           )}
         </div>
       </header>
@@ -92,6 +87,30 @@ export default async function DossierDetailPage({ params }: { params: { id: stri
               {dossier.signingMode === 'SEQUENTIAL' && ' (één voor één)'}
             </div>
           )}
+
+          <section className="card p-6">
+            <h2 className="mb-4 text-lg font-semibold">Documenten</h2>
+            <ul className="divide-y divide-slate-100">
+              {dossier.documents.map((doc) => (
+                <li key={doc.id} className="flex items-center justify-between py-3">
+                  <div className="flex items-center gap-2">
+                    <FileText className="h-4 w-4 text-slate-400" />
+                    <div>
+                      <div className="font-medium">{doc.title}</div>
+                      {doc.documentSha256 && (
+                        <div className="text-xs text-slate-500">SHA-256: {doc.documentSha256.slice(0, 16)}…</div>
+                      )}
+                    </div>
+                  </div>
+                  {(doc.sealedKey || doc.workingKey) && (
+                    <a href={`/api/dossiers/${dossier.id}/download?documentId=${doc.id}`} className="btn-ghost text-sm">
+                      <Download className="h-4 w-4" /> Download
+                    </a>
+                  )}
+                </li>
+              ))}
+            </ul>
+          </section>
 
           <section className="card p-6">
             <div className="mb-4 flex items-center justify-between">

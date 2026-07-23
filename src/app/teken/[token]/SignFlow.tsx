@@ -7,11 +7,16 @@ import { DrawSignature } from '@/components/DrawSignature'
 import { TypeSignature } from '@/components/TypeSignature'
 
 interface FieldRect {
+  documentId: string
   page: number
   x: number
   y: number
   width: number
   height: number
+}
+interface DocInfo {
+  id: string
+  title: string
 }
 
 type Step = 'intro' | 'otp' | 'sign' | 'done' | 'declined'
@@ -22,11 +27,13 @@ export function SignFlow({
   token,
   recipientName,
   dossierTitle,
+  documents,
   fields
 }: {
   token: string
   recipientName: string
   dossierTitle: string
+  documents: DocInfo[]
   fields: FieldRect[]
 }) {
   const [step, setStep] = useState<Step>('intro')
@@ -163,7 +170,12 @@ export function SignFlow({
 
       {step === 'sign' && (
         <div className="space-y-6">
-          <SignDocument token={token} fields={fields} />
+          {documents.map((d) => (
+            <div key={d.id} className="space-y-2">
+              {documents.length > 1 && <h2 className="text-lg font-semibold">{d.title}</h2>}
+              <SignDocument token={token} documentId={d.id} fields={fields.filter((f) => f.documentId === d.id)} />
+            </div>
+          ))}
           <div id="ondertekenen" className="card space-y-4 p-6">
             <h2 className="flex items-center gap-2 text-lg font-semibold">
               <PenLine className="h-5 w-5" /> Uw handtekening
@@ -213,8 +225,8 @@ export function SignFlow({
   )
 }
 
-/** Toont het document met gemarkeerde tekenvakken voor deze ontvanger. */
-function SignDocument({ token, fields }: { token: string; fields: FieldRect[] }) {
+/** Toont één document met gemarkeerde tekenvakken voor deze ontvanger. */
+function SignDocument({ token, documentId, fields }: { token: string; documentId: string; fields: FieldRect[] }) {
   const [numPages, setNumPages] = useState(0)
   const [pageSizes, setPageSizes] = useState<{ w: number; h: number }[]>([])
   const [loading, setLoading] = useState(true)
@@ -225,7 +237,7 @@ function SignDocument({ token, fields }: { token: string; fields: FieldRect[] })
     let cancelled = false
     ;(async () => {
       try {
-        const res = await fetch(`/api/sign/${token}/pdf`)
+        const res = await fetch(`/api/sign/${token}/pdf?documentId=${documentId}`)
         if (!res.ok) throw new Error()
         const pdf = await loadPdf(await res.arrayBuffer())
         if (cancelled) return
@@ -238,7 +250,7 @@ function SignDocument({ token, fields }: { token: string; fields: FieldRect[] })
     return () => {
       cancelled = true
     }
-  }, [token])
+  }, [token, documentId])
 
   const render = useCallback(async () => {
     if (!pdfDoc || numPages === 0) return
