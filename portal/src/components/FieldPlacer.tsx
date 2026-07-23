@@ -232,8 +232,8 @@ export function FieldPlacer({ dossierId, documents }: { dossierId: string; docum
   const fieldsPerDoc = (docId: string) => fields.filter((f) => f.documentId === docId).length
 
   return (
-    <div className="grid gap-6 lg:grid-cols-[340px_1fr]">
-      <div className="space-y-5">
+    <div className="grid gap-6 lg:grid-cols-[340px_1fr] lg:grid-rows-[auto_1fr] lg:items-start">
+      <div className="space-y-5 lg:col-start-1 lg:row-start-1">
         <div className="card p-4">
           <h3 className="mb-2 text-sm font-semibold">Ondertekenvolgorde</h3>
           <div className="flex gap-2">
@@ -310,22 +310,15 @@ export function FieldPlacer({ dossierId, documents }: { dossierId: string; docum
           </ol>
           {signers.length > 0 && (
             <p className="mt-2 text-xs text-slate-500">
-              Kies een ondertekenaar en sleep een rechthoek op de pagina waar die persoon moet tekenen.
+              Kies een ondertekenaar en sleep (op een telefoon met uw vinger) een rechthoek op de pagina waar die
+              persoon moet tekenen.
             </p>
           )}
         </div>
-
-        {error && <p className="rounded-lg bg-rose-50 p-3 text-sm text-rose-700">{error}</p>}
-
-        <button type="button" className="btn-primary w-full" onClick={save} disabled={saving || loading}>
-          {saving ? 'Opslaan…' : 'Opslaan en naar overzicht'}
-        </button>
-        <Link href={`/dossiers/${dossierId}`} className="btn-ghost w-full justify-center">
-          Annuleren
-        </Link>
       </div>
 
-      <div className="space-y-4">
+      {/* Document: op mobiel tussen de instellingen en de knoppen, op desktop in de rechterkolom */}
+      <div className="space-y-4 lg:col-start-2 lg:row-start-1 lg:row-span-2">
         {/* Documenttabs */}
         {documents.length > 1 && (
           <div className="flex flex-wrap gap-2">
@@ -391,6 +384,17 @@ export function FieldPlacer({ dossierId, documents }: { dossierId: string; docum
             </div>
           </div>
         ))}
+      </div>
+
+      {/* Acties: op mobiel onderaan (na het document), op desktop linksonder */}
+      <div className="space-y-3 lg:col-start-1 lg:row-start-2">
+        {error && <p className="rounded-lg bg-rose-50 p-3 text-sm text-rose-700">{error}</p>}
+        <button type="button" className="btn-primary w-full" onClick={save} disabled={saving || loading}>
+          {saving ? 'Opslaan…' : 'Opslaan en naar overzicht'}
+        </button>
+        <Link href={`/dossiers/${dossierId}`} className="btn-ghost w-full justify-center">
+          Annuleren
+        </Link>
       </div>
     </div>
   )
