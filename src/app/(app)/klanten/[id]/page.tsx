@@ -25,6 +25,7 @@ export default async function KlantBewerkenPage({ params }: { params: { id: stri
             displayName: client.displayName,
             companyName: client.companyName ?? '',
             contactName: client.contactName ?? '',
+            firstName: client.firstName ?? '',
             email: client.email ?? '',
             phone: client.phone ?? '',
             kvk: client.kvk ?? '',

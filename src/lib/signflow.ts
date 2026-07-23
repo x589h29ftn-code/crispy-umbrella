@@ -10,6 +10,7 @@ import { recomputeStatus } from '@/lib/status'
 import { writeAudit } from '@/lib/audit'
 import { sendMail } from '@/lib/email/transport'
 import { requestEmail, completedEmail, officeTurnEmail } from '@/lib/email/templates'
+import { renderTemplate, firstNameFrom } from '@/lib/docanalyze/templates'
 
 export type ResolveResult =
   | { ok: true; recipient: Recipient; dossier: Dossier }
@@ -40,7 +41,13 @@ export async function resolveToken(raw: string): Promise<ResolveResult> {
  * in het portaal op zijn handtekening wacht.
  */
 export async function activateSigner(recipientId: string): Promise<void> {
-  const r = await prisma.recipient.findUnique({ where: { id: recipientId }, include: { dossier: { include: { owner: true } } } })
+  const r = await prisma.recipient.findUnique({
+    where: { id: recipientId },
+    include: {
+      client: true,
+      dossier: { include: { owner: true, documents: { orderBy: { order: 'asc' }, take: 1, select: { detectedYear: true } } } }
+    }
+  })
   if (!r) return
   const dossier = r.dossier
 
@@ -71,12 +78,23 @@ export async function activateSigner(recipientId: string): Promise<void> {
       otpExpiresAt: null
     }
   })
+  // Vul de invulvelden in het begeleidend bericht in voor deze ontvanger.
+  const resolvedMessage = dossier.message
+    ? renderTemplate(dossier.message, {
+        voornaamKlant: firstNameFrom(r.client?.firstName, r.client?.contactName) ?? r.name,
+        bedrijfsnaam: r.client?.companyName ?? r.client?.displayName ?? null,
+        boekjaar: dossier.documents[0]?.detectedYear ?? null,
+        documenttitel: dossier.title,
+        voornaamAfzender: firstNameFrom(dossier.owner.name) ?? dossier.owner.name
+      })
+    : null
+
   const mail = requestEmail({
     recipientName: r.name,
     senderName: dossier.owner.name,
     documentTitle: dossier.title,
     url: `${env.APP_URL}/teken/${raw}`,
-    message: dossier.message
+    message: resolvedMessage
   })
   await sendMail({ to: r.email, ...mail }).catch((e) => console.error('[activate client mail]', e))
   await writeAudit({ type: 'VERZONDEN', dossierId: dossier.id, recipientId: r.id, message: r.email })

@@ -20,10 +20,13 @@ FROM node:20-bookworm-slim AS runner
 WORKDIR /app
 ENV NODE_ENV=production
 ENV NEXT_TELEMETRY_DISABLED=1
-# LibreOffice (Word->PDF) + lettertypen + openssl (Prisma).
+# LibreOffice (Word->PDF) + lettertypen + openssl (Prisma) +
+# Tesseract (OCR, Nederlands) en poppler-utils (pdftoppm) voor de OCR-terugval
+# bij ingescande PDF's zonder tekstlaag. Alles draait lokaal, geen netwerk.
 RUN apt-get update && apt-get install -y --no-install-recommends \
       libreoffice-writer libreoffice-calc \
       fonts-liberation fonts-dejavu ca-certificates openssl \
+      tesseract-ocr tesseract-ocr-nld poppler-utils \
     && rm -rf /var/lib/apt/lists/*
 
 # Draai als niet-root gebruiker.

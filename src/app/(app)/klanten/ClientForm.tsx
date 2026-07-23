@@ -8,6 +8,7 @@ type Values = Partial<{
   displayName: string
   companyName: string
   contactName: string
+  firstName: string
   email: string
   phone: string
   kvk: string
@@ -68,6 +69,7 @@ export function ClientForm({
         <Field name="displayName" label="Weergavenaam" defaultValue={values?.displayName} required />
         <Field name="companyName" label="Bedrijfsnaam" defaultValue={values?.companyName} />
         <Field name="contactName" label="Contactpersoon" defaultValue={values?.contactName} />
+        <Field name="firstName" label="Voornaam (voor de aanhef)" defaultValue={values?.firstName} />
         <Field name="email" label="E-mailadres" type="email" defaultValue={values?.email} />
         <Field name="phone" label="Telefoon" defaultValue={values?.phone} />
         <Field name="kvk" label="KvK-nummer" defaultValue={values?.kvk} />

@@ -1,3 +1,4 @@
+import Link from 'next/link'
 import { prisma } from '@/lib/db'
 import { requireAccountant } from '@/lib/auth/session'
 import { generateTotpSecret, encryptTotpSecret, decryptTotpSecret, totpQrDataUrl } from '@/lib/auth/totp'
@@ -60,6 +61,19 @@ export default async function InstellingenPage() {
         </p>
         <SignatureSetup current={acc.signaturePng} />
       </section>
+
+      {acc.role === 'BEHEERDER' && (
+        <section className="card p-6">
+          <h2 className="mb-1 text-lg font-semibold">Berichtsjablonen</h2>
+          <p className="mb-4 text-sm text-slate-500">
+            Pas de automatische titel en begeleidende tekst per documenttype aan (jaarrekening, akkoordverklaringen,
+            opdrachtbevestiging en meer).
+          </p>
+          <Link href="/instellingen/sjablonen" className="btn-secondary text-sm">
+            Sjablonen beheren
+          </Link>
+        </section>
+      )}
     </div>
   )
 }

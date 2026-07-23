@@ -51,6 +51,17 @@ enum SigningMode {
   SEQUENTIAL // één voor één, op volgorde
 }
 
+/// Herkend documenttype (voor automatische titel/berichtsuggestie).
+enum DocumentKind {
+  JAARREKENING // jaarrekening (wordt in de jaarrekening zelf getekend)
+  NOTULEN_AVA // notulen algemene vergadering van aandeelhouders
+  BEVESTIGING_JAARREKENING // bevestiging bij de jaarrekening
+  AKKOORD_IB // akkoordverklaring aangifte inkomstenbelasting
+  AKKOORD_VPB // akkoordverklaring aangifte vennootschapsbelasting
+  OPDRACHTBEVESTIGING // opdrachtbevestiging (nieuwe klanten)
+  OVERIG // niet herkend
+}
+
 /// Medewerker/accountant van het kantoor.
 model Accountant {
   id           String   @id @default(cuid())
@@ -93,6 +104,7 @@ model Client {
   displayName String
   companyName String?
   contactName String?
+  firstName   String? // voornaam, voor een nette aanhef in berichten
   email       String?
   phone       String?
   kvk         String?
@@ -155,6 +167,10 @@ model Document {
   workingKey     String? // opslagsleutel: PDF met reeds gezette handtekeningen
   sealedKey      String? // opslagsleutel: definitieve, verzegelde PDF
   documentSha256 String?
+  // Automatische herkenning bij upload (suggestie; door de gebruiker aanpasbaar).
+  detectedKind   DocumentKind?
+  detectedYear   Int?
+  ocrUsed        Boolean       @default(false)
   createdAt      DateTime @default(now())
 
   fields SignatureField[]
@@ -236,4 +252,15 @@ model AuditEvent {
   createdAt    DateTime    @default(now())
 
   @@index([dossierId])
+}
+
+/// Aanpasbaar tekstsjabloon per documenttype (titel + begeleidend bericht).
+/// Ontbreekt er een rij voor een type, dan geldt de standaardtekst uit de code.
+model MessageTemplate {
+  id            String       @id @default(cuid())
+  kind          DocumentKind @unique
+  titleTemplate String
+  bodyTemplate  String
+  updatedAt     DateTime     @updatedAt
+  updatedById   String?
 }

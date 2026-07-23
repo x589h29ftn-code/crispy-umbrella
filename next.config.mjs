@@ -17,7 +17,11 @@ const nextConfig = {
       '@pdf-lib/fontkit',
       'nodemailer',
       '@node-rs/argon2',
-      '@e965/xlsx'
+      '@e965/xlsx',
+      // Documentherkenning: buiten de webpack-bundel houden zodat de
+      // dynamische imports (worker/eval) op de server correct laden.
+      'pdfjs-dist',
+      'mammoth'
     ]
   }
 }
