@@ -72,6 +72,69 @@ export const DEFAULT_TEMPLATES: Record<DocumentKind, TemplateText> = {
   OVERIG: { title: '', body: '' }
 }
 
+// Zinsfragmenten per type, om meerdere documenten in één bericht op te sommen
+// (jaarrekening, notulen en bevestiging worden vrijwel altijd samen verstuurd).
+export const KIND_FRAGMENTS: Record<DocumentKind, string> = {
+  JAARREKENING: 'de jaarrekening over {boekjaar}',
+  NOTULEN_AVA: 'de notulen van de aandeelhoudersvergadering',
+  BEVESTIGING_JAARREKENING: 'de bevestiging bij de jaarrekening',
+  AKKOORD_IB: 'de akkoordverklaring voor de aangifte inkomstenbelasting over {boekjaar}',
+  AKKOORD_VPB: 'de akkoordverklaring voor de aangifte vennootschapsbelasting over {boekjaar}',
+  OPDRACHTBEVESTIGING: 'de opdrachtbevestiging',
+  OVERIG: ''
+}
+
+// Vaste volgorde waarin documenten in het bericht worden opgesomd.
+const KIND_ORDER: DocumentKind[] = [
+  'JAARREKENING',
+  'NOTULEN_AVA',
+  'BEVESTIGING_JAARREKENING',
+  'AKKOORD_IB',
+  'AKKOORD_VPB',
+  'OPDRACHTBEVESTIGING'
+]
+
+/// Somt fragmenten netjes op in het Nederlands: "a, b en c".
+function joinDutch(items: string[]): string {
+  if (items.length <= 1) return items[0] ?? ''
+  return `${items.slice(0, -1).join(', ')} en ${items[items.length - 1]}`
+}
+
+/**
+ * Bouwt één gecombineerde titel en begeleidend bericht voor een verzoek met
+ * meerdere herkende documenten. Boekjaar en afzender worden ingevuld; de
+ * cliënt-invulvelden blijven staan (worden bij verzenden ingevuld).
+ * Geeft null terug bij minder dan twee herkende documenten.
+ */
+export function buildCombinedSuggestion(
+  items: { kind: DocumentKind; year: number | null }[],
+  afzenderNaam: string
+): { title: string; body: string } | null {
+  const recognized = items.filter((i) => i.kind !== 'OVERIG')
+  if (recognized.length < 2) return null
+
+  const kinds = new Set(recognized.map((i) => i.kind))
+  const year = recognized.map((i) => i.year).find((y) => y != null) ?? null
+  const voornaamAfzender = firstNameFrom(afzenderNaam) ?? afzenderNaam.split(/\s+/)[0] ?? ''
+
+  const fragments = KIND_ORDER.filter((k) => kinds.has(k)).map((k) => {
+    let f = KIND_FRAGMENTS[k]
+    f = year != null ? f.replace('{boekjaar}', String(year)) : f.replace(/ over \{boekjaar\}/, '').replace('{boekjaar}', '')
+    return f
+  })
+
+  let title: string
+  if (kinds.has('JAARREKENING')) title = `Jaarrekening${year != null ? ` ${year}` : ''}`
+  else if (kinds.has('AKKOORD_IB') || kinds.has('AKKOORD_VPB')) title = `Akkoordverklaringen${year != null ? ` ${year}` : ''}`
+  else title = `Ondertekenstukken${year != null ? ` ${year}` : ''}`
+
+  const body =
+    `Beste {voornaam_klant}, in de bijlage ontvang je ${joinDutch(fragments)}. ` +
+    `Zou je deze willen ondertekenen? Met vriendelijke groet, ${voornaamAfzender || '{voornaam_afzender}'}`
+
+  return { title, body }
+}
+
 /// Vult invulvelden in. Onbekende waarden worden weggelaten (of vervangen door
 /// een terugval). Niet-herkende accolades blijven ongemoeid staan.
 export function renderTemplate(
