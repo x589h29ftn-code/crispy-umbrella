@@ -116,6 +116,11 @@ export function SignFlow({
   return (
     <div className="mx-auto max-w-3xl space-y-6">
       <div className="card p-6">
+        <div className="mb-3 flex items-center gap-2">
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img src="/logo-icon.jpg" alt="Otto Visser & Partners" className="h-8 w-8 rounded object-contain" />
+          <span className="text-sm font-medium text-slate-600">Otto Visser &amp; Partners</span>
+        </div>
         <div className="mb-1 flex items-center gap-2 text-sm text-brand-700">
           <ShieldCheck className="h-4 w-4" /> Beveiligd ondertekenen
         </div>

@@ -74,10 +74,10 @@ export default async function KlantenPage({ searchParams }: { searchParams: { q?
                     )}
                   </td>
                   <td className="px-4 py-3">
-                    <div>{c.contactName ?? '—'}</div>
-                    <div className="text-xs text-slate-400">{c.email ?? '—'}</div>
+                    <div>{c.contactName ?? '-'}</div>
+                    <div className="text-xs text-slate-400">{c.email ?? '-'}</div>
                   </td>
-                  <td className="px-4 py-3 text-slate-600">{c.city ?? '—'}</td>
+                  <td className="px-4 py-3 text-slate-600">{c.city ?? '-'}</td>
                   <td className="px-4 py-3 text-right">
                     <DeleteClientButton id={c.id} name={c.displayName} />
                   </td>

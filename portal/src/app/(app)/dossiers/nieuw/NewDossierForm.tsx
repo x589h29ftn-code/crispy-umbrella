@@ -37,7 +37,7 @@ export function NewDossierForm() {
         <label className="label" htmlFor="title">
           Titel van het verzoek *
         </label>
-        <input id="title" name="title" required className="input" placeholder="Bijv. Aangifte 2025 — akkoordverklaringen" />
+        <input id="title" name="title" required className="input" placeholder="Bijv. Aangifte 2025 - akkoordverklaringen" />
       </div>
 
       <div className="space-y-3">

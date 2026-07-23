@@ -5,19 +5,19 @@ const config: Config = {
   theme: {
     extend: {
       colors: {
-        // Strakke, professionele huisstijl (blauw-grijs met accent).
+        // Huisstijl Otto Visser & Partners, afgeleid van het logo (blauwtinten).
         brand: {
-          50: '#eef4ff',
-          100: '#d9e6ff',
-          200: '#bcd3ff',
-          300: '#8db6ff',
-          400: '#578dff',
-          500: '#2f66f0',
-          600: '#1d4ed8',
-          700: '#1a3fb0',
-          800: '#1b378c',
-          900: '#1b3271',
-          950: '#141f45'
+          50: '#eff6fc',
+          100: '#d8e9f6',
+          200: '#b6d5ee',
+          300: '#86b9e1',
+          400: '#5b9bd5', // lichtblauw uit het logo
+          500: '#3182c4',
+          600: '#2b6cad', // logoblauw (Visser & Partners)
+          700: '#25588c',
+          800: '#214b74',
+          900: '#1f4061',
+          950: '#152a41'
         }
       },
       fontFamily: {

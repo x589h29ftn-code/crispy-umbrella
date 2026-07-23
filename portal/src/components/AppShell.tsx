@@ -9,7 +9,6 @@ import {
   Users,
   Settings,
   LogOut,
-  ShieldCheck,
   ShieldAlert,
   PenLine,
   UserCog,
@@ -91,9 +90,8 @@ export function AppShell({
 
   const Brand = () => (
     <div className="flex items-center gap-2 px-5 py-5">
-      <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-brand-600 text-white">
-        <ShieldCheck className="h-5 w-5" />
-      </div>
+      {/* eslint-disable-next-line @next/next/no-img-element */}
+      <img src="/logo-icon.jpg" alt="Otto Visser & Partners" className="h-9 w-9 rounded-lg object-contain" />
       <div>
         <div className="text-sm font-semibold leading-tight">Ondertekenportaal</div>
         <div className="text-xs text-slate-500">Otto Visser &amp; Partners</div>

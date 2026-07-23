@@ -2,7 +2,7 @@ import type { Metadata } from 'next'
 import './globals.css'
 
 export const metadata: Metadata = {
-  title: 'Ondertekenportaal — Otto Visser & Partners',
+  title: 'Ondertekenportaal - Otto Visser & Partners',
   description: 'Veilig documenten aanbieden en online laten ondertekenen.',
   robots: { index: false, follow: false }
 }
