@@ -54,6 +54,7 @@ export async function importClientsAction(_prev: ImportState, formData: FormData
       skipped += 1
       continue
     }
+    const vm = pick(row, ['Verificatie', 'Verificatiemethode', 'Ondertekenen via'])
     const data = {
       displayName,
       companyName: company,
@@ -64,7 +65,8 @@ export async function importClientsAction(_prev: ImportState, formData: FormData
       address: pick(row, ['Adres', 'Straat']),
       postalCode: pick(row, ['Postcode']),
       city: pick(row, ['Plaats', 'Woonplaats', 'Stad']),
-      country: pick(row, ['Land']) ?? 'Nederland'
+      country: pick(row, ['Land']) ?? 'Nederland',
+      verificationMethod: (vm && /sms/i.test(vm) ? 'SMS' : 'EMAIL') as 'SMS' | 'EMAIL'
     }
 
     // Dedupe op e-mailadres wanneer aanwezig.
