@@ -122,3 +122,6 @@ beurt is. (Automatische herinneringen staan op de roadmap.)
 Volgordelijk tekenen, automatische herinneringen/vervaltermijn, TOTP-backupcodes,
 gebruikersbeheer, S3-opslag, AVG-bewaartermijn, en optioneel een cryptografische
 PAdES/PKCS#7-verzegeling.
+
+Ook gepland: automatische documentherkenning (lokale OCR) met voorgevulde titel en
+begeleidende tekst per documenttype. Zie [`docs/roadmap/ocr-documentherkenning.md`](docs/roadmap/ocr-documentherkenning.md).
