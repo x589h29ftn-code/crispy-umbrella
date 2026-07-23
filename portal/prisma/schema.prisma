@@ -72,6 +72,9 @@ model Accountant {
   totpSecret   String? // versleuteld opgeslagen (AES-256-GCM)
   totpEnabled  Boolean  @default(false)
   totpBackupCodes String[] @default([]) // SHA-256-hashes van eenmalige herstelcodes
+  // Wachtwoord-vergeten: eenmalige, kortlevende herstellink (alleen hash bewaard).
+  passwordResetTokenHash String?
+  passwordResetExpiresAt DateTime?
   signaturePng String? // opgeslagen handtekening (data-URL of opslagsleutel)
   mustChangePassword Boolean @default(false) // nieuw aangemaakt account
   active       Boolean  @default(true)
