@@ -4,6 +4,7 @@ import { revalidatePath } from 'next/cache'
 import { prisma } from '@/lib/db'
 import { requireAccountant } from '@/lib/auth/session'
 import { verifyTotp, decryptTotpSecret } from '@/lib/auth/totp'
+import { hashPassword, verifyPassword } from '@/lib/auth/password'
 import { totpVerifySchema } from '@/lib/validation/schemas'
 
 export interface FormState {
@@ -30,6 +31,23 @@ export async function disable2faAction(): Promise<void> {
     data: { totpEnabled: false, totpSecret: null }
   })
   revalidatePath('/instellingen')
+}
+
+export async function changePasswordAction(_prev: FormState, formData: FormData): Promise<FormState> {
+  const acc = await requireAccountant()
+  const current = String(formData.get('current') ?? '')
+  const next = String(formData.get('next') ?? '')
+  if (next.length < 10) return { error: 'Kies een nieuw wachtwoord van minimaal 10 tekens.' }
+  const fresh = await prisma.accountant.findUnique({ where: { id: acc.id } })
+  if (!fresh || !(await verifyPassword(fresh.passwordHash, current))) {
+    return { error: 'Huidig wachtwoord is onjuist.' }
+  }
+  await prisma.accountant.update({
+    where: { id: acc.id },
+    data: { passwordHash: await hashPassword(next), mustChangePassword: false }
+  })
+  revalidatePath('/instellingen')
+  return { ok: true }
 }
 
 export async function saveSignatureAction(dataUrl: string): Promise<{ ok: boolean; error?: string }> {

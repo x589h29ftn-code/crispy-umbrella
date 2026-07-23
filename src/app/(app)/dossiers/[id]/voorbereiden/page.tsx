@@ -16,11 +16,7 @@ export default async function VoorbereidenPage({ params }: { params: { id: strin
         <h1 className="text-2xl font-semibold">Velden plaatsen</h1>
         <p className="text-slate-500">{dossier.title}</p>
       </header>
-      <FieldPlacer
-        dossierId={dossier.id}
-        pdfUrl={`/api/dossiers/${dossier.id}/pdf`}
-        selfSignatureAvailable={!!acc.signaturePng}
-      />
+      <FieldPlacer dossierId={dossier.id} pdfUrl={`/api/dossiers/${dossier.id}/pdf`} />
     </div>
   )
 }

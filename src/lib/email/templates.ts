@@ -73,6 +73,25 @@ export function reminderEmail(opts: {
   return { subject, html, text }
 }
 
+export function officeTurnEmail(opts: { recipientName: string; documentTitle: string; url: string }): {
+  subject: string
+  html: string
+  text: string
+} {
+  const subject = `Uw handtekening gevraagd: ${opts.documentTitle}`
+  const html = layout(
+    'Er wacht een document op uw handtekening',
+    `<p>Beste ${escapeHtml(opts.recipientName)},</p>
+     <p>Het document <strong>${escapeHtml(
+       opts.documentTitle
+     )}</strong> staat klaar om door u te worden ondertekend in het portaal.</p>
+     <p style="margin:24px 0">${button(opts.url, 'Openen in het portaal')}</p>
+     <p style="color:#64748b;font-size:13px">U bent nu aan de beurt in de ondertekenvolgorde.</p>`
+  )
+  const text = `Beste ${opts.recipientName},\n\nHet document "${opts.documentTitle}" staat klaar om door u te worden ondertekend in het portaal:\n${opts.url}\n\nU bent nu aan de beurt in de ondertekenvolgorde.`
+  return { subject, html, text }
+}
+
 export function otpEmail(opts: { recipientName: string; code: string; ttlMinutes: number }): {
   subject: string
   html: string

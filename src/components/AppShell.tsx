@@ -2,16 +2,9 @@
 
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
-import { LayoutDashboard, FileSignature, Users, Settings, LogOut, ShieldCheck, ShieldAlert } from 'lucide-react'
+import { LayoutDashboard, FileSignature, Users, Settings, LogOut, ShieldCheck, ShieldAlert, PenLine, UserCog } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { logoutAction } from '@/app/(app)/actions'
-
-const NAV = [
-  { href: '/dashboard', label: 'Dashboard', icon: LayoutDashboard },
-  { href: '/dossiers/nieuw', label: 'Nieuw dossier', icon: FileSignature },
-  { href: '/klanten', label: 'Cliënten', icon: Users },
-  { href: '/instellingen', label: 'Instellingen', icon: Settings }
-]
 
 export function AppShell({
   name,
@@ -25,6 +18,14 @@ export function AppShell({
   children: React.ReactNode
 }) {
   const pathname = usePathname()
+  const nav = [
+    { href: '/dashboard', label: 'Dashboard', icon: LayoutDashboard },
+    { href: '/dossiers/nieuw', label: 'Nieuw dossier', icon: FileSignature },
+    { href: '/te-ondertekenen', label: 'Te ondertekenen', icon: PenLine },
+    { href: '/klanten', label: 'Cliënten', icon: Users },
+    ...(role === 'BEHEERDER' ? [{ href: '/instellingen/gebruikers', label: 'Gebruikers', icon: UserCog }] : []),
+    { href: '/instellingen', label: 'Instellingen', icon: Settings }
+  ]
   return (
     <div className="flex min-h-screen">
       <aside className="hidden w-64 shrink-0 flex-col border-r border-slate-200 bg-white md:flex">
@@ -38,8 +39,10 @@ export function AppShell({
           </div>
         </div>
         <nav className="flex-1 space-y-1 px-3 py-2">
-          {NAV.map((item) => {
-            const active = pathname === item.href || (item.href !== '/dashboard' && pathname.startsWith(item.href))
+          {nav.map((item) => {
+            const active =
+              pathname === item.href ||
+              (item.href !== '/dashboard' && item.href !== '/instellingen' && pathname.startsWith(item.href + '/'))
             return (
               <Link
                 key={item.href}

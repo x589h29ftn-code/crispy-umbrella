@@ -32,21 +32,22 @@ export const placementSchema = z.object({
   height: z.number().positive()
 })
 
-export const recipientInputSchema = z.object({
+export const signerInputSchema = z.object({
+  // 'office' = kantoorgebruiker (tekent in het portaal), 'client' = externe cliënt.
+  kind: z.enum(['office', 'client']),
   name: naam,
   email,
   phone: z.string().trim().max(60).optional().nullable(),
   clientId: z.string().cuid().optional().nullable(),
-  role: z.enum(['ZELF', 'EXTERN']).default('EXTERN'),
+  accountantId: z.string().cuid().optional().nullable(),
   verificationMethod: z.enum(['EMAIL', 'SMS']).default('EMAIL'),
-  // Elke ontvanger heeft één of meer tekenvakken.
-  fields: z.array(placementSchema).min(1, 'Plaats minstens één tekenveld voor deze ontvanger')
+  fields: z.array(placementSchema).min(1, 'Plaats minstens één tekenveld voor deze ondertekenaar')
 })
 
 export const saveFieldsSchema = z.object({
-  // Eigen handtekeningvakken van de accountant (worden direct gestempeld).
-  selfFields: z.array(placementSchema).default([]),
-  recipients: z.array(recipientInputSchema).default([])
+  signingMode: z.enum(['PARALLEL', 'SEQUENTIAL']).default('PARALLEL'),
+  // Ondertekenaars in volgorde (index = volgorde).
+  signers: z.array(signerInputSchema).min(1, 'Voeg minstens één ondertekenaar toe')
 })
 export type SaveFieldsInput = z.infer<typeof saveFieldsSchema>
 
