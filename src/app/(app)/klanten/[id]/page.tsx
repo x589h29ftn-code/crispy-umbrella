@@ -84,6 +84,7 @@ export default async function KlantBewerkenPage({ params }: { params: { id: stri
             city: client.city ?? '',
             country: client.country ?? 'Nederland',
             notes: client.notes ?? '',
+            archiveFolder: client.archiveFolder ?? '',
             verificationMethod: client.verificationMethod
           }}
         />

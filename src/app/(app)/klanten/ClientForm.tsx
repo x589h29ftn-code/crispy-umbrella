@@ -18,6 +18,7 @@ type Values = Partial<{
   city: string
   country: string
   notes: string
+  archiveFolder: string
   verificationMethod: string
 }>
 
@@ -95,6 +96,16 @@ export function ClientForm({
         </select>
         <p className="mt-1 text-xs text-slate-500">
           Bepaalt hoe deze cliënt de verificatiecode ontvangt om te tekenen.
+        </p>
+      </div>
+      <div>
+        <label className="label" htmlFor="archiveFolder">
+          Archiefmap (optioneel)
+        </label>
+        <input id="archiveFolder" name="archiveFolder" defaultValue={values?.archiveFolder ?? ''} className="input" placeholder="Bijv. Klanten/10012 Bakkerij De Korenbloem" />
+        <p className="mt-1 text-xs text-slate-500">
+          Basismap voor deze klant in het archief. Leeg laten = &ldquo;klantnummer - naam&rdquo;. Getekende stukken
+          komen in een submap per boekjaar.
         </p>
       </div>
       <div>

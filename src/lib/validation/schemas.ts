@@ -17,6 +17,7 @@ export const clientSchema = z.object({
   city: z.string().trim().max(120).optional().or(z.literal('')),
   country: z.string().trim().max(80).optional().or(z.literal('')),
   notes: z.string().trim().max(2000).optional().or(z.literal('')),
+  archiveFolder: z.string().trim().max(300).optional().or(z.literal('')),
   verificationMethod: z.enum(['EMAIL', 'SMS']).default('EMAIL')
 })
 export type ClientInput = z.infer<typeof clientSchema>

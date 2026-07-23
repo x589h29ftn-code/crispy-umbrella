@@ -13,9 +13,7 @@ export interface ArchiveFile {
   content: Buffer
 }
 export interface ArchiveInput {
-  clientName: string
-  clientNumber?: string | null
-  dossierTitle: string
+  folder: string // relatief pad in het archief, mag mappen bevatten (met '/')
   files: ArchiveFile[]
 }
 export interface ArchiveResult {
@@ -24,41 +22,50 @@ export interface ArchiveResult {
   target?: string
 }
 
-/** Maakt een naam veilig voor gebruik als map- of bestandsnaam. */
-function safeName(s: string): string {
-  return (s || 'onbekend').replace(/[\\/:*?"<>|]/g, '_').replace(/\s+/g, ' ').trim().slice(0, 120) || 'onbekend'
+/** Maakt één naamdeel veilig voor gebruik als map- of bestandsnaam. */
+function safeSegment(s: string): string {
+  return (s || '').replace(/[\\/:*?"<>|]/g, '_').replace(/\s+/g, ' ').trim().slice(0, 120)
+}
+/** Splitst een pad op '/', maakt elk deel veilig en laat lege delen weg. */
+function safeSegments(path: string): string[] {
+  return path.split('/').map(safeSegment).filter(Boolean)
 }
 
-/** Mapnaam van de klant: "<klantnummer> - <naam>" als er een nummer is. */
-function clientFolder(input: ArchiveInput): string {
-  const num = (input.clientNumber ?? '').trim()
-  return safeName(num ? `${num} - ${input.clientName}` : input.clientName)
+/**
+ * Bouwt de standaardbestemming: <klantmap>/<boekjaar>. De klantmap is de
+ * ingestelde archiefmap van de klant, of anders "<klantnummer> - <naam>".
+ */
+export function buildDefaultFolder(opts: {
+  clientBaseFolder?: string | null
+  clientName: string
+  clientNumber?: string | null
+  year?: number | null
+}): string {
+  const base = (opts.clientBaseFolder ?? '').trim() || (opts.clientNumber?.trim() ? `${opts.clientNumber.trim()} - ${opts.clientName}` : opts.clientName)
+  return opts.year ? `${base}/${opts.year}` : base
 }
 
 export function archiveEnabled(): boolean {
   return env.ARCHIVE_DRIVER !== 'none'
 }
 
-/** Schrijft de bestanden naar `<ARCHIVE_DIR>/<klant>/<dossier>/`. */
+/** Schrijft de bestanden naar `<ARCHIVE_DIR>/<folder>/`. */
 async function archiveToFolder(input: ArchiveInput): Promise<ArchiveResult> {
-  const dir = join(env.ARCHIVE_DIR, clientFolder(input), safeName(input.dossierTitle))
+  const dir = join(env.ARCHIVE_DIR, ...safeSegments(input.folder))
   await mkdir(dir, { recursive: true })
-  for (const f of input.files) {
-    await writeFile(join(dir, safeName(f.filename)), f.content)
-  }
+  for (const f of input.files) await writeFile(join(dir, safeSegment(f.filename)), f.content)
   return { archived: input.files.length, driver: 'folder', target: dir }
 }
 
 /** Haalt een app-token op via de client-credentials-stroom (Microsoft Graph). */
 async function graphToken(): Promise<string> {
-  const tenant = env.SHAREPOINT_TENANT_ID
   const body = new URLSearchParams({
     client_id: env.SHAREPOINT_CLIENT_ID ?? '',
     client_secret: env.SHAREPOINT_CLIENT_SECRET ?? '',
     scope: 'https://graph.microsoft.com/.default',
     grant_type: 'client_credentials'
   })
-  const res = await fetch(`https://login.microsoftonline.com/${tenant}/oauth2/v2.0/token`, {
+  const res = await fetch(`https://login.microsoftonline.com/${env.SHAREPOINT_TENANT_ID}/oauth2/v2.0/token`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
     body
@@ -76,11 +83,11 @@ async function archiveToSharePoint(input: ArchiveInput): Promise<ArchiveResult> 
     throw new Error('SharePoint-configuratie onvolledig')
   }
   const token = await graphToken()
-  const base = env.SHAREPOINT_BASE_FOLDER ? `${env.SHAREPOINT_BASE_FOLDER.replace(/^\/+|\/+$/g, '')}/` : ''
-  const folder = `${base}${clientFolder(input)}/${safeName(input.dossierTitle)}`
+  const baseSegs = env.SHAREPOINT_BASE_FOLDER ? safeSegments(env.SHAREPOINT_BASE_FOLDER) : []
+  const folderSegs = [...baseSegs, ...safeSegments(input.folder)]
   // Een PUT naar een pad maakt ontbrekende tussenmappen automatisch aan.
   for (const f of input.files) {
-    const path = `${folder}/${safeName(f.filename)}`.split('/').map(encodeURIComponent).join('/')
+    const path = [...folderSegs, safeSegment(f.filename)].map(encodeURIComponent).join('/')
     const res = await fetch(`https://graph.microsoft.com/v1.0/drives/${drive}/root:/${path}:/content`, {
       method: 'PUT',
       headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/pdf' },
@@ -88,7 +95,7 @@ async function archiveToSharePoint(input: ArchiveInput): Promise<ArchiveResult> 
     })
     if (!res.ok) throw new Error(`upload ${res.status}`)
   }
-  return { archived: input.files.length, driver: 'sharepoint', target: folder }
+  return { archived: input.files.length, driver: 'sharepoint', target: folderSegs.join('/') }
 }
 
 /** Archiveert de getekende stukken volgens de geconfigureerde driver. */
