@@ -46,7 +46,19 @@ const schema = z.object({
   TWILIO_FROM: z.string().optional(),
 
   SIGN_LINK_TTL_DAYS: z.coerce.number().int().positive().default(10),
-  OTP_TTL_MINUTES: z.coerce.number().int().positive().default(10)
+  OTP_TTL_MINUTES: z.coerce.number().int().positive().default(10),
+
+  // Archief: getekende stukken automatisch wegschrijven naar de klantmap.
+  // none = uit; folder = naar een (gekoppelde) map; sharepoint = Microsoft 365.
+  ARCHIVE_DRIVER: z.enum(['none', 'folder', 'sharepoint']).default('none'),
+  ARCHIVE_DIR: z.string().default('/data/archive'),
+  // SharePoint via Microsoft Graph (client-credentials).
+  SHAREPOINT_TENANT_ID: z.string().optional(),
+  SHAREPOINT_CLIENT_ID: z.string().optional(),
+  SHAREPOINT_CLIENT_SECRET: z.string().optional(),
+  SHAREPOINT_DRIVE_ID: z.string().optional(),
+  // Basismap in de bibliotheek, bijv. "Getekende stukken". Leeg = de root.
+  SHAREPOINT_BASE_FOLDER: z.string().optional()
 })
 
 // In dev tolereren we ontbrekende geheimen met veilige placeholders zodat je

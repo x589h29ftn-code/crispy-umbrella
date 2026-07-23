@@ -15,6 +15,7 @@ export type AuditType =
   | 'GEDOWNLOAD'
   | 'INGETROKKEN'
   | 'INGELOGD'
+  | 'GEARCHIVEERD'
 
 export interface AuditInput {
   type: AuditType

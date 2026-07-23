@@ -1,0 +1,98 @@
+import 'server-only'
+import { mkdir, writeFile } from 'node:fs/promises'
+import { join } from 'node:path'
+import { env } from '@/env'
+
+// Archiveert de definitieve, getekende PDF's automatisch in de klantmap.
+// Drivers: 'none' (uit), 'folder' (naar een gekoppelde map/volume) en
+// 'sharepoint' (Microsoft 365 via Graph). Best-effort: een mislukking mag het
+// afronden van een dossier nooit blokkeren (de aanroeper vangt fouten af).
+
+export interface ArchiveFile {
+  filename: string
+  content: Buffer
+}
+export interface ArchiveInput {
+  clientName: string
+  dossierTitle: string
+  files: ArchiveFile[]
+}
+export interface ArchiveResult {
+  archived: number
+  driver: string
+  target?: string
+}
+
+/** Maakt een naam veilig voor gebruik als map- of bestandsnaam. */
+function safeName(s: string): string {
+  return (s || 'onbekend').replace(/[\\/:*?"<>|]/g, '_').replace(/\s+/g, ' ').trim().slice(0, 120) || 'onbekend'
+}
+
+export function archiveEnabled(): boolean {
+  return env.ARCHIVE_DRIVER !== 'none'
+}
+
+/** Schrijft de bestanden naar `<ARCHIVE_DIR>/<klant>/<dossier>/`. */
+async function archiveToFolder(input: ArchiveInput): Promise<ArchiveResult> {
+  const dir = join(env.ARCHIVE_DIR, safeName(input.clientName), safeName(input.dossierTitle))
+  await mkdir(dir, { recursive: true })
+  for (const f of input.files) {
+    await writeFile(join(dir, safeName(f.filename)), f.content)
+  }
+  return { archived: input.files.length, driver: 'folder', target: dir }
+}
+
+/** Haalt een app-token op via de client-credentials-stroom (Microsoft Graph). */
+async function graphToken(): Promise<string> {
+  const tenant = env.SHAREPOINT_TENANT_ID
+  const body = new URLSearchParams({
+    client_id: env.SHAREPOINT_CLIENT_ID ?? '',
+    client_secret: env.SHAREPOINT_CLIENT_SECRET ?? '',
+    scope: 'https://graph.microsoft.com/.default',
+    grant_type: 'client_credentials'
+  })
+  const res = await fetch(`https://login.microsoftonline.com/${tenant}/oauth2/v2.0/token`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+    body
+  })
+  if (!res.ok) throw new Error(`token ${res.status}`)
+  const data = (await res.json()) as { access_token?: string }
+  if (!data.access_token) throw new Error('geen access_token')
+  return data.access_token
+}
+
+/** Uploadt de bestanden naar een SharePoint-documentbibliotheek (Graph). */
+async function archiveToSharePoint(input: ArchiveInput): Promise<ArchiveResult> {
+  const drive = env.SHAREPOINT_DRIVE_ID
+  if (!drive || !env.SHAREPOINT_TENANT_ID || !env.SHAREPOINT_CLIENT_ID || !env.SHAREPOINT_CLIENT_SECRET) {
+    throw new Error('SharePoint-configuratie onvolledig')
+  }
+  const token = await graphToken()
+  const base = env.SHAREPOINT_BASE_FOLDER ? `${env.SHAREPOINT_BASE_FOLDER.replace(/^\/+|\/+$/g, '')}/` : ''
+  const folder = `${base}${safeName(input.clientName)}/${safeName(input.dossierTitle)}`
+  // Een PUT naar een pad maakt ontbrekende tussenmappen automatisch aan.
+  for (const f of input.files) {
+    const path = `${folder}/${safeName(f.filename)}`.split('/').map(encodeURIComponent).join('/')
+    const res = await fetch(`https://graph.microsoft.com/v1.0/drives/${drive}/root:/${path}:/content`, {
+      method: 'PUT',
+      headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/pdf' },
+      body: f.content as unknown as BodyInit
+    })
+    if (!res.ok) throw new Error(`upload ${res.status}`)
+  }
+  return { archived: input.files.length, driver: 'sharepoint', target: folder }
+}
+
+/** Archiveert de getekende stukken volgens de geconfigureerde driver. */
+export async function archiveDossier(input: ArchiveInput): Promise<ArchiveResult> {
+  if (input.files.length === 0) return { archived: 0, driver: env.ARCHIVE_DRIVER }
+  switch (env.ARCHIVE_DRIVER) {
+    case 'folder':
+      return archiveToFolder(input)
+    case 'sharepoint':
+      return archiveToSharePoint(input)
+    default:
+      return { archived: 0, driver: 'none' }
+  }
+}
