@@ -113,18 +113,14 @@ model Client {
   @@index([email])
 }
 
-/// Eén ondertekenverzoek/-workflow.
+/// Eén ondertekenverzoek/-workflow. Kan meerdere documenten bevatten die de
+/// ontvanger(s) in één keer ondertekenen (bijv. akkoordverklaring IB én VPB).
 model Dossier {
   id             String        @id @default(cuid())
   title          String
-  fileName       String
   status         DossierStatus @default(CONCEPT)
   ownerId        String
   owner          Accountant    @relation(fields: [ownerId], references: [id])
-  originalKey    String? // opslagsleutel: bron-PDF (na eventuele Word-conversie)
-  workingKey     String? // opslagsleutel: PDF met reeds gezette handtekeningen
-  sealedKey      String? // opslagsleutel: definitieve, verzegelde PDF
-  documentSha256 String?
   message        String? // optioneel begeleidend bericht in de e-mail
   // Ontvanger na afronding ook een kopie mailen (standaard aan).
   sendCopyToRecipient Boolean @default(true)
@@ -139,11 +135,31 @@ model Dossier {
   createdAt      DateTime      @default(now())
   updatedAt      DateTime      @updatedAt
 
+  documents   Document[]
   recipients  Recipient[]
   fields      SignatureField[]
   auditEvents AuditEvent[]
 
   @@index([ownerId, status])
+}
+
+/// Eén te ondertekenen document binnen een dossier, met eigen titel.
+model Document {
+  id             String   @id @default(cuid())
+  dossierId      String
+  dossier        Dossier  @relation(fields: [dossierId], references: [id], onDelete: Cascade)
+  title          String
+  fileName       String
+  order          Int      @default(0)
+  originalKey    String? // opslagsleutel: bron-PDF (na eventuele Word-conversie)
+  workingKey     String? // opslagsleutel: PDF met reeds gezette handtekeningen
+  sealedKey      String? // opslagsleutel: definitieve, verzegelde PDF
+  documentSha256 String?
+  createdAt      DateTime @default(now())
+
+  fields SignatureField[]
+
+  @@index([dossierId])
 }
 
 /// Een partij die moet tekenen (accountant zelf of externe ontvanger).
@@ -183,11 +199,13 @@ model Recipient {
   @@index([dossierId])
 }
 
-/// Een geplaatst tekenvak (PDF-punten, pivot linksonder).
+/// Een geplaatst tekenvak (PDF-punten, pivot linksonder) op één document.
 model SignatureField {
   id          String     @id @default(cuid())
   dossierId   String
   dossier     Dossier    @relation(fields: [dossierId], references: [id], onDelete: Cascade)
+  documentId  String
+  document    Document   @relation(fields: [documentId], references: [id], onDelete: Cascade)
   recipientId String? // null = eigen veld van de accountant
   recipient   Recipient? @relation(fields: [recipientId], references: [id], onDelete: Cascade)
   kind        FieldKind  @default(SIGNATURE)
@@ -199,6 +217,7 @@ model SignatureField {
   filled      Boolean    @default(false)
 
   @@index([dossierId])
+  @@index([documentId])
 }
 
 /// Append-only auditspoor.

@@ -36,43 +36,57 @@ export async function createDossierAction(_prev: FormState, formData: FormData):
   })
   if (!parsed.success) return { error: 'Geef het document een titel.' }
 
-  const file = formData.get('file')
-  if (!(file instanceof File) || file.size === 0) return { error: 'Kies een PDF- of Word-bestand.' }
-  if (file.size > 18_000_000) return { error: 'Bestand te groot (max 18 MB).' }
-
-  const ext = extname(file.name).slice(1).toLowerCase()
-  const bytes = new Uint8Array(await file.arrayBuffer())
-
-  let pdfBytes: Uint8Array
-  if (ext === 'pdf') {
-    if (!(bytes[0] === 0x25 && bytes[1] === 0x50 && bytes[2] === 0x44 && bytes[3] === 0x46)) {
-      return { error: 'Dit lijkt geen geldig PDF-bestand.' }
-    }
-    pdfBytes = bytes
-  } else if (OFFICE_EXTENSIONS.includes(ext)) {
-    const res = await convertOfficeToPdf(file.name, bytes)
-    if (!res.ok || !res.data) return { error: res.error ?? 'Conversie mislukt.' }
-    pdfBytes = res.data
-  } else {
-    return { error: 'Alleen PDF- of Word-bestanden worden ondersteund.' }
-  }
+  // Eén of meer documenten, elk met een eigen titel (files en titels lopen
+  // per index gelijk op).
+  const files = formData.getAll('file').filter((f): f is File => f instanceof File && f.size > 0)
+  const titles = formData.getAll('docTitle').map((t) => String(t ?? '').trim())
+  if (files.length === 0) return { error: 'Kies minstens één PDF- of Word-bestand.' }
+  if (files.length > 20) return { error: 'Maximaal 20 documenten per verzoek.' }
 
   const store = storage()
-  const originalKey = await store.put(pdfBytes, 'pdf')
-  const workingKey = await store.put(pdfBytes, 'pdf')
+  const prepared: { title: string; fileName: string; originalKey: string; workingKey: string }[] = []
+  for (const [i, file] of files.entries()) {
+    if (file.size > 18_000_000) return { error: `"${file.name}" is te groot (max 18 MB).` }
+    const ext = extname(file.name).slice(1).toLowerCase()
+    const bytes = new Uint8Array(await file.arrayBuffer())
+    let pdfBytes: Uint8Array
+    if (ext === 'pdf') {
+      if (!(bytes[0] === 0x25 && bytes[1] === 0x50 && bytes[2] === 0x44 && bytes[3] === 0x46)) {
+        return { error: `"${file.name}" lijkt geen geldig PDF-bestand.` }
+      }
+      pdfBytes = bytes
+    } else if (OFFICE_EXTENSIONS.includes(ext)) {
+      const res = await convertOfficeToPdf(file.name, bytes)
+      if (!res.ok || !res.data) return { error: res.error ?? `Conversie van "${file.name}" mislukt.` }
+      pdfBytes = res.data
+    } else {
+      return { error: `"${file.name}": alleen PDF- of Word-bestanden worden ondersteund.` }
+    }
+    prepared.push({
+      title: titles[i] || file.name.replace(/\.[^.]+$/, ''),
+      fileName: file.name.replace(/\.[^.]+$/, '.pdf'),
+      originalKey: await store.put(pdfBytes, 'pdf'),
+      workingKey: await store.put(pdfBytes, 'pdf')
+    })
+  }
 
   const dossier = await prisma.dossier.create({
     data: {
       title: parsed.data.title,
-      fileName: file.name.replace(/\.[^.]+$/, '.pdf'),
       ownerId: acc.id,
       status: 'CONCEPT',
-      originalKey,
-      workingKey,
       message: parsed.data.message?.trim() || null,
       linkTtlDays: parsed.data.linkTtlDays,
-      // Checkbox 'ontvanger ook een kopie mailen' (standaard aangevinkt).
-      sendCopyToRecipient: formData.get('sendCopyToRecipient') === 'on'
+      sendCopyToRecipient: formData.get('sendCopyToRecipient') === 'on',
+      documents: {
+        create: prepared.map((p, i) => ({
+          title: p.title,
+          fileName: p.fileName,
+          order: i,
+          originalKey: p.originalKey,
+          workingKey: p.workingKey
+        }))
+      }
     }
   })
   await writeAudit({ type: 'AANGEMAAKT', dossierId: dossier.id, accountantId: acc.id, ...requestContext() })
@@ -91,6 +105,14 @@ export async function saveFieldsAction(
   if (!parsed.success) return { ok: false, error: parsed.error.issues[0]?.message ?? 'Ongeldige velden.' }
   const { signingMode, signers } = parsed.data
   if (signers.length === 0) return { ok: false, error: 'Voeg minstens één ondertekenaar toe.' }
+
+  // Alle velden moeten naar een document van dít dossier verwijzen.
+  const docIds = new Set((await prisma.document.findMany({ where: { dossierId }, select: { id: true } })).map((d) => d.id))
+  for (const s of signers) {
+    for (const f of s.fields) {
+      if (!docIds.has(f.documentId)) return { ok: false, error: 'Ongeldig document bij een tekenveld.' }
+    }
+  }
 
   // Vervang bestaande ondertekenaars/velden (dossier is nog concept).
   await prisma.$transaction([
@@ -131,7 +153,6 @@ export async function sendDossierAction(dossierId: string): Promise<{ ok: boolea
   const { dossier } = owned
   if (dossier.status !== 'CONCEPT') return { ok: false, error: 'Dit dossier is al verstuurd.' }
   if (dossier.recipients.length === 0) return { ok: false, error: 'Geen ondertekenaars ingesteld.' }
-  if (!dossier.workingKey) return { ok: false, error: 'Documentbestand ontbreekt.' }
 
   const ttlMs = dossier.linkTtlDays * 24 * 60 * 60 * 1000
   await prisma.dossier.update({

@@ -113,24 +113,34 @@ export async function applySignature(
 ): Promise<void> {
   const recipient = await prisma.recipient.findUnique({
     where: { id: recipientId },
-    include: { dossier: true, fields: true }
+    include: { dossier: true, fields: { include: { document: true } } }
   })
   if (!recipient) throw new Error('Ontvanger niet gevonden')
   const dossier = recipient.dossier
-  if (!dossier.workingKey) throw new Error('Documentbestand ontbreekt')
 
   const store = storage()
-  let bytes = await store.get(dossier.workingKey)
+  // Groepeer de velden per document en stempel de handtekening in elk document.
+  const byDoc = new Map<string, typeof recipient.fields>()
   for (const f of recipient.fields) {
-    bytes = Buffer.from(
-      await stampSignatureImage(bytes, { page: f.page, x: f.x, y: f.y, width: f.width, height: f.height }, signatureDataUrl)
-    )
+    const arr = byDoc.get(f.documentId) ?? []
+    arr.push(f)
+    byDoc.set(f.documentId, arr)
   }
-  const newKey = await store.put(bytes, 'pdf')
-  await store.remove(dossier.workingKey)
+  for (const [documentId, fields] of byDoc) {
+    const doc = fields[0].document
+    if (!doc.workingKey) continue
+    let bytes = await store.get(doc.workingKey)
+    for (const f of fields) {
+      bytes = Buffer.from(
+        await stampSignatureImage(bytes, { page: f.page, x: f.x, y: f.y, width: f.width, height: f.height }, signatureDataUrl)
+      )
+    }
+    const newKey = await store.put(bytes, 'pdf')
+    await store.remove(doc.workingKey)
+    await prisma.document.update({ where: { id: documentId }, data: { workingKey: newKey } })
+  }
 
   await prisma.$transaction([
-    prisma.dossier.update({ where: { id: dossier.id }, data: { workingKey: newKey } }),
     prisma.signatureField.updateMany({ where: { recipientId }, data: { filled: true } }),
     prisma.recipient.update({
       where: { id: recipientId },
@@ -212,36 +222,45 @@ export async function advanceWorkflow(dossierId: string): Promise<void> {
   }
 }
 
-/** Verzegelt de definitieve PDF en verstuurt de kopieën. */
+/** Verzegelt elk document en verstuurt de kopieën. */
 async function finalize(dossierId: string): Promise<void> {
   const dossier = await prisma.dossier.findUnique({
     where: { id: dossierId },
-    include: { recipients: { orderBy: { order: 'asc' } }, owner: true }
+    include: { recipients: { orderBy: { order: 'asc' } }, owner: true, documents: { orderBy: { order: 'asc' } } }
   })
-  if (!dossier || !dossier.workingKey) return
+  if (!dossier) return
   if (dossier.status === 'ONDERTEKEND') return
 
   const store = storage()
-  const working = await store.get(dossier.workingKey)
-  const { sealedBytes, sha256 } = await sealDocument({
-    pdfBytes: working,
-    dossierTitle: dossier.title,
-    dossierId: dossier.id,
-    signers: dossier.recipients.map((r) => ({
-      name: r.name,
-      email: r.email,
-      signedAt: r.signedAt,
-      otpVerifiedAt: r.otpVerifiedAt
-    }))
-  })
-  const sealedKey = await store.put(sealedBytes, 'pdf')
+  const signers = dossier.recipients.map((r) => ({
+    name: r.name,
+    email: r.email,
+    signedAt: r.signedAt,
+    otpVerifiedAt: r.otpVerifiedAt
+  }))
+  const attachments: { filename: string; content: Buffer }[] = []
+  const hashes: Record<string, string> = {}
+  for (const doc of dossier.documents) {
+    if (!doc.workingKey) continue
+    const working = await store.get(doc.workingKey)
+    const { sealedBytes, sha256 } = await sealDocument({
+      pdfBytes: working,
+      dossierTitle: doc.title,
+      dossierId: dossier.id,
+      signers
+    })
+    const sealedKey = await store.put(sealedBytes, 'pdf')
+    await prisma.document.update({ where: { id: doc.id }, data: { sealedKey, documentSha256: sha256 } })
+    attachments.push({ filename: doc.fileName, content: Buffer.from(sealedBytes) })
+    hashes[doc.title] = sha256
+  }
+
   await prisma.dossier.update({
     where: { id: dossierId },
-    data: { status: 'ONDERTEKEND', sealedKey, documentSha256: sha256, completedAt: new Date() }
+    data: { status: 'ONDERTEKEND', completedAt: new Date() }
   })
-  await writeAudit({ type: 'VERZEGELD', dossierId, metadata: { sha256 } })
+  await writeAudit({ type: 'VERZEGELD', dossierId, metadata: { hashes } })
 
-  const attachment = { filename: dossier.fileName, content: Buffer.from(sealedBytes) }
   const targets = [
     ...(dossier.sendCopyToRecipient ? dossier.recipients.map((r) => ({ name: r.name, email: r.email })) : []),
     { name: dossier.owner.name, email: dossier.owner.email }
@@ -252,8 +271,6 @@ async function finalize(dossierId: string): Promise<void> {
     if (seen.has(t.email.toLowerCase())) continue
     seen.add(t.email.toLowerCase())
     const mail = completedEmail({ recipientName: t.name, documentTitle: dossier.title })
-    await sendMail({ to: t.email, ...mail, attachments: [attachment] }).catch((e) =>
-      console.error('[finalize mail]', e)
-    )
+    await sendMail({ to: t.email, ...mail, attachments }).catch((e) => console.error('[finalize mail]', e))
   }
 }

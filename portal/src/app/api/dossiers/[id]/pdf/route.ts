@@ -21,8 +21,14 @@ export async function GET(req: NextRequest, { params }: { params: { id: string }
     return NextResponse.json({ error: 'Geen toegang' }, { status: 403 })
   }
 
+  const documentId = req.nextUrl.searchParams.get('documentId')
+  const doc = documentId
+    ? await prisma.document.findFirst({ where: { id: documentId, dossierId: dossier.id } })
+    : await prisma.document.findFirst({ where: { dossierId: dossier.id }, orderBy: { order: 'asc' } })
+  if (!doc) return NextResponse.json({ error: 'Geen document' }, { status: 404 })
+
   const which = req.nextUrl.searchParams.get('which')
-  const key = which === 'sealed' && dossier.sealedKey ? dossier.sealedKey : dossier.workingKey
+  const key = which === 'sealed' && doc.sealedKey ? doc.sealedKey : doc.workingKey
   if (!key) return NextResponse.json({ error: 'Geen document' }, { status: 404 })
 
   const bytes = await storage().get(key)

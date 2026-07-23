@@ -26,6 +26,7 @@ export const dossierCreateSchema = z.object({
 })
 
 export const placementSchema = z.object({
+  documentId: z.string().cuid(),
   page: z.number().int().min(0),
   x: z.number(),
   y: z.number(),

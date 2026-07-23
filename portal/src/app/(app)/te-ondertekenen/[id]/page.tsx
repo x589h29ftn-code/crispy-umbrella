@@ -21,18 +21,25 @@ export default async function OfficeSignPage({ params }: { params: { id: string 
   const active = currentSigners(dossier, dossier.recipients)
   if (!active.some((a) => a.id === recipient.id)) redirect('/te-ondertekenen')
 
+  const docIds = Array.from(new Set(recipient.fields.map((f) => f.documentId)))
+  const documents = await prisma.document.findMany({
+    where: { id: { in: docIds } },
+    orderBy: { order: 'asc' },
+    select: { id: true, title: true }
+  })
+
   return (
     <div className="mx-auto max-w-3xl space-y-6">
       <header>
         <h1 className="text-2xl font-semibold">{dossier.title}</h1>
-        <p className="text-slate-500">Controleer het document en plaats uw handtekening.</p>
+        <p className="text-slate-500">Controleer de documenten en plaats uw handtekening.</p>
       </header>
       <OfficeSign
         recipientId={recipient.id}
         dossierId={dossier.id}
-        title={dossier.title}
+        documents={documents}
         savedSignature={me.signaturePng}
-        fields={recipient.fields.map((f) => ({ page: f.page, x: f.x, y: f.y, width: f.width, height: f.height }))}
+        fields={recipient.fields.map((f) => ({ documentId: f.documentId, page: f.page, x: f.x, y: f.y, width: f.width, height: f.height }))}
       />
     </div>
   )

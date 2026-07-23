@@ -4,8 +4,8 @@ import { getCurrentAccountant, requestContext } from '@/lib/auth/session'
 import { storage } from '@/lib/storage'
 import { writeAudit } from '@/lib/audit'
 
-// Download van het (verzegelde) document als bijlage.
-export async function GET(_req: NextRequest, { params }: { params: { id: string } }) {
+// Download van één (verzegeld) document uit een dossier als bijlage.
+export async function GET(req: NextRequest, { params }: { params: { id: string } }) {
   const acc = await getCurrentAccountant()
   if (!acc) return NextResponse.json({ error: 'Niet ingelogd' }, { status: 401 })
 
@@ -14,13 +14,18 @@ export async function GET(_req: NextRequest, { params }: { params: { id: string 
   if (dossier.ownerId !== acc.id && acc.role !== 'BEHEERDER') {
     return NextResponse.json({ error: 'Geen toegang' }, { status: 403 })
   }
-  const key = dossier.sealedKey ?? dossier.workingKey
+  const documentId = req.nextUrl.searchParams.get('documentId')
+  const doc = documentId
+    ? await prisma.document.findFirst({ where: { id: documentId, dossierId: dossier.id } })
+    : await prisma.document.findFirst({ where: { dossierId: dossier.id }, orderBy: { order: 'asc' } })
+  if (!doc) return NextResponse.json({ error: 'Geen document' }, { status: 404 })
+  const key = doc.sealedKey ?? doc.workingKey
   if (!key) return NextResponse.json({ error: 'Geen document' }, { status: 404 })
 
   const bytes = await storage().get(key)
   await writeAudit({ type: 'GEDOWNLOAD', dossierId: dossier.id, accountantId: acc.id, ...requestContext() })
 
-  const safeName = dossier.fileName.replace(/[^\w.\- ]/g, '_')
+  const safeName = doc.fileName.replace(/[^\w.\- ]/g, '_')
   return new NextResponse(new Uint8Array(bytes), {
     headers: {
       'Content-Type': 'application/pdf',
