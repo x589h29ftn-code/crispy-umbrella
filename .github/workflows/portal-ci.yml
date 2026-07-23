@@ -1,16 +1,20 @@
 name: Portal CI
 
 # Typecheck + build van het ondertekenportaal. Los van de desktop-pipeline.
+#
+# Alleen handmatig starten (workflow_dispatch). In dit account is (nog) geen
+# GitHub Actions-runner beschikbaar, waardoor een automatische run bij elke push
+# blijft wachten in de wachtrij en uiteindelijk als "mislukt" een faal-mail
+# stuurt. Zodra er een runner beschikbaar is (GitHub-hosted of self-hosted),
+# kunnen de push-/pull_request-triggers hieronder weer aangezet worden:
+#
+#   push:
+#     branches: ['**']
+#     paths: ['portal/**', '.github/workflows/portal-ci.yml']
+#   pull_request:
+#     paths: ['portal/**', '.github/workflows/portal-ci.yml']
 on:
-  push:
-    branches: ['**']
-    paths:
-      - 'portal/**'
-      - '.github/workflows/portal-ci.yml'
-  pull_request:
-    paths:
-      - 'portal/**'
-      - '.github/workflows/portal-ci.yml'
+  workflow_dispatch:
 
 jobs:
   build:
