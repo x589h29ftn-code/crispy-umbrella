@@ -1,0 +1,247 @@
+<!doctype html>
+<html lang="nl">
+<head>
+<meta charset="utf-8" />
+<title>Gebruikershandleiding Ondertekenportaal</title>
+<style>
+  @page { size: A4; margin: 20mm 18mm 20mm 18mm; }
+  * { box-sizing: border-box; }
+  html { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+  body { font-family: -apple-system, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; color: #1f2b3a; font-size: 11.5pt; line-height: 1.55; margin: 0; }
+  h1, h2, h3 { color: #23364a; font-weight: 700; line-height: 1.2; }
+  h2 { font-size: 17pt; margin: 0 0 4px; }
+  h3 { font-size: 12.5pt; margin: 18px 0 6px; color: #2b6cad; }
+  p { margin: 0 0 9px; }
+  a { color: #2b6cad; }
+  ol, ul { margin: 0 0 10px; padding-left: 20px; }
+  li { margin-bottom: 5px; }
+  strong { color: #16232f; }
+  code { background: #eef3f8; padding: 1px 5px; border-radius: 4px; font-size: 10pt; }
+  .chapter { page-break-before: always; }
+  .lead { color: #5b6b7c; margin-bottom: 14px; }
+  .kicker { color: #2b6cad; font-weight: 700; font-size: 10pt; letter-spacing: .08em; text-transform: uppercase; margin-bottom: 2px; }
+  figure { margin: 12px 0 4px; page-break-inside: avoid; }
+  figure img { max-width: 100%; max-height: 215mm; display: block; margin: 0 auto; border: 1px solid #d9e2ec; border-radius: 8px; box-shadow: 0 6px 18px rgba(30,50,80,.10); }
+  figcaption { text-align: center; color: #7b8a99; font-size: 9.5pt; margin-top: 6px; }
+  .tip { background: #eef6fc; border-left: 4px solid #3182c4; padding: 10px 14px; border-radius: 6px; margin: 12px 0; font-size: 10.5pt; }
+  .warn { background: #fef8e7; border-left: 4px solid #e0a800; padding: 10px 14px; border-radius: 6px; margin: 12px 0; font-size: 10.5pt; }
+  .cover { height: 250mm; display: flex; flex-direction: column; justify-content: center; align-items: center; text-align: center; }
+  .cover img { width: 78mm; margin-bottom: 26px; }
+  .cover .title { font-size: 30pt; font-weight: 800; color: #23364a; margin: 0; }
+  .cover .sub { font-size: 14pt; color: #5b6b7c; margin-top: 10px; }
+  .cover .meta { margin-top: 40px; color: #7b8a99; font-size: 11pt; }
+  .bar { width: 60mm; height: 5px; background: #2b6cad; border-radius: 3px; margin: 22px auto; }
+  .toc { page-break-before: always; }
+  .toc h2 { border-bottom: 2px solid #e3eaf1; padding-bottom: 8px; }
+  .toc ol { list-style: none; padding: 0; margin-top: 14px; counter-reset: toc; }
+  .toc li { display: flex; align-items: baseline; margin-bottom: 10px; font-size: 12pt; counter-increment: toc; }
+  .toc li::before { content: counter(toc) "."; color: #2b6cad; font-weight: 700; width: 24px; }
+</style>
+</head>
+<body>
+
+<section class="cover">
+  <img src="../../public/logo-full.jpg" alt="Otto Visser & Partners" />
+  <div class="bar"></div>
+  <p class="title">Gebruikershandleiding</p>
+  <p class="sub">Ondertekenportaal &middot; documenten veilig online laten ondertekenen</p>
+  <p class="meta">Otto Visser &amp; Partners accountants &middot; versie 2.0</p>
+</section>
+
+<section class="toc">
+  <h2>Inhoud</h2>
+  <ol>
+    <li><span>Inleiding</span></li>
+    <li><span>Inloggen, tweefactor en wachtwoord</span></li>
+    <li><span>Het dashboard</span></li>
+    <li><span>Cli&euml;nten beheren en importeren</span></li>
+    <li><span>Een verzoek aanmaken met automatische herkenning</span></li>
+    <li><span>Velden plaatsen en de ondertekenvolgorde</span></li>
+    <li><span>Versturen en opvolgen</span></li>
+    <li><span>Zelf ondertekenen vanuit kantoor</span></li>
+    <li><span>Zo tekent de cli&euml;nt</span></li>
+    <li><span>Berichtsjablonen</span></li>
+    <li><span>Gebruikers beheren</span></li>
+    <li><span>Beveiliging in het kort</span></li>
+  </ol>
+</section>
+
+<!-- 1 -->
+<section class="chapter">
+  <p class="kicker">Hoofdstuk 1</p>
+  <h2>Inleiding</h2>
+  <p class="lead">Met het Ondertekenportaal laat u cli&euml;nten documenten volledig online ondertekenen: veilig, snel en zonder dat de cli&euml;nt iets hoeft te installeren of een account nodig heeft.</p>
+  <p>In het kort werkt het zo:</p>
+  <ol>
+    <li>U importeert een of meer documenten (PDF of Word).</li>
+    <li>Het portaal herkent automatisch wat voor stuk het is en vult titel en begeleidende tekst voor.</li>
+    <li>U geeft aan waar getekend moet worden en in welke volgorde.</li>
+    <li>De cli&euml;nt krijgt een uitnodiging per e-mail, bevestigt zijn identiteit met een verificatiecode en tekent in de browser.</li>
+    <li>Iedere partij ontvangt de definitieve, verzegelde PDF met een auditspoor.</li>
+  </ol>
+  <div class="tip"><strong>Twee soorten ondertekenaars.</strong> Een <em>kantoorondertekenaar</em> (u of een collega) tekent ingelogd in het portaal. Een <em>cli&euml;nt</em> tekent via een beveiligde link in de e-mail.</div>
+</section>
+
+<!-- 2 -->
+<section class="chapter">
+  <p class="kicker">Hoofdstuk 2</p>
+  <h2>Inloggen, tweefactor en wachtwoord</h2>
+  <p class="lead">U logt in met uw e-mailadres, wachtwoord en een code uit uw authenticator-app. Zo komt niemand met alleen een wachtwoord binnen.</p>
+  <figure><img src="schermafbeeldingen/01-login.png" alt="Inlogscherm" /><figcaption>Het inlogscherm, met onderaan de link "Wachtwoord vergeten?"</figcaption></figure>
+  <h3>Herstelcodes (belangrijk)</h3>
+  <p>Bij het instellen van tweefactor krijgt u eenmalig een set <strong>herstelcodes</strong>. Bewaar die op een veilige plek: raakt u uw telefoon kwijt, dan logt u met zo'n code toch in. In Instellingen ziet u hoeveel codes u nog heeft en kunt u een nieuwe set genereren.</p>
+  <h3>Wachtwoord vergeten</h3>
+  <p>Klik op <strong>Wachtwoord vergeten?</strong> op het inlogscherm en vul uw e-mailadres in. U ontvangt een e-mail met een eenmalige link waarmee u een nieuw wachtwoord instelt. De link is 60 minuten geldig.</p>
+  <figure><img src="schermafbeeldingen/15-wachtwoord-vergeten.png" alt="Wachtwoord vergeten" /><figcaption>Een nieuw wachtwoord aanvragen.</figcaption></figure>
+  <div class="tip">Uw beheerder kan uw wachtwoord of tweefactor ook resetten als u er helemaal niet meer in komt (zie hoofdstuk 11).</div>
+</section>
+
+<!-- 3 -->
+<section class="chapter">
+  <p class="kicker">Hoofdstuk 3</p>
+  <h2>Het dashboard</h2>
+  <p class="lead">Het dashboard toont al uw dossiers en in &eacute;&eacute;n oogopslag de status en de vervaldatum.</p>
+  <ul>
+    <li>Filter met de knoppen op status (concept, verzonden, gedeeltelijk, ondertekend).</li>
+    <li><strong>Zoek</strong> op titel of op de naam van een ondertekenaar.</li>
+    <li>De kolom <strong>Verloopt</strong> laat zien hoeveel tijd een openstaand verzoek nog heeft; rood betekent verlopen, oranje betekent binnen drie dagen.</li>
+    <li>Klik op een titel om het dossier te openen.</li>
+  </ul>
+  <figure><img src="schermafbeeldingen/02-dashboard.png" alt="Dashboard" /><figcaption>Het dashboard met filters, zoekbalk en de kolom "Verloopt".</figcaption></figure>
+  <h3>Aandacht nodig</h3>
+  <p>De knop <strong>Aandacht nodig</strong> toont in &eacute;&eacute;n klik alle openstaande verzoeken die (bijna) verlopen, zodat u weet waar een herinnering op zijn plaats is.</p>
+  <figure><img src="schermafbeeldingen/03-dashboard-aandacht.png" alt="Aandacht nodig" /><figcaption>Alleen de verzoeken die aandacht vragen.</figcaption></figure>
+</section>
+
+<!-- 4 -->
+<section class="chapter">
+  <p class="kicker">Hoofdstuk 4</p>
+  <h2>Cli&euml;nten beheren en importeren</h2>
+  <p class="lead">In de cli&euml;ntendatabase bewaart u naam, e-mail en telefoon. Bij het versturen vult het portaal die gegevens automatisch in.</p>
+  <figure><img src="schermafbeeldingen/06-klanten.png" alt="Cliëntenoverzicht" /><figcaption>Overzicht van cli&euml;nten.</figcaption></figure>
+  <p>Per cli&euml;nt legt u een <strong>voornaam</strong> vast (voor een nette aanhef in de e-mails) en kiest u of verifi&euml;ren via e-mail of sms gaat.</p>
+  <figure><img src="schermafbeeldingen/07-klant-bewerken.png" alt="Cliënt bewerken" /><figcaption>Een cli&euml;nt bewerken, met het veld Voornaam en de verificatiemethode.</figcaption></figure>
+  <h3>In bulk importeren</h3>
+  <p>Heeft u veel cli&euml;nten? Ga naar <strong>Cli&euml;nten &rarr; Importeren</strong>, download het voorbeeldbestand, vul uw gegevens in dezelfde kolommen in en upload het (<code>.csv</code> of <code>.xlsx</code>). Bestaande cli&euml;nten (zelfde e-mailadres) worden bijgewerkt in plaats van dubbel toegevoegd.</p>
+  <figure><img src="schermafbeeldingen/08-importeren.png" alt="Cliënten importeren" /><figcaption>Importeren met een voorbeeldbestand.</figcaption></figure>
+</section>
+
+<!-- 5 -->
+<section class="chapter">
+  <p class="kicker">Hoofdstuk 5</p>
+  <h2>Een verzoek aanmaken met automatische herkenning</h2>
+  <p class="lead">Zodra u een document kiest, herkent het portaal het type en het boekjaar en vult het de titel en het begeleidend bericht automatisch voor.</p>
+  <ol>
+    <li>Ga naar <strong>Nieuw dossier</strong> en kies een bestand (PDF of Word; Word wordt automatisch omgezet).</li>
+    <li>Het portaal herkent bijvoorbeeld een jaarrekening en vult titel en tekst in. U kunt alles nog aanpassen.</li>
+  </ol>
+  <figure><img src="schermafbeeldingen/04-nieuw-herkenning.png" alt="Automatische herkenning" /><figcaption>Herkend als "Jaarrekening (2024)"; titel en bericht zijn vast ingevuld.</figcaption></figure>
+  <h3>Meerdere documenten samen</h3>
+  <p>Jaarrekening, notulen en bevestiging gaan vrijwel altijd samen. Voeg ze met <strong>Nog een document toevoegen</strong> toe aan hetzelfde verzoek: het portaal voegt titel en bericht dan automatisch samen tot &eacute;&eacute;n verzoek dat alle stukken benoemt. Elk document houdt zijn eigen titel; de cli&euml;nt tekent ze na &eacute;&eacute;n keer inloggen achter elkaar.</p>
+  <figure><img src="schermafbeeldingen/05-nieuw-samengevoegd.png" alt="Samengevoegd verzoek" /><figcaption>Drie documenten in &eacute;&eacute;n verzoek; titel en bericht zijn samengevoegd.</figcaption></figure>
+  <div class="tip">Invulvelden zoals <code>{voornaam_klant}</code> worden bij het verzenden per ontvanger ingevuld. De standaardteksten past u aan onder Berichtsjablonen (hoofdstuk 10).</div>
+</section>
+
+<!-- 6 -->
+<section class="chapter">
+  <p class="kicker">Hoofdstuk 6</p>
+  <h2>Velden plaatsen en de ondertekenvolgorde</h2>
+  <p class="lead">Hier bepaalt u wie tekent, in welke volgorde, en waar op de pagina de handtekening komt.</p>
+  <ol>
+    <li>Kies de <strong>ondertekenvolgorde</strong>: <em>Eén voor één</em> (de volgende komt pas aan de beurt als de vorige heeft getekend) of <em>Iedereen tegelijk</em>.</li>
+    <li>Voeg <strong>ondertekenaars</strong> toe: een <em>Kantoor</em>-collega of een <em>Cli&euml;nt</em> uit uw database.</li>
+    <li>Bij meerdere documenten wisselt u bovenaan tussen de tabbladen per document.</li>
+    <li>Klik op de pagina om een <strong>tekenvak</strong> te plaatsen voor de geselecteerde ondertekenaar.</li>
+    <li>Klik op <strong>Opslaan en naar overzicht</strong>.</li>
+  </ol>
+  <figure><img src="schermafbeeldingen/09-voorbereiden.png" alt="Velden plaatsen" /><figcaption>De volgorde instellen, ondertekenaars kiezen en tekenvakken plaatsen.</figcaption></figure>
+</section>
+
+<!-- 7 -->
+<section class="chapter">
+  <p class="kicker">Hoofdstuk 7</p>
+  <h2>Versturen en opvolgen</h2>
+  <p class="lead">Vanuit het dossieroverzicht verstuurt u het verzoek en volgt u de voortgang.</p>
+  <ul>
+    <li>De <strong>tijdlijn</strong> toont elke stap: aangemaakt, verzonden, geopend en ondertekend, met datum en tijd.</li>
+    <li>Bij <strong>Ondertekenaars</strong> ziet u wie al getekend heeft en bij wie het nu "aan de beurt" is.</li>
+    <li>Met <strong>Herinnering sturen</strong> geeft u de cli&euml;nt een nette reminder; met <strong>Intrekken</strong> stopt u het verzoek.</li>
+    <li>Onder <strong>Documenten</strong> downloadt u op elk moment de actuele versie.</li>
+  </ul>
+  <figure><img src="schermafbeeldingen/10-dossier-detail.png" alt="Dossierdetail" /><figcaption>Dossierdetail: acties, documenten, ondertekenaars en de tijdlijn.</figcaption></figure>
+</section>
+
+<!-- 8 -->
+<section class="chapter">
+  <p class="kicker">Hoofdstuk 8</p>
+  <h2>Zelf ondertekenen vanuit kantoor</h2>
+  <p class="lead">Moet u (of een collega) zelf eerst tekenen? Dat doet u ingelogd, zonder e-mail, via <strong>Te ondertekenen</strong>.</p>
+  <ol>
+    <li>Open <strong>Te ondertekenen</strong> in het menu; hier staan de dossiers die op uw handtekening wachten.</li>
+    <li>Open het dossier, controleer het en plaats uw handtekening (die u in Instellingen heeft ingesteld).</li>
+    <li>Bij een "één voor één"-volgorde krijgt de volgende ondertekenaar daarna automatisch bericht.</li>
+  </ol>
+  <figure><img src="schermafbeeldingen/14-te-ondertekenen.png" alt="Te ondertekenen" /><figcaption>De wachtrij met dossiers die op uw handtekening wachten.</figcaption></figure>
+</section>
+
+<!-- 9 -->
+<section class="chapter">
+  <p class="kicker">Hoofdstuk 9</p>
+  <h2>Zo tekent de cli&euml;nt</h2>
+  <p class="lead">De cli&euml;nt heeft geen account nodig. Via de link in de e-mail komt hij op een beveiligde pagina.</p>
+  <ol>
+    <li>De cli&euml;nt opent de link en vraagt een <strong>verificatiecode</strong> aan (per e-mail of sms).</li>
+    <li>Na het invoeren van de code worden de documenten zichtbaar.</li>
+    <li>De cli&euml;nt tekent per document in het vak <em>Teken hier</em>, zet onderaan zijn handtekening en klikt op <strong>Ondertekenen</strong>.</li>
+  </ol>
+  <figure><img src="schermafbeeldingen/16-teken-intro.png" alt="Beveiligd ondertekenen" /><figcaption>Stap 1: de cli&euml;nt bevestigt zijn identiteit met een verificatiecode.</figcaption></figure>
+  <figure><img src="schermafbeeldingen/17-teken-ondertekenen.png" alt="Ondertekenen in de browser" /><figcaption>Stap 2: alle documenten met tekenvakken en het handtekeningveld onderaan.</figcaption></figure>
+</section>
+
+<!-- 10 -->
+<section class="chapter">
+  <p class="kicker">Hoofdstuk 10</p>
+  <h2>Berichtsjablonen</h2>
+  <p class="lead">De standaardtitel en -tekst per documenttype bepalen wat er automatisch wordt voorgevuld. Beheerders passen ze aan onder <strong>Instellingen &rarr; Berichtsjablonen</strong>.</p>
+  <ul>
+    <li>Per type (jaarrekening, notulen, bevestiging, akkoordverklaring IB en VPB, opdrachtbevestiging) is er een titel- en berichtsjabloon.</li>
+    <li>Gebruik invulvelden zoals <code>{voornaam_klant}</code>, <code>{boekjaar}</code> en <code>{voornaam_afzender}</code>.</li>
+    <li>Met &eacute;&eacute;n klik zet u een sjabloon terug naar de standaardtekst.</li>
+  </ul>
+  <figure><img src="schermafbeeldingen/12-sjablonen.png" alt="Berichtsjablonen" /><figcaption>De teksten per documenttype aanpassen.</figcaption></figure>
+</section>
+
+<!-- 11 -->
+<section class="chapter">
+  <p class="kicker">Hoofdstuk 11</p>
+  <h2>Gebruikers beheren</h2>
+  <p class="lead">Beheerders maken accounts aan voor collega's en kunnen hen helpen bij problemen.</p>
+  <ul>
+    <li>Ga naar <strong>Gebruikers</strong> (alleen zichtbaar voor beheerders).</li>
+    <li>Maak een nieuwe medewerker aan met naam en e-mailadres; die stelt bij de eerste login zelf een wachtwoord en tweefactor in.</li>
+    <li>Kies de rol: <strong>Medewerker</strong> of <strong>Beheerder</strong>.</li>
+    <li>Per gebruiker kunt u het <strong>wachtwoord resetten</strong> en de <strong>tweefactor resetten</strong> (bij verlies van de telefoon). De gebruiker stelt het dan opnieuw in bij het inloggen.</li>
+  </ul>
+  <figure><img src="schermafbeeldingen/13-gebruikers.png" alt="Gebruikersbeheer" /><figcaption>Collega's toevoegen, rollen toekennen en wachtwoord/2FA resetten.</figcaption></figure>
+</section>
+
+<!-- 12 -->
+<section class="chapter">
+  <p class="kicker">Hoofdstuk 12</p>
+  <h2>Beveiliging in het kort</h2>
+  <p class="lead">Het portaal is ontworpen met beveiliging in meerdere lagen, zodat gevoelige cli&euml;ntgegevens beschermd blijven.</p>
+  <figure><img src="schermafbeeldingen/11-instellingen.png" alt="Instellingen" /><figcaption>In Instellingen beheert u uw wachtwoord, tweefactor (met herstelcodes) en uw handtekening.</figcaption></figure>
+  <ul>
+    <li><strong>Versleuteld opgeslagen.</strong> Documenten worden met AES-256 versleuteld voordat ze worden opgeslagen.</li>
+    <li><strong>Beveiligde verbinding.</strong> Al het verkeer loopt over HTTPS.</li>
+    <li><strong>Tweefactor voor kantoor.</strong> Inloggen vereist wachtwoord &eacute;n een code uit uw app; met herstelcodes raakt u nooit buitengesloten.</li>
+    <li><strong>Identiteitscheck voor cli&euml;nten.</strong> De cli&euml;nt tekent pas na een eenmalige verificatiecode per e-mail of sms.</li>
+    <li><strong>Eenmalige links.</strong> Ondertekenlinks en herstellinks zijn persoonlijk, kortlevend en na gebruik ongeldig.</li>
+    <li><strong>Auditspoor en verzegeling.</strong> Elke stap wordt vastgelegd (met tijd en IP-adres); de definitieve PDF krijgt een controlegetal (SHA-256), zodat latere wijziging aantoonbaar is.</li>
+  </ul>
+  <div class="warn"><strong>Tips.</strong> Deel uw wachtwoord, tweefactor en herstelcodes nooit. Controleer altijd het e-mailadres van de cli&euml;nt voor u verstuurt; dat adres bepaalt wie kan tekenen. Trek een verzoek in zodra het niet meer nodig is.</div>
+  <p style="margin-top:26px; color:#7b8a99; font-size:10pt; text-align:center;">Otto Visser &amp; Partners accountants &middot; Gebruikershandleiding Ondertekenportaal &middot; versie 2.0</p>
+</section>
+
+</body>
+</html>
