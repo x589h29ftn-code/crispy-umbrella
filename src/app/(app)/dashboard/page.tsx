@@ -155,7 +155,8 @@ export default async function DashboardPage({
             <p>{q || attention ? 'Geen dossiers gevonden.' : 'Nog geen dossiers. Maak een nieuw ondertekendossier aan.'}</p>
           </div>
         ) : (
-          <table className="w-full text-sm">
+          <>
+          <table className="hidden w-full text-sm md:table">
             <thead className="border-b border-slate-200 bg-slate-50 text-left text-xs uppercase tracking-wide text-slate-500">
               <tr>
                 <th className="px-4 py-3">Titel</th>
@@ -193,6 +194,33 @@ export default async function DashboardPage({
               })}
             </tbody>
           </table>
+
+          {/* Kaartweergave op kleine schermen (telefoon) */}
+          <ul className="divide-y divide-slate-100 md:hidden">
+            {dossiers.map((d) => {
+              const signed = d.recipients.filter((r) => r.status === 'SIGNED').length
+              const exp = expiryInfo(d.status, d.expiresAt, now)
+              return (
+                <li key={d.id} className="p-4">
+                  <div className="flex items-start justify-between gap-3">
+                    <Link href={`/dossiers/${d.id}`} className="font-medium text-brand-700 hover:underline">
+                      {d.title}
+                    </Link>
+                    <StatusBadge status={d.status} />
+                  </div>
+                  <div className="mt-1 text-xs text-slate-500">
+                    {d.recipients.length > 0 ? `${signed}/${d.recipients.length} ondertekend` : 'Geen ondertekenaars'}
+                    {isBeheerder ? ` · ${d.owner.name}` : ''}
+                  </div>
+                  <div className="mt-1 flex items-center justify-between text-xs">
+                    <span className={exp ? exp.cls : 'text-slate-400'}>{exp ? exp.text : ''}</span>
+                    <span className="text-slate-400">{formatDateTime(d.createdAt)}</span>
+                  </div>
+                </li>
+              )
+            })}
+          </ul>
+          </>
         )}
       </div>
     </div>
