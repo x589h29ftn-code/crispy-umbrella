@@ -1,6 +1,6 @@
 import Link from 'next/link'
-import { Plus, FileText } from 'lucide-react'
-import type { DossierStatus } from '@prisma/client'
+import { Plus, FileText, Search, AlertTriangle } from 'lucide-react'
+import type { DossierStatus, Prisma } from '@prisma/client'
 import { prisma } from '@/lib/db'
 import { requireOnboarded } from '@/lib/auth/session'
 import { StatusBadge } from '@/components/StatusBadge'
@@ -8,41 +8,76 @@ import { STATUS_LABEL } from '@/lib/status'
 import { formatDateTime } from '@/lib/utils'
 
 const FILTERS: (DossierStatus | 'ALLE')[] = ['ALLE', 'CONCEPT', 'VERZONDEN', 'GEDEELTELIJK', 'ONDERTEKEND']
+const OPEN_STATUSES: DossierStatus[] = ['VERZONDEN', 'GEDEELTELIJK']
+const ATTENTION_DAYS = 3
 
-export default async function DashboardPage({ searchParams }: { searchParams: { status?: string; nieuw?: string } }) {
+// Toont de resterende geldigheid van een openstaand verzoek, met kleur.
+function expiryInfo(status: DossierStatus, expiresAt: Date | null, now: number) {
+  if (!expiresAt || !OPEN_STATUSES.includes(status)) return null
+  const days = Math.ceil((expiresAt.getTime() - now) / 86_400_000)
+  if (days < 0) return { text: 'Verlopen', cls: 'text-rose-600 font-medium' }
+  if (days === 0) return { text: 'Verloopt vandaag', cls: 'text-rose-600 font-medium' }
+  if (days <= ATTENTION_DAYS) return { text: `Nog ${days} ${days === 1 ? 'dag' : 'dagen'}`, cls: 'text-amber-600 font-medium' }
+  return { text: `Nog ${days} dagen`, cls: 'text-slate-500' }
+}
+
+export default async function DashboardPage({
+  searchParams
+}: {
+  searchParams: { status?: string; q?: string; aandacht?: string; nieuw?: string }
+}) {
   const acc = await requireOnboarded()
   const isBeheerder = acc.role === 'BEHEERDER'
   const statusFilter = FILTERS.includes(searchParams.status as DossierStatus) ? (searchParams.status as DossierStatus) : null
+  const q = searchParams.q?.trim() ?? ''
+  const attention = searchParams.aandacht === '1'
+  const now = Date.now()
+  const soon = new Date(now + ATTENTION_DAYS * 86_400_000)
 
-  const where = {
-    ...(isBeheerder ? {} : { ownerId: acc.id }),
-    ...(statusFilter ? { status: statusFilter } : {})
+  const ownerScope: Prisma.DossierWhereInput = isBeheerder ? {} : { ownerId: acc.id }
+  const search: Prisma.DossierWhereInput = q
+    ? {
+        OR: [
+          { title: { contains: q, mode: 'insensitive' } },
+          { recipients: { some: { name: { contains: q, mode: 'insensitive' } } } },
+          { recipients: { some: { email: { contains: q, mode: 'insensitive' } } } }
+        ]
+      }
+    : {}
+  const attentionWhere: Prisma.DossierWhereInput = { status: { in: OPEN_STATUSES }, expiresAt: { lte: soon } }
+
+  const where: Prisma.DossierWhereInput = {
+    ...ownerScope,
+    ...search,
+    ...(attention ? attentionWhere : statusFilter ? { status: statusFilter } : {})
   }
 
-  const [dossiers, counts] = await Promise.all([
+  const [dossiers, counts, attentionCount] = await Promise.all([
     prisma.dossier.findMany({
       where,
-      orderBy: { createdAt: 'desc' },
+      orderBy: attention ? { expiresAt: 'asc' } : { createdAt: 'desc' },
       take: 100,
       include: { recipients: true, owner: { select: { name: true } } }
     }),
-    prisma.dossier.groupBy({
-      by: ['status'],
-      where: isBeheerder ? {} : { ownerId: acc.id },
-      _count: true
-    })
+    prisma.dossier.groupBy({ by: ['status'], where: { ...ownerScope, ...search }, _count: true }),
+    prisma.dossier.count({ where: { ...ownerScope, ...search, ...attentionWhere } })
   ])
 
   const countFor = (s: DossierStatus) => counts.find((c) => c.status === s)?._count ?? 0
+  const linkWith = (extra: Record<string, string | undefined>) => {
+    const p = new URLSearchParams()
+    if (q) p.set('q', q)
+    for (const [k, v] of Object.entries(extra)) if (v) p.set(k, v)
+    const s = p.toString()
+    return s ? `/dashboard?${s}` : '/dashboard'
+  }
 
   return (
     <div className="space-y-6">
       <header className="flex flex-wrap items-center justify-between gap-3">
         <div>
           <h1 className="text-2xl font-semibold">Dashboard</h1>
-          <p className="text-slate-500">
-            {isBeheerder ? 'Alle dossiers van het kantoor.' : 'Uw ondertekendossiers.'}
-          </p>
+          <p className="text-slate-500">{isBeheerder ? 'Alle dossiers van het kantoor.' : 'Uw ondertekendossiers.'}</p>
         </div>
         <Link href="/dossiers/nieuw" className="btn-primary">
           <Plus className="h-4 w-4" /> Nieuw dossier
@@ -56,28 +91,68 @@ export default async function DashboardPage({ searchParams }: { searchParams: { 
         </div>
       )}
 
-      <div className="flex flex-wrap gap-2">
-        {FILTERS.map((f) => {
-          const active = (f === 'ALLE' && !statusFilter) || f === statusFilter
-          const label = f === 'ALLE' ? 'Alle' : STATUS_LABEL[f as DossierStatus]
-          const count = f === 'ALLE' ? counts.reduce((a, c) => a + c._count, 0) : countFor(f as DossierStatus)
-          return (
-            <Link
-              key={f}
-              href={f === 'ALLE' ? '/dashboard' : `/dashboard?status=${f}`}
-              className={active ? 'btn-primary text-sm' : 'btn-secondary text-sm'}
-            >
-              {label} <span className="ml-1 opacity-70">{count}</span>
-            </Link>
-          )
-        })}
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <div className="flex flex-wrap gap-2">
+          {FILTERS.map((f) => {
+            const active = !attention && ((f === 'ALLE' && !statusFilter) || f === statusFilter)
+            const label = f === 'ALLE' ? 'Alle' : STATUS_LABEL[f as DossierStatus]
+            const count = f === 'ALLE' ? counts.reduce((a, c) => a + c._count, 0) : countFor(f as DossierStatus)
+            return (
+              <Link
+                key={f}
+                href={linkWith({ status: f === 'ALLE' ? undefined : f })}
+                className={active ? 'btn-primary text-sm' : 'btn-secondary text-sm'}
+              >
+                {label} <span className="ml-1 opacity-70">{count}</span>
+              </Link>
+            )
+          })}
+          <Link
+            href={linkWith({ aandacht: '1' })}
+            className={
+              attention
+                ? 'btn-primary bg-amber-500 text-sm hover:bg-amber-600'
+                : 'btn-secondary text-sm text-amber-700 ring-amber-200'
+            }
+          >
+            <AlertTriangle className="h-4 w-4" /> Aandacht nodig <span className="ml-1 opacity-70">{attentionCount}</span>
+          </Link>
+        </div>
+
+        <form action="/dashboard" method="get" className="flex items-center gap-2">
+          {attention && <input type="hidden" name="aandacht" value="1" />}
+          {statusFilter && !attention && <input type="hidden" name="status" value={statusFilter} />}
+          <div className="relative">
+            <Search className="pointer-events-none absolute left-2.5 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
+            <input
+              type="search"
+              name="q"
+              defaultValue={q}
+              placeholder="Zoek op titel of ondertekenaar"
+              className="input min-w-[240px] pl-8 text-sm"
+            />
+          </div>
+          <button type="submit" className="btn-secondary text-sm">
+            Zoeken
+          </button>
+        </form>
       </div>
+
+      {(q || attention) && (
+        <p className="text-sm text-slate-500">
+          {attention ? 'Openstaande verzoeken die (bijna) verlopen' : `Resultaten voor "${q}"`}
+          {' · '}
+          <Link href="/dashboard" className="text-brand-700 hover:underline">
+            wis filters
+          </Link>
+        </p>
+      )}
 
       <div className="card overflow-hidden">
         {dossiers.length === 0 ? (
           <div className="flex flex-col items-center gap-2 p-12 text-center text-slate-500">
             <FileText className="h-8 w-8 text-slate-300" />
-            <p>Nog geen dossiers. Maak een nieuw ondertekendossier aan.</p>
+            <p>{q || attention ? 'Geen dossiers gevonden.' : 'Nog geen dossiers. Maak een nieuw ondertekendossier aan.'}</p>
           </div>
         ) : (
           <table className="w-full text-sm">
@@ -87,12 +162,14 @@ export default async function DashboardPage({ searchParams }: { searchParams: { 
                 <th className="px-4 py-3">Ondertekenaars</th>
                 {isBeheerder && <th className="px-4 py-3">Accountant</th>}
                 <th className="px-4 py-3">Status</th>
+                <th className="px-4 py-3">Verloopt</th>
                 <th className="px-4 py-3">Aangemaakt</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100">
               {dossiers.map((d) => {
                 const signed = d.recipients.filter((r) => r.status === 'SIGNED').length
+                const exp = expiryInfo(d.status, d.expiresAt, now)
                 return (
                   <tr key={d.id} className="hover:bg-slate-50">
                     <td className="px-4 py-3">
@@ -106,6 +183,9 @@ export default async function DashboardPage({ searchParams }: { searchParams: { 
                     {isBeheerder && <td className="px-4 py-3 text-slate-600">{d.owner.name}</td>}
                     <td className="px-4 py-3">
                       <StatusBadge status={d.status} />
+                    </td>
+                    <td className="px-4 py-3">
+                      {exp ? <span className={exp.cls}>{exp.text}</span> : <span className="text-slate-300">-</span>}
                     </td>
                     <td className="px-4 py-3 text-slate-500">{formatDateTime(d.createdAt)}</td>
                   </tr>

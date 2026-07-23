@@ -60,6 +60,21 @@ export async function toggleUserActiveAction(id: string): Promise<void> {
   revalidatePath('/instellingen/gebruikers')
 }
 
+/** Beheerder zet de 2FA van een gebruiker terug (bij verlies van de telefoon).
+ * De gebruiker moet bij de volgende login opnieuw 2FA instellen. */
+export async function reset2faAction(id: string): Promise<{ ok?: boolean; error?: string }> {
+  await requireBeheerder()
+  const user = await prisma.accountant.findUnique({ where: { id } })
+  if (!user) return { error: 'Gebruiker niet gevonden.' }
+  await prisma.accountant.update({
+    where: { id },
+    data: { totpEnabled: false, totpSecret: null, totpBackupCodes: [] }
+  })
+  await prisma.session.deleteMany({ where: { accountantId: id } })
+  revalidatePath('/instellingen/gebruikers')
+  return { ok: true }
+}
+
 export async function resetPasswordAction(id: string): Promise<{ tempPassword?: string; error?: string }> {
   await requireBeheerder()
   const user = await prisma.accountant.findUnique({ where: { id } })

@@ -71,6 +71,7 @@ model Accountant {
   role         Role     @default(MEDEWERKER)
   totpSecret   String? // versleuteld opgeslagen (AES-256-GCM)
   totpEnabled  Boolean  @default(false)
+  totpBackupCodes String[] @default([]) // SHA-256-hashes van eenmalige herstelcodes
   signaturePng String? // opgeslagen handtekening (data-URL of opslagsleutel)
   mustChangePassword Boolean @default(false) // nieuw aangemaakt account
   active       Boolean  @default(true)
