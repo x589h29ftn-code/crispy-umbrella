@@ -84,6 +84,33 @@ export function NewDossierForm() {
         </button>
       </div>
 
+      {rows.length > 1 && (
+        <fieldset className="space-y-2 rounded-lg border border-slate-200 p-4">
+          <legend className="px-1 text-sm font-medium text-slate-700">Verzendwijze</legend>
+          <label className="flex items-start gap-2 text-sm">
+            <input type="radio" name="deliveryMode" value="together" defaultChecked className="mt-1" />
+            <span>
+              <span className="font-medium">Samen in één verzoek (aanbevolen)</span>
+              <br />
+              <span className="text-slate-500">
+                De ontvanger krijgt één e-mail en tekent alle documenten na één keer inloggen.
+              </span>
+            </span>
+          </label>
+          <label className="flex items-start gap-2 text-sm">
+            <input type="radio" name="deliveryMode" value="separate" className="mt-1" />
+            <span>
+              <span className="font-medium">Elk document als apart verzoek</span>
+              <br />
+              <span className="text-slate-500">
+                Er wordt per document een los verzoek aangemaakt (aparte e-mail en status). U bereidt ze daarna
+                afzonderlijk voor.
+              </span>
+            </span>
+          </label>
+        </fieldset>
+      )}
+
       <div>
         <label className="label" htmlFor="message">
           Begeleidend bericht (optioneel)
