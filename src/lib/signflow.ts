@@ -57,11 +57,19 @@ export async function activateSigner(recipientId: string): Promise<void> {
   }
 
   // Externe cliënt: eenmalige token + uitnodigingsmail met de link.
-  const ttlMs = env.SIGN_LINK_TTL_DAYS * 24 * 60 * 60 * 1000
+  const ttlMs = dossier.linkTtlDays * 24 * 60 * 60 * 1000
   const { raw, hash } = generateSigningToken()
   await prisma.recipient.update({
     where: { id: r.id },
-    data: { tokenHash: hash, tokenExpiresAt: new Date(Date.now() + ttlMs), tokenUsedAt: null }
+    data: {
+      tokenHash: hash,
+      tokenExpiresAt: new Date(Date.now() + ttlMs),
+      tokenUsedAt: null,
+      // Nieuwe link ⇒ 2e factor opnieuw vereist.
+      otpVerifiedAt: null,
+      otpHash: null,
+      otpExpiresAt: null
+    }
   })
   const mail = requestEmail({
     recipientName: r.name,

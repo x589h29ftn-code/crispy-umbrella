@@ -1,13 +1,13 @@
 import { notFound, redirect } from 'next/navigation'
 import { prisma } from '@/lib/db'
-import { requireAccountant } from '@/lib/auth/session'
+import { requireOnboarded } from '@/lib/auth/session'
 import { currentSigners } from '@/lib/signflow'
 import { OfficeSign } from './OfficeSign'
 
 export const dynamic = 'force-dynamic'
 
 export default async function OfficeSignPage({ params }: { params: { id: string } }) {
-  const me = await requireAccountant()
+  const me = await requireOnboarded()
   const recipient = await prisma.recipient.findUnique({
     where: { id: params.id },
     include: { dossier: { include: { recipients: true } }, fields: true }
@@ -31,6 +31,7 @@ export default async function OfficeSignPage({ params }: { params: { id: string 
         recipientId={recipient.id}
         dossierId={dossier.id}
         title={dossier.title}
+        savedSignature={me.signaturePng}
         fields={recipient.fields.map((f) => ({ page: f.page, x: f.x, y: f.y, width: f.width, height: f.height }))}
       />
     </div>

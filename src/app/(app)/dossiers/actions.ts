@@ -31,7 +31,8 @@ export async function createDossierAction(_prev: FormState, formData: FormData):
   const acc = await requireAccountant()
   const parsed = dossierCreateSchema.safeParse({
     title: formData.get('title'),
-    message: formData.get('message')
+    message: formData.get('message'),
+    linkTtlDays: formData.get('linkTtlDays') ?? 10
   })
   if (!parsed.success) return { error: 'Geef het document een titel.' }
 
@@ -69,6 +70,7 @@ export async function createDossierAction(_prev: FormState, formData: FormData):
       originalKey,
       workingKey,
       message: parsed.data.message?.trim() || null,
+      linkTtlDays: parsed.data.linkTtlDays,
       // Checkbox 'ontvanger ook een kopie mailen' (standaard aangevinkt).
       sendCopyToRecipient: formData.get('sendCopyToRecipient') === 'on'
     }
@@ -131,7 +133,7 @@ export async function sendDossierAction(dossierId: string): Promise<{ ok: boolea
   if (dossier.recipients.length === 0) return { ok: false, error: 'Geen ondertekenaars ingesteld.' }
   if (!dossier.workingKey) return { ok: false, error: 'Documentbestand ontbreekt.' }
 
-  const ttlMs = env.SIGN_LINK_TTL_DAYS * 24 * 60 * 60 * 1000
+  const ttlMs = dossier.linkTtlDays * 24 * 60 * 60 * 1000
   await prisma.dossier.update({
     where: { id: dossier.id },
     data: { status: 'VERZONDEN', sentAt: new Date(), expiresAt: new Date(Date.now() + ttlMs) }
@@ -155,7 +157,7 @@ export async function remindDossierAction(dossierId: string): Promise<{ ok: bool
   const active = currentSigners(dossier, dossier.recipients)
   if (active.length === 0) return { ok: false, error: 'Er is niemand die nu aan de beurt is.' }
 
-  const ttlMs = env.SIGN_LINK_TTL_DAYS * 24 * 60 * 60 * 1000
+  const ttlMs = dossier.linkTtlDays * 24 * 60 * 60 * 1000
   for (const r of active) {
     if (r.role === 'ZELF' && r.accountantId) {
       const mail = officeTurnEmail({
@@ -168,7 +170,14 @@ export async function remindDossierAction(dossierId: string): Promise<{ ok: bool
       const t = generateSigningToken()
       await prisma.recipient.update({
         where: { id: r.id },
-        data: { tokenHash: t.hash, tokenExpiresAt: new Date(Date.now() + ttlMs), tokenUsedAt: null }
+        data: {
+          tokenHash: t.hash,
+          tokenExpiresAt: new Date(Date.now() + ttlMs),
+          tokenUsedAt: null,
+          otpVerifiedAt: null,
+          otpHash: null,
+          otpExpiresAt: null
+        }
       })
       const mail = reminderEmail({
         recipientName: r.name,

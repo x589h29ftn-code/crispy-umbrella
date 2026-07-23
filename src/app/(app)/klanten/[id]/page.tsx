@@ -1,11 +1,11 @@
 import { notFound } from 'next/navigation'
 import { prisma } from '@/lib/db'
-import { requireAccountant } from '@/lib/auth/session'
+import { requireOnboarded } from '@/lib/auth/session'
 import { ClientForm } from '../ClientForm'
 import { updateClientAction } from '../actions'
 
 export default async function KlantBewerkenPage({ params }: { params: { id: string } }) {
-  await requireAccountant()
+  await requireOnboarded()
   const client = await prisma.client.findUnique({ where: { id: params.id } })
   if (!client || !client.active) notFound()
 

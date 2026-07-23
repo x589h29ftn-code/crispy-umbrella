@@ -1,9 +1,14 @@
 import { NextResponse, type NextRequest } from 'next/server'
 import { resolveToken } from '@/lib/signflow'
 import { storage } from '@/lib/storage'
+import { consume } from '@/lib/ratelimit'
+import { reqContext } from '@/lib/reqctx'
 
 // Levert het te ondertekenen document — alléén nadat de e-mailcode is geverifieerd.
-export async function GET(_req: NextRequest, { params }: { params: { token: string } }) {
+export async function GET(req: NextRequest, { params }: { params: { token: string } }) {
+  if (!(await consume('token', reqContext(req).ip ?? 'onbekend'))) {
+    return NextResponse.json({ error: 'Te veel verzoeken.' }, { status: 429 })
+  }
   const resolved = await resolveToken(params.token)
   if (!resolved.ok) return NextResponse.json({ error: 'Ongeldige link' }, { status: 410 })
   if (!resolved.recipient.otpVerifiedAt) {
@@ -16,6 +21,7 @@ export async function GET(_req: NextRequest, { params }: { params: { token: stri
     headers: {
       'Content-Type': 'application/pdf',
       'Content-Disposition': 'inline',
+      'X-Content-Type-Options': 'nosniff',
       'Cache-Control': 'no-store'
     }
   })

@@ -30,6 +30,7 @@ export async function GET(req: NextRequest, { params }: { params: { id: string }
     headers: {
       'Content-Type': 'application/pdf',
       'Content-Disposition': 'inline',
+      'X-Content-Type-Options': 'nosniff',
       'Cache-Control': 'no-store'
     }
   })

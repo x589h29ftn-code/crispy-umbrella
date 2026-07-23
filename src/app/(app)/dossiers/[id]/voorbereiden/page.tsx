@@ -1,10 +1,10 @@
 import { notFound, redirect } from 'next/navigation'
 import { prisma } from '@/lib/db'
-import { requireAccountant } from '@/lib/auth/session'
+import { requireOnboarded } from '@/lib/auth/session'
 import { FieldPlacer } from '@/components/FieldPlacer'
 
 export default async function VoorbereidenPage({ params }: { params: { id: string } }) {
-  const acc = await requireAccountant()
+  const acc = await requireOnboarded()
   const dossier = await prisma.dossier.findUnique({ where: { id: params.id } })
   if (!dossier) notFound()
   if (dossier.ownerId !== acc.id && acc.role !== 'BEHEERDER') notFound()

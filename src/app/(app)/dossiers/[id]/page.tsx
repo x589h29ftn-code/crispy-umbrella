@@ -2,7 +2,7 @@ import Link from 'next/link'
 import { notFound } from 'next/navigation'
 import { Download, PencilRuler, CheckCircle2, Clock, XCircle } from 'lucide-react'
 import { prisma } from '@/lib/db'
-import { requireAccountant } from '@/lib/auth/session'
+import { requireOnboarded } from '@/lib/auth/session'
 import { StatusBadge } from '@/components/StatusBadge'
 import { DossierActions } from './DossierActions'
 import { PARTY_LABEL } from '@/lib/status'
@@ -25,7 +25,7 @@ const AUDIT_LABEL: Record<string, string> = {
 }
 
 export default async function DossierDetailPage({ params }: { params: { id: string } }) {
-  const acc = await requireAccountant()
+  const acc = await requireOnboarded()
   const dossier = await prisma.dossier.findUnique({
     where: { id: params.id },
     include: {
@@ -122,14 +122,14 @@ export default async function DossierDetailPage({ params }: { params: { id: stri
                             <span className="badge bg-blue-50 text-blue-700 ring-blue-200">aan de beurt</span>
                           )}
                         </div>
-                        <div className="text-xs text-slate-400">{r.email}</div>
+                        <div className="text-xs text-slate-500">{r.email}</div>
                       </div>
                     </div>
                     <div className="flex items-center gap-2 text-sm">
                       {r.status === 'SIGNED' ? (
                         <span className="inline-flex items-center gap-1 text-emerald-600">
                           <CheckCircle2 className="h-4 w-4" /> {PARTY_LABEL.SIGNED}
-                          {r.signedAt && <span className="text-xs text-slate-400"> · {formatDateTime(r.signedAt)}</span>}
+                          {r.signedAt && <span className="text-xs text-slate-500"> · {formatDateTime(r.signedAt)}</span>}
                         </span>
                       ) : r.status === 'DECLINED' ? (
                         <span className="inline-flex items-center gap-1 text-rose-600">
@@ -155,8 +155,8 @@ export default async function DossierDetailPage({ params }: { params: { id: stri
               <li key={e.id} className="relative">
                 <span className="absolute -left-[21px] top-1 h-2.5 w-2.5 rounded-full bg-brand-500" />
                 <div className="text-sm font-medium">{AUDIT_LABEL[e.type] ?? e.type}</div>
-                {e.message && <div className="text-xs text-slate-400">{e.message}</div>}
-                <div className="text-xs text-slate-400">{formatDateTime(e.createdAt)}</div>
+                {e.message && <div className="text-xs text-slate-500">{e.message}</div>}
+                <div className="text-xs text-slate-500">{formatDateTime(e.createdAt)}</div>
               </li>
             ))}
             {dossier.auditEvents.length === 0 && <li className="text-sm text-slate-400">Nog geen gebeurtenissen.</li>}

@@ -40,7 +40,7 @@ const schema = z.object({
   TWILIO_AUTH_TOKEN: z.string().optional(),
   TWILIO_FROM: z.string().optional(),
 
-  SIGN_LINK_TTL_DAYS: z.coerce.number().int().positive().default(14),
+  SIGN_LINK_TTL_DAYS: z.coerce.number().int().positive().default(10),
   OTP_TTL_MINUTES: z.coerce.number().int().positive().default(10)
 })
 

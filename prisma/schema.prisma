@@ -130,6 +130,8 @@ model Dossier {
   sendCopyToRecipient Boolean @default(true)
   // Volgorde van ondertekenen: iedereen tegelijk of één voor één.
   signingMode         SigningMode @default(PARALLEL)
+  // Geldigheidsduur van de tekenlink in dagen (instelbaar bij verzenden).
+  linkTtlDays         Int         @default(10)
   expiresAt      DateTime?
   sentAt         DateTime?
   lastReminderAt DateTime?

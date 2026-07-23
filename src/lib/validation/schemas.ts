@@ -21,7 +21,8 @@ export type ClientInput = z.infer<typeof clientSchema>
 
 export const dossierCreateSchema = z.object({
   title: naam,
-  message: z.string().trim().max(2000).optional().or(z.literal(''))
+  message: z.string().trim().max(2000).optional().or(z.literal('')),
+  linkTtlDays: z.coerce.number().int().min(1).max(90).default(10)
 })
 
 export const placementSchema = z.object({

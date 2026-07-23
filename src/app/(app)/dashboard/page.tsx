@@ -2,7 +2,7 @@ import Link from 'next/link'
 import { Plus, FileText } from 'lucide-react'
 import type { DossierStatus } from '@prisma/client'
 import { prisma } from '@/lib/db'
-import { requireAccountant } from '@/lib/auth/session'
+import { requireOnboarded } from '@/lib/auth/session'
 import { StatusBadge } from '@/components/StatusBadge'
 import { STATUS_LABEL } from '@/lib/status'
 import { formatDateTime } from '@/lib/utils'
@@ -10,7 +10,7 @@ import { formatDateTime } from '@/lib/utils'
 const FILTERS: (DossierStatus | 'ALLE')[] = ['ALLE', 'CONCEPT', 'VERZONDEN', 'GEDEELTELIJK', 'ONDERTEKEND']
 
 export default async function DashboardPage({ searchParams }: { searchParams: { status?: string } }) {
-  const acc = await requireAccountant()
+  const acc = await requireOnboarded()
   const isBeheerder = acc.role === 'BEHEERDER'
   const statusFilter = FILTERS.includes(searchParams.status as DossierStatus) ? (searchParams.status as DossierStatus) : null
 
@@ -77,7 +77,7 @@ export default async function DashboardPage({ searchParams }: { searchParams: { 
             <thead className="border-b border-slate-200 bg-slate-50 text-left text-xs uppercase tracking-wide text-slate-500">
               <tr>
                 <th className="px-4 py-3">Titel</th>
-                <th className="px-4 py-3">Ontvangers</th>
+                <th className="px-4 py-3">Ondertekenaars</th>
                 {isBeheerder && <th className="px-4 py-3">Accountant</th>}
                 <th className="px-4 py-3">Status</th>
                 <th className="px-4 py-3">Aangemaakt</th>
@@ -94,7 +94,7 @@ export default async function DashboardPage({ searchParams }: { searchParams: { 
                       </Link>
                     </td>
                     <td className="px-4 py-3 text-slate-600">
-                      {d.recipients.length > 0 ? `${signed}/${d.recipients.length} getekend` : '—'}
+                      {d.recipients.length > 0 ? `${signed}/${d.recipients.length} ondertekend` : '—'}
                     </td>
                     {isBeheerder && <td className="px-4 py-3 text-slate-600">{d.owner.name}</td>}
                     <td className="px-4 py-3">

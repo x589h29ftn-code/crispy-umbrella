@@ -2,9 +2,13 @@ import { NextResponse, type NextRequest } from 'next/server'
 import { resolveToken, applySignature } from '@/lib/signflow'
 import { signSubmitSchema } from '@/lib/validation/schemas'
 import { reqContext } from '@/lib/reqctx'
+import { consume } from '@/lib/ratelimit'
 
 // Verwerkt de handtekening: stempelt server-side en verzegelt bij voltooiing.
 export async function POST(req: NextRequest, { params }: { params: { token: string } }) {
+  if (!(await consume('token', reqContext(req).ip ?? 'onbekend'))) {
+    return NextResponse.json({ error: 'Te veel verzoeken. Probeer het later opnieuw.' }, { status: 429 })
+  }
   const resolved = await resolveToken(params.token)
   if (!resolved.ok) return NextResponse.json({ error: 'Deze tekenlink is niet (meer) geldig.' }, { status: 410 })
   if (!resolved.recipient.otpVerifiedAt) {

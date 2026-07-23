@@ -2,10 +2,11 @@
 
 import { revalidatePath } from 'next/cache'
 import { prisma } from '@/lib/db'
-import { requireAccountant } from '@/lib/auth/session'
+import { requireAccountant, createSession } from '@/lib/auth/session'
 import { verifyTotp, decryptTotpSecret } from '@/lib/auth/totp'
 import { hashPassword, verifyPassword } from '@/lib/auth/password'
 import { totpVerifySchema } from '@/lib/validation/schemas'
+import { writeAudit } from '@/lib/audit'
 
 export interface FormState {
   error?: string
@@ -24,13 +25,20 @@ export async function enable2faAction(_prev: FormState, formData: FormData): Pro
   return { ok: true }
 }
 
-export async function disable2faAction(): Promise<void> {
+export async function disable2faAction(_prev: FormState, formData: FormData): Promise<FormState> {
   const acc = await requireAccountant()
+  const password = String(formData.get('password') ?? '')
+  const fresh = await prisma.accountant.findUnique({ where: { id: acc.id } })
+  if (!fresh || !(await verifyPassword(fresh.passwordHash, password))) {
+    return { error: 'Onjuist wachtwoord.' }
+  }
   await prisma.accountant.update({
     where: { id: acc.id },
     data: { totpEnabled: false, totpSecret: null }
   })
+  await writeAudit({ type: 'INGETROKKEN', accountantId: acc.id, message: '2FA uitgeschakeld' })
   revalidatePath('/instellingen')
+  return { ok: true }
 }
 
 export async function changePasswordAction(_prev: FormState, formData: FormData): Promise<FormState> {
@@ -46,6 +54,9 @@ export async function changePasswordAction(_prev: FormState, formData: FormData)
     where: { id: acc.id },
     data: { passwordHash: await hashPassword(next), mustChangePassword: false }
   })
+  // Trek alle bestaande sessies in en geef deze sessie een verse cookie.
+  await prisma.session.deleteMany({ where: { accountantId: acc.id } })
+  await createSession(acc.id)
   revalidatePath('/instellingen')
   return { ok: true }
 }

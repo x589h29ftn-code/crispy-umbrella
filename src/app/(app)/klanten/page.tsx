@@ -1,11 +1,11 @@
 import Link from 'next/link'
 import { Plus, Upload, Search, Users } from 'lucide-react'
 import { prisma } from '@/lib/db'
-import { requireAccountant } from '@/lib/auth/session'
+import { requireOnboarded } from '@/lib/auth/session'
 import { DeleteClientButton } from './DeleteClientButton'
 
 export default async function KlantenPage({ searchParams }: { searchParams: { q?: string } }) {
-  await requireAccountant()
+  await requireOnboarded()
   const q = (searchParams.q ?? '').trim()
   const clients = await prisma.client.findMany({
     where: {

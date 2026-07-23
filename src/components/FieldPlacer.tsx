@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { useRouter } from 'next/navigation'
+import Link from 'next/link'
 import { nanoid } from 'nanoid'
 import { X, Loader2, ArrowUp, ArrowDown, Building2, User } from 'lucide-react'
 import { loadPdf, renderPage, type LoadedPdf } from '@/lib/pdfjs-client'
@@ -295,7 +296,13 @@ export function FieldPlacer({ dossierId, pdfUrl }: { dossierId: string; pdfUrl: 
                   </option>
                 ))}
               </select>
-              <button type="button" className="btn-secondary text-xs" onClick={addOffice} disabled={!officePick}>
+              <button
+                type="button"
+                aria-label="Kantoorgebruiker toevoegen"
+                className="btn-secondary text-xs"
+                onClick={addOffice}
+                disabled={!officePick}
+              >
                 +
               </button>
             </div>
@@ -327,10 +334,20 @@ export function FieldPlacer({ dossierId, pdfUrl }: { dossierId: string; pdfUrl: 
                 </button>
                 {signingMode === 'SEQUENTIAL' && (
                   <span className="flex flex-col">
-                    <button type="button" onClick={() => move(s.tempId, -1)} className="text-slate-400 hover:text-slate-700">
+                    <button
+                      type="button"
+                      aria-label="Naar boven"
+                      onClick={() => move(s.tempId, -1)}
+                      className="text-slate-400 hover:text-slate-700"
+                    >
                       <ArrowUp className="h-3.5 w-3.5" />
                     </button>
-                    <button type="button" onClick={() => move(s.tempId, 1)} className="text-slate-400 hover:text-slate-700">
+                    <button
+                      type="button"
+                      aria-label="Naar beneden"
+                      onClick={() => move(s.tempId, 1)}
+                      className="text-slate-400 hover:text-slate-700"
+                    >
                       <ArrowDown className="h-3.5 w-3.5" />
                     </button>
                   </span>
@@ -353,6 +370,9 @@ export function FieldPlacer({ dossierId, pdfUrl }: { dossierId: string; pdfUrl: 
         <button type="button" className="btn-primary w-full" onClick={save} disabled={saving || loading}>
           {saving ? 'Opslaan…' : 'Opslaan en naar overzicht'}
         </button>
+        <Link href={`/dossiers/${dossierId}`} className="btn-ghost w-full justify-center">
+          Annuleren
+        </Link>
       </div>
 
       {/* Documentweergave */}
@@ -368,7 +388,7 @@ export function FieldPlacer({ dossierId, pdfUrl }: { dossierId: string; pdfUrl: 
               ref={(el) => {
                 canvasRefs.current[i] = el
               }}
-              className="block rounded-lg"
+              className="block h-auto max-w-full rounded-lg"
             />
             <div
               className="absolute inset-0 cursor-crosshair touch-none"
@@ -390,14 +410,22 @@ export function FieldPlacer({ dossierId, pdfUrl }: { dossierId: string; pdfUrl: 
                       background: `${colorOf(f.target)}22`,
                       border: `1.5px solid ${colorOf(f.target)}`
                     }}
-                    onClick={(e) => {
-                      e.stopPropagation()
-                      setFields((p) => p.filter((x) => x.fid !== f.fid))
-                    }}
                   >
                     <span className="pointer-events-none select-none text-[10px] font-semibold" style={{ color: colorOf(f.target) }}>
                       {signers.find((s) => s.tempId === f.target)?.name ?? 'Handtekening'}
                     </span>
+                    <button
+                      type="button"
+                      aria-label="Tekenveld verwijderen"
+                      onClick={(e) => {
+                        e.stopPropagation()
+                        setFields((p) => p.filter((x) => x.fid !== f.fid))
+                      }}
+                      onPointerDown={(e) => e.stopPropagation()}
+                      className="absolute -right-2 -top-2 flex h-5 w-5 items-center justify-center rounded-full bg-white text-slate-500 shadow ring-1 ring-slate-200 hover:text-rose-600"
+                    >
+                      <X className="h-3 w-3" />
+                    </button>
                   </div>
                 ))}
               {draft && draft.page === i && (

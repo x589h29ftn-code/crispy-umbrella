@@ -1,9 +1,9 @@
-import { requireAccountant } from '@/lib/auth/session'
+import { requireOnboarded } from '@/lib/auth/session'
 import { ClientForm } from '../ClientForm'
 import { createClientAction } from '../actions'
 
 export default async function NieuweKlantPage() {
-  await requireAccountant()
+  await requireOnboarded()
   return (
     <div className="space-y-6">
       <header>
