@@ -1,14 +1,14 @@
 import Link from 'next/link'
 import { PenLine, CheckCircle2 } from 'lucide-react'
 import { prisma } from '@/lib/db'
-import { requireAccountant } from '@/lib/auth/session'
+import { requireOnboarded } from '@/lib/auth/session'
 import { currentSigners } from '@/lib/signflow'
 import { formatDateTime } from '@/lib/utils'
 
 export const dynamic = 'force-dynamic'
 
 export default async function TeOndertekenenPage() {
-  const me = await requireAccountant()
+  const me = await requireOnboarded()
   const mine = await prisma.recipient.findMany({
     where: { accountantId: me.id, status: 'PENDING', dossier: { status: { in: ['VERZONDEN', 'GEDEELTELIJK'] } } },
     include: { dossier: { include: { recipients: true, owner: { select: { name: true } } } } }

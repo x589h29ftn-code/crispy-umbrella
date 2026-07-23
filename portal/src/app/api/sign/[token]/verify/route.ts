@@ -11,6 +11,9 @@ const MAX_ATTEMPTS = 5
 
 // Verifieert de 6-cijferige e-mailcode.
 export async function POST(req: NextRequest, { params }: { params: { token: string } }) {
+  if (!(await consume('token', reqContext(req).ip ?? 'onbekend'))) {
+    return NextResponse.json({ error: 'Te veel verzoeken. Probeer het later opnieuw.' }, { status: 429 })
+  }
   const resolved = await resolveToken(params.token)
   if (!resolved.ok) return NextResponse.json({ error: 'Deze tekenlink is niet (meer) geldig.' }, { status: 410 })
 

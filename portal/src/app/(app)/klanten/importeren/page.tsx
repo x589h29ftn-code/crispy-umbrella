@@ -1,8 +1,8 @@
-import { requireAccountant } from '@/lib/auth/session'
+import { requireOnboarded } from '@/lib/auth/session'
 import { ImportForm } from './ImportForm'
 
 export default async function ImporterenPage() {
-  await requireAccountant()
+  await requireOnboarded()
   return (
     <div className="space-y-6">
       <header>

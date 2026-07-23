@@ -136,9 +136,15 @@ export function SignFlow({
             We hebben een 6-cijferige code {channel === 'sms' ? 'per sms' : 'per e-mail'} gestuurd naar{' '}
             {destination ?? (channel === 'sms' ? 'uw telefoon' : 'uw e-mailadres')}. Voer die hieronder in.
           </p>
+          <label htmlFor="otp-code" className="label">
+            Verificatiecode
+          </label>
           <input
+            id="otp-code"
+            name="otp-code"
             className="input max-w-[220px] text-center text-lg tracking-[0.4em]"
             inputMode="numeric"
+            autoComplete="one-time-code"
             maxLength={6}
             placeholder="000000"
             value={code}
@@ -158,7 +164,7 @@ export function SignFlow({
       {step === 'sign' && (
         <div className="space-y-6">
           <SignDocument token={token} fields={fields} />
-          <div className="card space-y-4 p-6">
+          <div id="ondertekenen" className="card space-y-4 p-6">
             <h2 className="flex items-center gap-2 text-lg font-semibold">
               <PenLine className="h-5 w-5" /> Uw handtekening
             </h2>
@@ -269,15 +275,18 @@ function SignDocument({ token, fields }: { token: string; fields: FieldRect[] })
               ref={(el) => {
                 canvasRefs.current[i] = el
               }}
-              className="block rounded-lg"
+              className="block h-auto max-w-full rounded-lg"
             />
             {size &&
               fields
                 .filter((f) => f.page === i)
                 .map((f, idx) => (
-                  <div
+                  <button
                     key={idx}
-                    className="absolute flex items-center justify-center rounded border-2 border-brand-500 bg-brand-500/10"
+                    type="button"
+                    aria-label="Ga naar ondertekenen"
+                    onClick={() => document.getElementById('ondertekenen')?.scrollIntoView({ behavior: 'smooth' })}
+                    className="absolute flex animate-pulse items-center justify-center rounded border-2 border-brand-500 bg-brand-500/10 hover:bg-brand-500/20"
                     style={{
                       left: `${(f.x / size.w) * 100}%`,
                       top: `${((size.h - (f.y + f.height)) / size.h) * 100}%`,
@@ -285,8 +294,8 @@ function SignDocument({ token, fields }: { token: string; fields: FieldRect[] })
                       height: `${(f.height / size.h) * 100}%`
                     }}
                   >
-                    <span className="pointer-events-none text-[10px] font-semibold text-brand-700">Teken hier</span>
-                  </div>
+                    <span className="text-[10px] font-semibold text-brand-700">Teken hier</span>
+                  </button>
                 ))}
           </div>
         )

@@ -13,10 +13,12 @@ import { reqContext } from '@/lib/reqctx'
 // Vraagt een verificatiecode aan (2e factor). Kanaal (e-mail of sms) volgt de
 // voorkeur van de cliënt; sms alleen als er een telefoonnummer bekend is.
 export async function POST(req: NextRequest, { params }: { params: { token: string } }) {
+  const ctx = reqContext(req)
+  if (!(await consume('token', ctx.ip ?? 'onbekend'))) {
+    return NextResponse.json({ error: 'Te veel verzoeken. Probeer het later opnieuw.' }, { status: 429 })
+  }
   const resolved = await resolveToken(params.token)
   if (!resolved.ok) return NextResponse.json({ error: 'Deze tekenlink is niet (meer) geldig.' }, { status: 410 })
-
-  const ctx = reqContext(req)
   const r = resolved.recipient
   const okRate = await consume('otpRequest', r.id)
   if (!okRate) return NextResponse.json({ error: 'Te veel aanvragen. Probeer het later opnieuw.' }, { status: 429 })

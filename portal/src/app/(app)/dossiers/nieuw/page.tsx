@@ -1,8 +1,8 @@
-import { requireAccountant } from '@/lib/auth/session'
+import { requireOnboarded } from '@/lib/auth/session'
 import { NewDossierForm } from './NewDossierForm'
 
 export default async function NieuwDossierPage() {
-  await requireAccountant()
+  await requireOnboarded()
   return (
     <div className="mx-auto max-w-2xl space-y-6">
       <header>

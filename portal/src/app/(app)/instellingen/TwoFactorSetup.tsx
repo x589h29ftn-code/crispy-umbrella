@@ -15,6 +15,29 @@ function EnableButton() {
   )
 }
 
+function DisableForm() {
+  const [state, action] = useFormState(disable2faAction, initial)
+  return (
+    <div className="space-y-3">
+      <p className="inline-flex items-center gap-2 rounded-lg bg-emerald-50 px-3 py-2 text-sm font-medium text-emerald-700">
+        Tweefactorauthenticatie is actief.
+      </p>
+      <form action={action} className="flex flex-wrap items-end gap-2">
+        <div>
+          <label className="label" htmlFor="disable-pw">
+            Bevestig met uw wachtwoord om uit te schakelen
+          </label>
+          <input id="disable-pw" name="password" type="password" required className="input max-w-xs" autoComplete="current-password" />
+        </div>
+        <button type="submit" className="btn-secondary text-sm">
+          Uitschakelen
+        </button>
+      </form>
+      {state.error && <p className="text-sm text-rose-600">{state.error}</p>}
+    </div>
+  )
+}
+
 export function TwoFactorSetup({
   enabled,
   qrDataUrl,
@@ -27,18 +50,7 @@ export function TwoFactorSetup({
   const [state, action] = useFormState(enable2faAction, initial)
 
   if (enabled) {
-    return (
-      <div className="space-y-3">
-        <p className="inline-flex items-center gap-2 rounded-lg bg-emerald-50 px-3 py-2 text-sm font-medium text-emerald-700">
-          Tweefactorauthenticatie is actief.
-        </p>
-        <form action={disable2faAction}>
-          <button type="submit" className="btn-secondary text-sm">
-            Uitschakelen / opnieuw instellen
-          </button>
-        </form>
-      </div>
-    )
+    return <DisableForm />
   }
 
   return (

@@ -42,6 +42,20 @@ export function NewDossierForm() {
         </label>
         <textarea id="message" name="message" rows={3} className="input" placeholder="Tekst in de e-mail aan de ontvanger." />
       </div>
+      <div className="max-w-[220px]">
+        <label className="label" htmlFor="linkTtlDays">
+          Geldigheid uitnodiging (dagen)
+        </label>
+        <input
+          id="linkTtlDays"
+          name="linkTtlDays"
+          type="number"
+          min={1}
+          max={90}
+          defaultValue={10}
+          className="input"
+        />
+      </div>
       <label className="flex items-center gap-2 text-sm text-slate-700">
         <input type="checkbox" name="sendCopyToRecipient" defaultChecked className="h-4 w-4" />
         Ontvanger ook een kopie van het getekende document mailen

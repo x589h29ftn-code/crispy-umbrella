@@ -88,6 +88,35 @@ teken-tokens + e-mail-OTP voor ondertekenaars; rate-limiting; strikte CSP en
 security-headers; append-only auditspoor; SHA-256-verzegeling van de eind-PDF.
 Zie het projectplan voor de volledige beschrijving (9 lagen "defense in depth").
 
+## Veelgestelde beveiligings- en bezorgingsvragen
+
+**Hoe worden geüploade bestanden bewaard en voor hoelang?**
+Documenten worden **AES-256-GCM versleuteld** opgeslagen op een volume (envelope-encryptie:
+unieke sleutel + IV per document). De bestandsnamen zijn willekeurig; de leesbare sleutel staat
+nooit op schijf. Bewaartermijn is beleidsmatig: bewaar het **verzegelde** eindbestand in jullie
+eigen DMS/archief (fiscale bewaarplicht), en laat het portaal de tussenbestanden opschonen. Een
+instelbare automatische opschoning (retentie in dagen) staat op de roadmap hieronder; tot die tijd
+kunnen dossiers handmatig worden ingetrokken/verwijderd.
+
+**Kan een onbevoegde per ongeluk de juiste URL raden en bij een bestand?**
+Nee. De tekenlink bevat een **256-bits willekeurige token** (2^256 mogelijkheden — niet te raden),
+die alleen als **HMAC-hash** in de database staat, **eenmalig** bruikbaar is en **verloopt**. Het
+document zelf is bovendien pas zichtbaar **ná de e-mail/sms-verificatiecode**. Interne pagina's en
+downloads vereisen inlog én eigenaarschap/rol-controle. De tokeneindpunten zijn ook per IP
+**rate-limited**. Kortom: een verkeerde/geraden URL levert niets op.
+
+**Hoe voorkomen we de spamfolder (bezorgbaarheid)?**
+Stel op het verzendende domein correct **SPF**, **DKIM** en **DMARC** in en laat het `From`-adres
+(`MAIL_FROM`) overeenkomen met dat domein. Bij Microsoft 365: schakel DKIM in via het Defender-
+portaal en publiceer het SPF-record. Voor de beste afleverbaarheid (en bounce-/open-inzicht) kan
+`MAIL_TRANSPORT` naar **Postmark** of **Resend** met een geverifieerd domein — zonder codewijziging.
+Gebruik bij voorkeur een net subdomein (bijv. `noreply@post.ottovisseraccountants.nl`).
+
+**Hoe lang is een uitnodiging geldig, en herinneringen?**
+Standaard **10 dagen**, per dossier **instelbaar bij het aanmaken** (veld "Geldigheid uitnodiging").
+Je stuurt handmatig een **herinnering** vanaf de dossierpagina; die gaat alleen naar wie nu aan de
+beurt is. (Automatische herinneringen staan op de roadmap.)
+
 ## Wat hierna komt (fase 2/3)
 
 Volgordelijk tekenen, automatische herinneringen/vervaltermijn, TOTP-backupcodes,

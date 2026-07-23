@@ -21,16 +21,18 @@ export function OfficeSign({
   recipientId,
   dossierId,
   title,
-  fields
+  fields,
+  savedSignature
 }: {
   recipientId: string
   dossierId: string
   title: string
   fields: FieldRect[]
+  savedSignature?: string | null
 }) {
   const router = useRouter()
-  const [mode, setMode] = useState<'draw' | 'type'>('draw')
-  const [signature, setSignature] = useState<string | null>(null)
+  const [mode, setMode] = useState<'saved' | 'draw' | 'type'>(savedSignature ? 'saved' : 'draw')
+  const [signature, setSignature] = useState<string | null>(savedSignature ?? null)
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [done, setDone] = useState(false)
@@ -126,15 +128,18 @@ export function OfficeSign({
                 ref={(el) => {
                   canvasRefs.current[i] = el
                 }}
-                className="block rounded-lg"
+                className="block h-auto max-w-full rounded-lg"
               />
               {size &&
                 fields
                   .filter((f) => f.page === i)
                   .map((f, idx) => (
-                    <div
+                    <button
                       key={idx}
-                      className="absolute flex items-center justify-center rounded border-2 border-brand-500 bg-brand-500/10"
+                      type="button"
+                      aria-label="Ga naar ondertekenen"
+                      onClick={() => document.getElementById('ondertekenen')?.scrollIntoView({ behavior: 'smooth' })}
+                      className="absolute flex items-center justify-center rounded border-2 border-brand-500 bg-brand-500/10 hover:bg-brand-500/20"
                       style={{
                         left: `${(f.x / size.w) * 100}%`,
                         top: `${((size.h - (f.y + f.height)) / size.h) * 100}%`,
@@ -142,27 +147,57 @@ export function OfficeSign({
                         height: `${(f.height / size.h) * 100}%`
                       }}
                     >
-                      <span className="pointer-events-none text-[10px] font-semibold text-brand-700">Teken hier</span>
-                    </div>
+                      <span className="text-[10px] font-semibold text-brand-700">Teken hier</span>
+                    </button>
                   ))}
             </div>
           )
         })}
       </div>
 
-      <div className="card space-y-4 p-6">
+      <div id="ondertekenen" className="card space-y-4 p-6">
         <h2 className="flex items-center gap-2 text-lg font-semibold">
           <PenLine className="h-5 w-5" /> Uw handtekening
         </h2>
-        <div className="flex gap-2">
-          <button onClick={() => setMode('draw')} className={mode === 'draw' ? 'btn-primary text-sm' : 'btn-secondary text-sm'}>
+        <div className="flex flex-wrap gap-2">
+          {savedSignature && (
+            <button
+              onClick={() => {
+                setMode('saved')
+                setSignature(savedSignature)
+              }}
+              className={mode === 'saved' ? 'btn-primary text-sm' : 'btn-secondary text-sm'}
+            >
+              Opgeslagen handtekening
+            </button>
+          )}
+          <button
+            onClick={() => {
+              setMode('draw')
+              setSignature(null)
+            }}
+            className={mode === 'draw' ? 'btn-primary text-sm' : 'btn-secondary text-sm'}
+          >
             Tekenen
           </button>
-          <button onClick={() => setMode('type')} className={mode === 'type' ? 'btn-primary text-sm' : 'btn-secondary text-sm'}>
+          <button
+            onClick={() => {
+              setMode('type')
+              setSignature(null)
+            }}
+            className={mode === 'type' ? 'btn-primary text-sm' : 'btn-secondary text-sm'}
+          >
             Typen
           </button>
         </div>
-        {mode === 'draw' ? <DrawSignature onChange={setSignature} /> : <TypeSignature onChange={setSignature} />}
+        {mode === 'saved' && savedSignature ? (
+          // eslint-disable-next-line @next/next/no-img-element
+          <img src={savedSignature} alt="Uw opgeslagen handtekening" className="max-h-24 rounded-lg border border-slate-200 bg-white p-2" />
+        ) : mode === 'draw' ? (
+          <DrawSignature onChange={setSignature} />
+        ) : (
+          <TypeSignature onChange={setSignature} />
+        )}
         {error && <p className="text-sm text-rose-600">{error}</p>}
         <div className="flex items-center gap-3">
           <button className="btn-primary" onClick={submit} disabled={busy || !signature}>

@@ -103,7 +103,7 @@ export function RecipientPicker({ onAdd }: { onAdd: (r: PickedClient) => void })
                   onClick={() => choose(s)}
                 >
                   <span className="font-medium">{s.displayName}</span>
-                  <span className="text-xs text-slate-400">
+                  <span className="text-xs text-slate-500">
                     {(s.contactName ? s.contactName + ' · ' : '') + (s.email ?? 'geen e-mail')}
                   </span>
                 </button>
@@ -113,11 +113,11 @@ export function RecipientPicker({ onAdd }: { onAdd: (r: PickedClient) => void })
         )}
       </div>
       <div className="grid grid-cols-2 gap-2">
-        <input className="input" placeholder="Naam ontvanger" value={name} onChange={(e) => setName(e.target.value)} />
+        <input className="input" placeholder="Naam ondertekenaar" value={name} onChange={(e) => setName(e.target.value)} />
         <input className="input" placeholder="E-mailadres" type="email" value={email} onChange={(e) => setEmail(e.target.value)} />
       </div>
       <button type="button" className="btn-secondary w-full text-sm" onClick={add} disabled={!name.trim() || !/.+@.+\..+/.test(email)}>
-        + Ontvanger toevoegen
+        + Ondertekenaar toevoegen
       </button>
     </div>
   )

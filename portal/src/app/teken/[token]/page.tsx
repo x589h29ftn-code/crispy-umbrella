@@ -1,17 +1,22 @@
 import { ShieldAlert } from 'lucide-react'
+import { headers } from 'next/headers'
 import { prisma } from '@/lib/db'
 import { resolveToken } from '@/lib/signflow'
 import { writeAudit } from '@/lib/audit'
+import { consume } from '@/lib/ratelimit'
 import { SignFlow } from './SignFlow'
 
 export const dynamic = 'force-dynamic'
 
 export default async function TekenPage({ params }: { params: { token: string } }) {
-  const resolved = await resolveToken(params.token)
+  const ip = headers().get('x-forwarded-for')?.split(',')[0]?.trim() || headers().get('x-real-ip') || 'onbekend'
+  const withinLimit = await consume('token', ip)
+
+  const resolved = withinLimit ? await resolveToken(params.token) : { ok: false as const, reason: 'onbekend' as const }
 
   if (!resolved.ok) {
     const messages: Record<string, string> = {
-      onbekend: 'Deze tekenlink is ongeldig.',
+      onbekend: withinLimit ? 'Deze tekenlink is ongeldig.' : 'Te veel verzoeken. Probeer het over enkele minuten opnieuw.',
       verlopen: 'Deze tekenlink is verlopen. Vraag de afzender om een nieuwe.',
       gebruikt: 'Dit document is al ondertekend of de link is al gebruikt.',
       afgerond: 'Dit ondertekenverzoek is niet meer actief.'
