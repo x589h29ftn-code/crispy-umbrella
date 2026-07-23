@@ -11,6 +11,7 @@ import { writeAudit } from '@/lib/audit'
 import { sendMail } from '@/lib/email/transport'
 import { requestEmail, completedEmail, officeTurnEmail } from '@/lib/email/templates'
 import { renderTemplate, firstNameFrom } from '@/lib/docanalyze/templates'
+import { archiveDossier, archiveEnabled } from '@/lib/archive'
 
 export type ResolveResult =
   | { ok: true; recipient: Recipient; dossier: Dossier }
@@ -244,7 +245,11 @@ export async function advanceWorkflow(dossierId: string): Promise<void> {
 async function finalize(dossierId: string): Promise<void> {
   const dossier = await prisma.dossier.findUnique({
     where: { id: dossierId },
-    include: { recipients: { orderBy: { order: 'asc' } }, owner: true, documents: { orderBy: { order: 'asc' } } }
+    include: {
+      recipients: { orderBy: { order: 'asc' }, include: { client: true } },
+      owner: true,
+      documents: { orderBy: { order: 'asc' } }
+    }
   })
   if (!dossier) return
   if (dossier.status === 'ONDERTEKEND') return
@@ -278,6 +283,19 @@ async function finalize(dossierId: string): Promise<void> {
     data: { status: 'ONDERTEKEND', completedAt: new Date() }
   })
   await writeAudit({ type: 'VERZEGELD', dossierId, metadata: { hashes } })
+
+  // Getekende stukken automatisch in de klantmap zetten (indien ingesteld).
+  if (archiveEnabled() && attachments.length > 0) {
+    const clientRec = dossier.recipients.find((r) => r.client)
+    const clientName = clientRec?.client?.displayName ?? clientRec?.name ?? dossier.title
+    try {
+      const res = await archiveDossier({ clientName, dossierTitle: dossier.title, files: attachments })
+      await writeAudit({ type: 'GEARCHIVEERD', dossierId, message: `${res.archived} bestand(en) naar ${res.driver}`, metadata: { target: res.target } })
+    } catch (e) {
+      console.error('[finalize archief]', e)
+      await writeAudit({ type: 'GEARCHIVEERD', dossierId, message: `mislukt: ${(e as Error).message}` })
+    }
+  }
 
   const targets = [
     ...(dossier.sendCopyToRecipient ? dossier.recipients.map((r) => ({ name: r.name, email: r.email })) : []),
