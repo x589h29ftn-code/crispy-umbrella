@@ -1,6 +1,7 @@
 import { UserActions } from './UserActions'
 
-export function UserRow({
+/** Kaartweergave van een gebruiker op kleine schermen. */
+export function UserCard({
   id,
   name,
   email,
@@ -16,22 +17,22 @@ export function UserRow({
   isSelf: boolean
 }) {
   return (
-    <tr className="hover:bg-slate-50">
-      <td className="px-4 py-3">
-        <div className="font-medium">{name}</div>
-        <div className="text-xs text-slate-400">{email}</div>
-      </td>
-      <td className="px-4 py-3 text-slate-600">{role === 'BEHEERDER' ? 'Beheerder' : 'Medewerker'}</td>
-      <td className="px-4 py-3">
+    <li className="p-4">
+      <div className="flex items-start justify-between gap-3">
+        <div>
+          <div className="font-medium">{name}</div>
+          <div className="text-xs text-slate-400">{email}</div>
+        </div>
         {active ? (
           <span className="badge bg-emerald-50 text-emerald-700 ring-emerald-200">Actief</span>
         ) : (
           <span className="badge bg-slate-100 text-slate-500 ring-slate-200">Inactief</span>
         )}
-      </td>
-      <td className="px-4 py-3 text-right">
+      </div>
+      <div className="mt-1 text-xs text-slate-500">{role === 'BEHEERDER' ? 'Beheerder' : 'Medewerker'}</div>
+      <div className="mt-2">
         <UserActions id={id} active={active} isSelf={isSelf} />
-      </td>
-    </tr>
+      </div>
+    </li>
   )
 }

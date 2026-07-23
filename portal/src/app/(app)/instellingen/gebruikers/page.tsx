@@ -2,6 +2,7 @@ import { prisma } from '@/lib/db'
 import { requireBeheerder } from '@/lib/auth/session'
 import { CreateUserForm } from './CreateUserForm'
 import { UserRow } from './UserRow'
+import { UserCard } from './UserCard'
 
 export default async function GebruikersPage() {
   const me = await requireBeheerder()
@@ -20,7 +21,7 @@ export default async function GebruikersPage() {
       </section>
 
       <section className="card overflow-hidden">
-        <table className="w-full text-sm">
+        <table className="hidden w-full text-sm md:table">
           <thead className="border-b border-slate-200 bg-slate-50 text-left text-xs uppercase tracking-wide text-slate-500">
             <tr>
               <th className="px-4 py-3">Naam</th>
@@ -31,18 +32,17 @@ export default async function GebruikersPage() {
           </thead>
           <tbody className="divide-y divide-slate-100">
             {users.map((u) => (
-              <UserRow
-                key={u.id}
-                id={u.id}
-                name={u.name}
-                email={u.email}
-                role={u.role}
-                active={u.active}
-                isSelf={u.id === me.id}
-              />
+              <UserRow key={u.id} id={u.id} name={u.name} email={u.email} role={u.role} active={u.active} isSelf={u.id === me.id} />
             ))}
           </tbody>
         </table>
+
+        {/* Kaartweergave op kleine schermen (telefoon) */}
+        <ul className="divide-y divide-slate-100 md:hidden">
+          {users.map((u) => (
+            <UserCard key={u.id} id={u.id} name={u.name} email={u.email} role={u.role} active={u.active} isSelf={u.id === me.id} />
+          ))}
+        </ul>
       </section>
     </div>
   )

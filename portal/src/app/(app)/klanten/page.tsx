@@ -53,7 +53,8 @@ export default async function KlantenPage({ searchParams }: { searchParams: { q?
             <p>Nog geen cliënten. Voeg er een toe of importeer uit Excel.</p>
           </div>
         ) : (
-          <table className="w-full text-sm">
+          <>
+          <table className="hidden w-full text-sm md:table">
             <thead className="border-b border-slate-200 bg-slate-50 text-left text-xs uppercase tracking-wide text-slate-500">
               <tr>
                 <th className="px-4 py-3">Naam</th>
@@ -85,6 +86,27 @@ export default async function KlantenPage({ searchParams }: { searchParams: { q?
               ))}
             </tbody>
           </table>
+
+          {/* Kaartweergave op kleine schermen (telefoon) */}
+          <ul className="divide-y divide-slate-100 md:hidden">
+            {clients.map((c) => (
+              <li key={c.id} className="flex items-start justify-between gap-3 p-4">
+                <div className="min-w-0">
+                  <Link href={`/klanten/${c.id}`} className="font-medium text-brand-700 hover:underline">
+                    {c.displayName}
+                  </Link>
+                  {c.companyName && c.companyName !== c.displayName && (
+                    <div className="text-xs text-slate-400">{c.companyName}</div>
+                  )}
+                  <div className="mt-1 text-sm text-slate-600">{c.contactName ?? '-'}</div>
+                  <div className="text-xs text-slate-400">{c.email ?? '-'}</div>
+                  {c.city && <div className="text-xs text-slate-400">{c.city}</div>}
+                </div>
+                <DeleteClientButton id={c.id} name={c.displayName} />
+              </li>
+            ))}
+          </ul>
+          </>
         )}
       </div>
     </div>
