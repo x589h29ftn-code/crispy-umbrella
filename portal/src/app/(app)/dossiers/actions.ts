@@ -8,13 +8,12 @@ import { env } from '@/env'
 import { requireAccountant, requestContext } from '@/lib/auth/session'
 import { storage } from '@/lib/storage'
 import { convertOfficeToPdf, OFFICE_EXTENSIONS } from '@/lib/pdf/officeConvert'
-import { stampSignatureImage } from '@/lib/pdf/signing'
 import { dossierCreateSchema, saveFieldsSchema, type SaveFieldsInput } from '@/lib/validation/schemas'
 import { writeAudit } from '@/lib/audit'
-import { recomputeStatus } from '@/lib/status'
 import { generateSigningToken } from '@/lib/auth/signingToken'
 import { sendMail } from '@/lib/email/transport'
-import { requestEmail, reminderEmail } from '@/lib/email/templates'
+import { reminderEmail, officeTurnEmail } from '@/lib/email/templates'
+import { activateInitial, currentSigners } from '@/lib/signflow'
 
 export interface FormState {
   error?: string
@@ -88,39 +87,37 @@ export async function saveFieldsAction(
 
   const parsed = saveFieldsSchema.safeParse(payload)
   if (!parsed.success) return { ok: false, error: parsed.error.issues[0]?.message ?? 'Ongeldige velden.' }
-  const { selfFields, recipients } = parsed.data
-  if (recipients.length === 0) return { ok: false, error: 'Voeg minstens één ontvanger toe.' }
+  const { signingMode, signers } = parsed.data
+  if (signers.length === 0) return { ok: false, error: 'Voeg minstens één ondertekenaar toe.' }
 
-  // Vervang bestaande ontvangers/velden (dossier is nog concept).
+  // Vervang bestaande ondertekenaars/velden (dossier is nog concept).
   await prisma.$transaction([
     prisma.signatureField.deleteMany({ where: { dossierId } }),
     prisma.recipient.deleteMany({ where: { dossierId } })
   ])
 
   await prisma.$transaction(async (tx) => {
-    for (const [i, r] of recipients.entries()) {
+    for (const [i, s] of signers.entries()) {
+      const isOffice = s.kind === 'office'
       const recipient = await tx.recipient.create({
         data: {
           dossierId,
-          clientId: r.clientId ?? null,
-          role: 'EXTERN',
-          name: r.name,
-          email: r.email.toLowerCase(),
-          phone: r.phone ?? null,
-          verificationMethod: r.verificationMethod,
+          clientId: isOffice ? null : s.clientId ?? null,
+          accountantId: isOffice ? s.accountantId ?? null : null,
+          role: isOffice ? 'ZELF' : 'EXTERN',
+          name: s.name,
+          email: s.email.toLowerCase(),
+          phone: s.phone ?? null,
+          verificationMethod: s.verificationMethod,
           order: i
         }
       })
       await tx.signatureField.createMany({
-        data: r.fields.map((f) => ({ dossierId, recipientId: recipient.id, ...f }))
-      })
-    }
-    if (selfFields.length) {
-      await tx.signatureField.createMany({
-        data: selfFields.map((f) => ({ dossierId, recipientId: null, ...f }))
+        data: s.fields.map((f) => ({ dossierId, recipientId: recipient.id, ...f }))
       })
     }
   })
+  await prisma.dossier.update({ where: { id: dossierId }, data: { signingMode } })
 
   revalidatePath(`/dossiers/${dossierId}`)
   return { ok: true }
@@ -129,56 +126,19 @@ export async function saveFieldsAction(
 export async function sendDossierAction(dossierId: string): Promise<{ ok: boolean; error?: string }> {
   const owned = await ownedDossier(dossierId)
   if (!owned) return { ok: false, error: 'Dossier niet gevonden.' }
-  const { acc, dossier } = owned
+  const { dossier } = owned
   if (dossier.status !== 'CONCEPT') return { ok: false, error: 'Dit dossier is al verstuurd.' }
-  if (dossier.recipients.length === 0) return { ok: false, error: 'Geen ontvangers ingesteld.' }
+  if (dossier.recipients.length === 0) return { ok: false, error: 'Geen ondertekenaars ingesteld.' }
   if (!dossier.workingKey) return { ok: false, error: 'Documentbestand ontbreekt.' }
 
-  const store = storage()
-
-  // Stempel de eigen handtekening op de eventuele eigen velden.
-  const selfFields = dossier.fields.filter((f) => f.recipientId === null)
-  if (selfFields.length) {
-    if (!acc.signaturePng) {
-      return { ok: false, error: 'Stel eerst uw eigen handtekening in bij Instellingen.' }
-    }
-    let bytes = await store.get(dossier.workingKey)
-    for (const f of selfFields) {
-      bytes = Buffer.from(
-        await stampSignatureImage(bytes, { page: f.page, x: f.x, y: f.y, width: f.width, height: f.height }, acc.signaturePng)
-      )
-    }
-    const newKey = await store.put(bytes, 'pdf')
-    await store.remove(dossier.workingKey)
-    await prisma.dossier.update({ where: { id: dossier.id }, data: { workingKey: newKey } })
-    await prisma.signatureField.updateMany({ where: { dossierId, recipientId: null }, data: { filled: true } })
-  }
-
   const ttlMs = env.SIGN_LINK_TTL_DAYS * 24 * 60 * 60 * 1000
-  const expiresAt = new Date(Date.now() + ttlMs)
-
-  for (const r of dossier.recipients) {
-    const { raw, hash } = generateSigningToken()
-    await prisma.recipient.update({
-      where: { id: r.id },
-      data: { tokenHash: hash, tokenExpiresAt: expiresAt, tokenUsedAt: null }
-    })
-    const url = `${env.APP_URL}/teken/${raw}`
-    const mail = requestEmail({
-      recipientName: r.name,
-      senderName: acc.name,
-      documentTitle: dossier.title,
-      url,
-      message: dossier.message
-    })
-    await sendMail({ to: r.email, ...mail })
-    await writeAudit({ type: 'VERZONDEN', dossierId, recipientId: r.id, accountantId: acc.id, message: r.email })
-  }
-
   await prisma.dossier.update({
     where: { id: dossier.id },
-    data: { status: 'VERZONDEN', sentAt: new Date(), expiresAt }
+    data: { status: 'VERZONDEN', sentAt: new Date(), expiresAt: new Date(Date.now() + ttlMs) }
   })
+  // Activeer de eerste (sequentieel) of iedereen (parallel), inclusief e-mails.
+  await activateInitial(dossier.id)
+
   revalidatePath(`/dossiers/${dossierId}`)
   revalidatePath('/dashboard')
   return { ok: true }
@@ -191,32 +151,33 @@ export async function remindDossierAction(dossierId: string): Promise<{ ok: bool
   if (!['VERZONDEN', 'GEDEELTELIJK'].includes(dossier.status)) {
     return { ok: false, error: 'Er is niets om aan te herinneren.' }
   }
-  const pending = dossier.recipients.filter((r) => r.status === 'PENDING')
-  if (pending.length === 0) return { ok: false, error: 'Alle ontvangers hebben al getekend.' }
+  // Alleen de ondertekenaar(s) die nú aan de beurt zijn krijgen een herinnering.
+  const active = currentSigners(dossier, dossier.recipients)
+  if (active.length === 0) return { ok: false, error: 'Er is niemand die nu aan de beurt is.' }
 
   const ttlMs = env.SIGN_LINK_TTL_DAYS * 24 * 60 * 60 * 1000
-  for (const r of pending) {
-    let raw: string
-    if (!r.tokenHash || !r.tokenExpiresAt || r.tokenExpiresAt.getTime() < Date.now()) {
-      const t = generateSigningToken()
-      raw = t.raw
-      await prisma.recipient.update({
-        where: { id: r.id },
-        data: { tokenHash: t.hash, tokenExpiresAt: new Date(Date.now() + ttlMs), tokenUsedAt: null }
+  for (const r of active) {
+    if (r.role === 'ZELF' && r.accountantId) {
+      const mail = officeTurnEmail({
+        recipientName: r.name,
+        documentTitle: dossier.title,
+        url: `${env.APP_URL}/te-ondertekenen`
       })
+      await sendMail({ to: r.email, ...mail })
     } else {
-      // Bestaande, nog geldige link opnieuw sturen is niet mogelijk (we bewaren
-      // alleen de hash) — geef daarom een nieuwe token uit.
       const t = generateSigningToken()
-      raw = t.raw
       await prisma.recipient.update({
         where: { id: r.id },
         data: { tokenHash: t.hash, tokenExpiresAt: new Date(Date.now() + ttlMs), tokenUsedAt: null }
       })
+      const mail = reminderEmail({
+        recipientName: r.name,
+        senderName: acc.name,
+        documentTitle: dossier.title,
+        url: `${env.APP_URL}/teken/${t.raw}`
+      })
+      await sendMail({ to: r.email, ...mail })
     }
-    const url = `${env.APP_URL}/teken/${raw}`
-    const mail = reminderEmail({ recipientName: r.name, senderName: acc.name, documentTitle: dossier.title, url })
-    await sendMail({ to: r.email, ...mail })
     await writeAudit({ type: 'HERINNERD', dossierId, recipientId: r.id, accountantId: acc.id, message: r.email })
   }
   await prisma.dossier.update({ where: { id: dossier.id }, data: { lastReminderAt: new Date() } })

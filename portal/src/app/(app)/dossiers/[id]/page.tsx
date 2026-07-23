@@ -6,6 +6,7 @@ import { requireAccountant } from '@/lib/auth/session'
 import { StatusBadge } from '@/components/StatusBadge'
 import { DossierActions } from './DossierActions'
 import { PARTY_LABEL } from '@/lib/status'
+import { currentSigners } from '@/lib/signflow'
 import { formatDateTime } from '@/lib/utils'
 
 const AUDIT_LABEL: Record<string, string> = {
@@ -37,6 +38,9 @@ export default async function DossierDetailPage({ params }: { params: { id: stri
   if (dossier.ownerId !== acc.id && acc.role !== 'BEHEERDER') notFound()
 
   const canDownload = !!dossier.sealedKey || !!dossier.workingKey
+  const active = currentSigners(dossier, dossier.recipients)
+  const activeIds = new Set(active.map((a) => a.id))
+  const showWaiting = ['VERZONDEN', 'GEDEELTELIJK'].includes(dossier.status) && active.length > 0
 
   return (
     <div className="space-y-6">
@@ -81,17 +85,45 @@ export default async function DossierDetailPage({ params }: { params: { id: stri
             )}
           </section>
 
+          {showWaiting && (
+            <div className="rounded-lg border border-blue-200 bg-blue-50 p-4 text-sm text-blue-800">
+              <span className="font-medium">Wacht op handtekening van:</span>{' '}
+              {active.map((a) => a.name).join(', ')}
+              {dossier.signingMode === 'SEQUENTIAL' && ' (één voor één)'}
+            </div>
+          )}
+
           <section className="card p-6">
-            <h2 className="mb-4 text-lg font-semibold">Ontvangers</h2>
+            <div className="mb-4 flex items-center justify-between">
+              <h2 className="text-lg font-semibold">Ondertekenaars</h2>
+              <span className="text-xs text-slate-500">
+                {dossier.signingMode === 'SEQUENTIAL' ? 'Op volgorde' : 'Iedereen tegelijk'}
+              </span>
+            </div>
             {dossier.recipients.length === 0 ? (
               <p className="text-sm text-slate-500">Nog geen ontvangers ingesteld.</p>
             ) : (
               <ul className="divide-y divide-slate-100">
-                {dossier.recipients.map((r) => (
+                {dossier.recipients.map((r, i) => (
                   <li key={r.id} className="flex items-center justify-between py-3">
-                    <div>
-                      <div className="font-medium">{r.name}</div>
-                      <div className="text-xs text-slate-400">{r.email}</div>
+                    <div className="flex items-center gap-3">
+                      {dossier.signingMode === 'SEQUENTIAL' && (
+                        <span className="flex h-6 w-6 items-center justify-center rounded-full bg-slate-100 text-xs font-semibold text-slate-600">
+                          {i + 1}
+                        </span>
+                      )}
+                      <div>
+                        <div className="flex items-center gap-2 font-medium">
+                          {r.name}
+                          {r.role === 'ZELF' && (
+                            <span className="badge bg-slate-100 text-slate-600 ring-slate-200">kantoor</span>
+                          )}
+                          {activeIds.has(r.id) && r.status === 'PENDING' && (
+                            <span className="badge bg-blue-50 text-blue-700 ring-blue-200">aan de beurt</span>
+                          )}
+                        </div>
+                        <div className="text-xs text-slate-400">{r.email}</div>
+                      </div>
                     </div>
                     <div className="flex items-center gap-2 text-sm">
                       {r.status === 'SIGNED' ? (

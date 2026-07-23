@@ -1,20 +1,21 @@
 import 'server-only'
 import type { Dossier, Recipient } from '@prisma/client'
 import { prisma } from '@/lib/db'
-import { hashSigningToken } from '@/lib/auth/signingToken'
+import { env } from '@/env'
+import { hashSigningToken, generateSigningToken } from '@/lib/auth/signingToken'
 import { storage } from '@/lib/storage'
 import { stampSignatureImage } from '@/lib/pdf/signing'
 import { sealDocument } from '@/lib/pdf/seal'
 import { recomputeStatus } from '@/lib/status'
 import { writeAudit } from '@/lib/audit'
 import { sendMail } from '@/lib/email/transport'
-import { completedEmail } from '@/lib/email/templates'
+import { requestEmail, completedEmail, officeTurnEmail } from '@/lib/email/templates'
 
 export type ResolveResult =
   | { ok: true; recipient: Recipient; dossier: Dossier }
   | { ok: false; reason: 'onbekend' | 'verlopen' | 'gebruikt' | 'afgerond' }
 
-/** Zoekt de ontvanger bij een ruwe tekentoken en valideert de geldigheid. */
+/** Zoekt de externe ontvanger bij een ruwe tekentoken en valideert geldigheid. */
 export async function resolveToken(raw: string): Promise<ResolveResult> {
   if (!raw || raw.length < 10) return { ok: false, reason: 'onbekend' }
   const recipient = await prisma.recipient.findUnique({
@@ -31,7 +32,72 @@ export async function resolveToken(raw: string): Promise<ResolveResult> {
   return { ok: true, recipient, dossier }
 }
 
-/** Verwerkt de handtekening van één ontvanger en verzegelt zodra alles rond is. */
+// ---- Workflow: activeren en doorschuiven ----
+
+/**
+ * Activeert één ondertekenaar: een externe cliënt krijgt een tekentoken +
+ * e-mail met de link; een kantoorgebruiker krijgt een melding dat het document
+ * in het portaal op zijn handtekening wacht.
+ */
+export async function activateSigner(recipientId: string): Promise<void> {
+  const r = await prisma.recipient.findUnique({ where: { id: recipientId }, include: { dossier: { include: { owner: true } } } })
+  if (!r) return
+  const dossier = r.dossier
+
+  if (r.role === 'ZELF' && r.accountantId) {
+    // Kantoorgebruiker: tekent ingelogd in het portaal.
+    const mail = officeTurnEmail({
+      recipientName: r.name,
+      documentTitle: dossier.title,
+      url: `${env.APP_URL}/te-ondertekenen`
+    })
+    await sendMail({ to: r.email, ...mail }).catch((e) => console.error('[activate office mail]', e))
+    await writeAudit({ type: 'VERZONDEN', dossierId: dossier.id, recipientId: r.id, message: `${r.email} (kantoor)` })
+    return
+  }
+
+  // Externe cliënt: eenmalige token + uitnodigingsmail met de link.
+  const ttlMs = env.SIGN_LINK_TTL_DAYS * 24 * 60 * 60 * 1000
+  const { raw, hash } = generateSigningToken()
+  await prisma.recipient.update({
+    where: { id: r.id },
+    data: { tokenHash: hash, tokenExpiresAt: new Date(Date.now() + ttlMs), tokenUsedAt: null }
+  })
+  const mail = requestEmail({
+    recipientName: r.name,
+    senderName: dossier.owner.name,
+    documentTitle: dossier.title,
+    url: `${env.APP_URL}/teken/${raw}`,
+    message: dossier.message
+  })
+  await sendMail({ to: r.email, ...mail }).catch((e) => console.error('[activate client mail]', e))
+  await writeAudit({ type: 'VERZONDEN', dossierId: dossier.id, recipientId: r.id, message: r.email })
+}
+
+/** Activeert bij het versturen: sequentieel de eerste, parallel iedereen. */
+export async function activateInitial(dossierId: string): Promise<void> {
+  const dossier = await prisma.dossier.findUnique({
+    where: { id: dossierId },
+    include: { recipients: { orderBy: { order: 'asc' } } }
+  })
+  if (!dossier) return
+  const pending = dossier.recipients.filter((r) => r.status === 'PENDING')
+  if (pending.length === 0) return
+  if (dossier.signingMode === 'SEQUENTIAL') {
+    await activateSigner(pending[0].id)
+  } else {
+    for (const r of pending) await activateSigner(r.id)
+  }
+}
+
+/** Geeft de ondertekenaar(s) die nu aan de beurt zijn. */
+export function currentSigners<T extends { status: string; order: number }>(dossier: { signingMode: string }, recipients: T[]): T[] {
+  const pending = recipients.filter((r) => r.status === 'PENDING').sort((a, b) => a.order - b.order)
+  if (pending.length === 0) return []
+  return dossier.signingMode === 'SEQUENTIAL' ? [pending[0]] : pending
+}
+
+/** Verwerkt de handtekening van één ondertekenaar en schuift de workflow door. */
 export async function applySignature(
   recipientId: string,
   signatureDataUrl: string,
@@ -72,43 +138,81 @@ export async function applySignature(
     userAgent: ctx.userAgent
   })
 
-  await finalizeIfComplete(dossier.id)
+  await advanceWorkflow(dossier.id)
 }
 
-/** Zet DECLINED en werkt de dossierstatus bij. */
+/** Zet DECLINED en werkt de workflow bij. */
 export async function declineSignature(
   recipientId: string,
   reason: string | undefined,
   ctx: { ip?: string; userAgent?: string }
 ): Promise<void> {
-  const recipient = await prisma.recipient.findUnique({ where: { id: recipientId }, include: { dossier: true } })
+  const recipient = await prisma.recipient.findUnique({ where: { id: recipientId } })
   if (!recipient) return
   await prisma.recipient.update({
     where: { id: recipientId },
     data: { status: 'DECLINED', declinedReason: reason || null, tokenUsedAt: new Date() }
   })
   await writeAudit({ type: 'GEWEIGERD', dossierId: recipient.dossierId, recipientId, message: reason || undefined, ...ctx })
-  const all = await prisma.recipient.findMany({ where: { dossierId: recipient.dossierId } })
-  const status = recomputeStatus(recipient.dossier.status, all)
-  await prisma.dossier.update({ where: { id: recipient.dossierId }, data: { status } })
+  await advanceWorkflow(recipient.dossierId)
 }
 
-/** Herberekent de status en verzegelt + mailt zodra alle partijen getekend hebben. */
-export async function finalizeIfComplete(dossierId: string): Promise<void> {
+/**
+ * Herberekent de status, activeert bij sequentieel de volgende ondertekenaar,
+ * en verzegelt + mailt zodra iedereen getekend heeft.
+ */
+export async function advanceWorkflow(dossierId: string): Promise<void> {
   const dossier = await prisma.dossier.findUnique({
     where: { id: dossierId },
-    include: { recipients: true, fields: true, owner: true }
+    include: { recipients: { orderBy: { order: 'asc' } }, owner: true }
   })
   if (!dossier) return
 
   const status = recomputeStatus(dossier.status, dossier.recipients)
-  if (status !== 'ONDERTEKEND') {
-    if (status !== dossier.status) await prisma.dossier.update({ where: { id: dossierId }, data: { status } })
+  if (status === 'GEWEIGERD') {
+    await prisma.dossier.update({ where: { id: dossierId }, data: { status } })
+    // Verzender op de hoogte stellen.
+    await sendMail({
+      to: dossier.owner.email,
+      subject: `Ondertekening geweigerd: ${dossier.title}`,
+      text: `Een ontvanger heeft geweigerd het document "${dossier.title}" te ondertekenen.`,
+      html: `<p>Een ontvanger heeft geweigerd het document <strong>${dossier.title}</strong> te ondertekenen.</p>`
+    }).catch(() => {})
     return
   }
 
-  // Alles getekend → verzegelen.
-  if (!dossier.workingKey) return
+  const stillPending = dossier.recipients.filter((r) => r.status === 'PENDING')
+  if (stillPending.length === 0) {
+    await finalize(dossierId)
+    return
+  }
+
+  await prisma.dossier.update({ where: { id: dossierId }, data: { status } })
+
+  // Sequentieel: activeer de volgende die nog niet geactiveerd is.
+  if (dossier.signingMode === 'SEQUENTIAL') {
+    const next = stillPending[0]
+    const alreadyActivated = next.role === 'ZELF' ? false : !!next.tokenHash
+    // Voor kantoorgebruikers bepalen we 'reeds genotificeerd' aan de hand van
+    // een eerder VERZONDEN-auditregel.
+    const officeNotified =
+      next.role === 'ZELF' &&
+      (await prisma.auditEvent.count({ where: { dossierId, recipientId: next.id, type: 'VERZONDEN' } })) > 0
+    if (!alreadyActivated && !officeNotified) {
+      await activateSigner(next.id)
+    }
+  }
+}
+
+/** Verzegelt de definitieve PDF en verstuurt de kopieën. */
+async function finalize(dossierId: string): Promise<void> {
+  const dossier = await prisma.dossier.findUnique({
+    where: { id: dossierId },
+    include: { recipients: { orderBy: { order: 'asc' } }, owner: true }
+  })
+  if (!dossier || !dossier.workingKey) return
+  if (dossier.status === 'ONDERTEKEND') return
+
   const store = storage()
   const working = await store.get(dossier.workingKey)
   const { sealedBytes, sha256 } = await sealDocument({
@@ -129,17 +233,19 @@ export async function finalizeIfComplete(dossierId: string): Promise<void> {
   })
   await writeAudit({ type: 'VERZEGELD', dossierId, metadata: { sha256 } })
 
-  // Voltooiingsmails met de verzegelde PDF. De eigenaar/verzender krijgt hem
-  // altijd; de ontvangers alleen als de kopie-optie voor dit dossier aanstaat.
   const attachment = { filename: dossier.fileName, content: Buffer.from(sealedBytes) }
   const targets = [
     ...(dossier.sendCopyToRecipient ? dossier.recipients.map((r) => ({ name: r.name, email: r.email })) : []),
     { name: dossier.owner.name, email: dossier.owner.email }
   ]
+  // Dedupe op e-mailadres (eigenaar kan ook ondertekenaar zijn).
+  const seen = new Set<string>()
   for (const t of targets) {
+    if (seen.has(t.email.toLowerCase())) continue
+    seen.add(t.email.toLowerCase())
     const mail = completedEmail({ recipientName: t.name, documentTitle: dossier.title })
     await sendMail({ to: t.email, ...mail, attachments: [attachment] }).catch((e) =>
-      console.error('[signflow] voltooiingsmail mislukt', e)
+      console.error('[finalize mail]', e)
     )
   }
 }

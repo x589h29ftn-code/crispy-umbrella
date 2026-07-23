@@ -11,7 +11,13 @@ export async function GET(req: NextRequest, { params }: { params: { id: string }
 
   const dossier = await prisma.dossier.findUnique({ where: { id: params.id } })
   if (!dossier) return NextResponse.json({ error: 'Niet gevonden' }, { status: 404 })
-  if (dossier.ownerId !== acc.id && acc.role !== 'BEHEERDER') {
+  // Toegang: eigenaar, beheerder, of een kantoorgebruiker die zelf op dit
+  // dossier moet tekenen.
+  const isSigner =
+    dossier.ownerId !== acc.id && acc.role !== 'BEHEERDER'
+      ? (await prisma.recipient.count({ where: { dossierId: dossier.id, accountantId: acc.id } })) > 0
+      : true
+  if (!isSigner) {
     return NextResponse.json({ error: 'Geen toegang' }, { status: 403 })
   }
 

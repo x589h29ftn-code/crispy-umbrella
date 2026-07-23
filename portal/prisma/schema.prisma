@@ -46,6 +46,11 @@ enum VerificationMethod {
   SMS
 }
 
+enum SigningMode {
+  PARALLEL // iedereen tegelijk
+  SEQUENTIAL // één voor één, op volgorde
+}
+
 /// Medewerker/accountant van het kantoor.
 model Accountant {
   id           String   @id @default(cuid())
@@ -56,13 +61,15 @@ model Accountant {
   totpSecret   String? // versleuteld opgeslagen (AES-256-GCM)
   totpEnabled  Boolean  @default(false)
   signaturePng String? // opgeslagen handtekening (data-URL of opslagsleutel)
+  mustChangePassword Boolean @default(false) // nieuw aangemaakt account
   active       Boolean  @default(true)
   createdAt    DateTime @default(now())
   updatedAt    DateTime @updatedAt
 
-  sessions    Session[]
-  dossiers    Dossier[]
-  auditEvents AuditEvent[]
+  sessions        Session[]
+  dossiers        Dossier[]
+  auditEvents     AuditEvent[]
+  signerFor       Recipient[] // dossiers waarin deze medewerker een ondertekenaar is
 }
 
 /// Intrekbare serversessie. Alleen de hash van het sessietoken wordt bewaard.
@@ -121,6 +128,8 @@ model Dossier {
   message        String? // optioneel begeleidend bericht in de e-mail
   // Ontvanger na afronding ook een kopie mailen (standaard aan).
   sendCopyToRecipient Boolean @default(true)
+  // Volgorde van ondertekenen: iedereen tegelijk of één voor één.
+  signingMode         SigningMode @default(PARALLEL)
   expiresAt      DateTime?
   sentAt         DateTime?
   lastReminderAt DateTime?
@@ -142,6 +151,9 @@ model Recipient {
   dossier        Dossier     @relation(fields: [dossierId], references: [id], onDelete: Cascade)
   clientId       String?
   client         Client?     @relation(fields: [clientId], references: [id])
+  // Kantoorgebruiker die tekent (role = ZELF); leeg voor externe cliënten.
+  accountantId   String?
+  accountant     Accountant? @relation(fields: [accountantId], references: [id])
   role           PartyRole   @default(EXTERN)
   name           String
   email          String

@@ -3,6 +3,7 @@ import { requireAccountant } from '@/lib/auth/session'
 import { generateTotpSecret, encryptTotpSecret, decryptTotpSecret, totpQrDataUrl } from '@/lib/auth/totp'
 import { TwoFactorSetup } from './TwoFactorSetup'
 import { SignatureSetup } from './SignatureSetup'
+import { ChangePassword } from './ChangePassword'
 
 export default async function InstellingenPage() {
   const acc = await requireAccountant()
@@ -35,6 +36,16 @@ export default async function InstellingenPage() {
         <p className="text-sm text-slate-500">
           {acc.name} — {acc.email} ({acc.role === 'BEHEERDER' ? 'Beheerder' : 'Medewerker'})
         </p>
+      </section>
+
+      <section className="card p-6">
+        <h2 className="mb-3 text-lg font-semibold">Wachtwoord</h2>
+        {acc.mustChangePassword && (
+          <p className="mb-3 rounded-lg bg-amber-50 p-3 text-sm text-amber-800">
+            U logt in met een tijdelijk wachtwoord. Kies hieronder een eigen wachtwoord.
+          </p>
+        )}
+        <ChangePassword />
       </section>
 
       <section className="card p-6">
