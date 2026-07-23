@@ -17,7 +17,7 @@ function build(): Transporter {
         port: env.SMTP_PORT ?? 587,
         secure: env.SMTP_SECURE ?? false, // false = STARTTLS op 587
         auth: env.SMTP_USER ? { user: env.SMTP_USER, pass: env.SMTP_PASS } : undefined,
-        requireTLS: true
+        requireTLS: env.SMTP_REQUIRE_TLS
       })
   }
 }

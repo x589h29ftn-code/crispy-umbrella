@@ -1,0 +1,61 @@
+# Lokaal uitproberen op je eigen computer (met Docker Desktop).
+# Eén commando:  docker compose -f docker-compose.local.yml up -d --build
+# Daarna:        open http://localhost:3000  (portaal)
+#                open http://localhost:8025  (Mailpit: hier zie je alle e-mails)
+#
+# Dit is ALLEEN voor testen: de geheimen hieronder zijn vast en niet veilig.
+# Gebruik voor echt gebruik docker-compose.yml met eigen geheimen.
+
+services:
+  db:
+    image: postgres:16
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ovp
+      POSTGRES_PASSWORD: ovp
+      POSTGRES_DB: ovp_portaal
+    volumes:
+      - local_pgdata:/var/lib/postgresql/data
+
+  mailpit:
+    image: axllent/mailpit:latest
+    restart: unless-stopped
+    ports:
+      - '8025:8025' # webinterface om verstuurde e-mails te bekijken
+
+  web:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    depends_on:
+      - db
+      - mailpit
+    ports:
+      - '3000:3000'
+    environment:
+      NODE_ENV: production
+      APP_URL: http://localhost:3000
+      DATABASE_URL: postgresql://ovp:ovp@db:5432/ovp_portaal?schema=public
+      SESSION_SECRET: lokaal-testgeheim-minstens-32-tekens-1234
+      SIGNING_TOKEN_SECRET: lokaal-testgeheim-minstens-32-tekens-2345
+      STORAGE_ENCRYPTION_KEY: lokaal-testgeheim-minstens-32-tekens-3456
+      TOTP_ENCRYPTION_KEY: lokaal-testgeheim-minstens-32-tekens-4567
+      STORAGE_DRIVER: local
+      STORAGE_DIR: /data/documents
+      MAIL_TRANSPORT: smtp
+      SMTP_HOST: mailpit
+      SMTP_PORT: '1025'
+      SMTP_SECURE: 'false'
+      SMTP_REQUIRE_TLS: 'false'
+      MAIL_FROM: 'Otto Visser & Partners <test@localhost>'
+      # Eerste beheerder (voor db:seed):
+      SEED_ADMIN_EMAIL: mark@ottovisseraccountants.nl
+      SEED_ADMIN_PASSWORD: Test-Wachtwoord-1
+      SEED_ADMIN_NAME: Mark
+    volumes:
+      - local_documents:/data/documents
+
+volumes:
+  local_pgdata:
+  local_documents:
