@@ -14,9 +14,34 @@ import { generateSigningToken } from '@/lib/auth/signingToken'
 import { sendMail } from '@/lib/email/transport'
 import { reminderEmail, officeTurnEmail } from '@/lib/email/templates'
 import { activateInitial, currentSigners } from '@/lib/signflow'
+import { extractText } from '@/lib/docanalyze/extractText'
+import { classifyText } from '@/lib/docanalyze/classify'
+import { analyzeDocument, type AnalyzeResult } from '@/lib/docanalyze/analyze'
 
 export interface FormState {
   error?: string
+}
+
+/**
+ * Herkent een geüpload document (tekstlaag, met OCR-terugval) en stelt een
+ * titel en begeleidend bericht voor. Wordt vanuit het nieuw-dossierformulier
+ * aangeroepen zodra een bestand is gekozen. Wijzigt niets in de database.
+ */
+export async function analyzeDocumentAction(
+  formData: FormData
+): Promise<{ ok: false } | ({ ok: true } & AnalyzeResult)> {
+  const acc = await requireAccountant()
+  const file = formData.get('file')
+  if (!(file instanceof File) || file.size === 0 || file.size > 18_000_000) return { ok: false }
+  const ext = extname(file.name).slice(1).toLowerCase()
+  if (ext !== 'pdf' && !OFFICE_EXTENSIONS.includes(ext)) return { ok: false }
+  try {
+    const bytes = new Uint8Array(await file.arrayBuffer())
+    const result = await analyzeDocument(ext, bytes, acc.name)
+    return { ok: true, ...result }
+  } catch {
+    return { ok: false }
+  }
 }
 
 async function ownedDossier(id: string) {
@@ -44,7 +69,15 @@ export async function createDossierAction(_prev: FormState, formData: FormData):
   if (files.length > 20) return { error: 'Maximaal 20 documenten per verzoek.' }
 
   const store = storage()
-  const prepared: { title: string; fileName: string; originalKey: string; workingKey: string }[] = []
+  const prepared: {
+    title: string
+    fileName: string
+    originalKey: string
+    workingKey: string
+    detectedKind: ReturnType<typeof classifyText>['kind'] | null
+    detectedYear: number | null
+    ocrUsed: boolean
+  }[] = []
   for (const [i, file] of files.entries()) {
     if (file.size > 18_000_000) return { error: `"${file.name}" is te groot (max 18 MB).` }
     const ext = extname(file.name).slice(1).toLowerCase()
@@ -62,11 +95,28 @@ export async function createDossierAction(_prev: FormState, formData: FormData):
     } else {
       return { error: `"${file.name}": alleen PDF- of Word-bestanden worden ondersteund.` }
     }
+    // Herkenning voor inzicht/auditspoor (best-effort, blokkeert nooit).
+    let detectedKind: ReturnType<typeof classifyText>['kind'] | null = null
+    let detectedYear: number | null = null
+    let ocrUsed = false
+    try {
+      const src = ext === 'pdf' ? bytes : pdfBytes
+      const { text, ocrUsed: used } = await extractText(ext === 'pdf' ? 'pdf' : 'pdf', src)
+      const c = classifyText(text)
+      detectedKind = c.kind === 'OVERIG' ? null : c.kind
+      detectedYear = c.year
+      ocrUsed = used
+    } catch {
+      /* herkenning is optioneel */
+    }
     prepared.push({
       title: titles[i] || file.name.replace(/\.[^.]+$/, ''),
       fileName: file.name.replace(/\.[^.]+$/, '.pdf'),
       originalKey: await store.put(pdfBytes, 'pdf'),
-      workingKey: await store.put(pdfBytes, 'pdf')
+      workingKey: await store.put(pdfBytes, 'pdf'),
+      detectedKind,
+      detectedYear,
+      ocrUsed
     })
   }
 
@@ -89,7 +139,20 @@ export async function createDossierAction(_prev: FormState, formData: FormData):
         data: {
           ...base,
           title: p.title || `${parsed.data.title} (${i + 1})`,
-          documents: { create: [{ title: p.title, fileName: p.fileName, order: 0, originalKey: p.originalKey, workingKey: p.workingKey }] }
+          documents: {
+            create: [
+              {
+                title: p.title,
+                fileName: p.fileName,
+                order: 0,
+                originalKey: p.originalKey,
+                workingKey: p.workingKey,
+                detectedKind: p.detectedKind,
+                detectedYear: p.detectedYear,
+                ocrUsed: p.ocrUsed
+              }
+            ]
+          }
         }
       })
       await writeAudit({ type: 'AANGEMAAKT', dossierId: d.id, accountantId: acc.id, ...ctx })
@@ -107,7 +170,10 @@ export async function createDossierAction(_prev: FormState, formData: FormData):
           fileName: p.fileName,
           order: i,
           originalKey: p.originalKey,
-          workingKey: p.workingKey
+          workingKey: p.workingKey,
+          detectedKind: p.detectedKind,
+          detectedYear: p.detectedYear,
+          ocrUsed: p.ocrUsed
         }))
       }
     }

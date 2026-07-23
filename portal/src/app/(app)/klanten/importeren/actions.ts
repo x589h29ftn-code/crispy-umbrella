@@ -59,6 +59,7 @@ export async function importClientsAction(_prev: ImportState, formData: FormData
       displayName,
       companyName: company,
       contactName: contact,
+      firstName: pick(row, ['Voornaam', 'Roepnaam']),
       email,
       phone: pick(row, ['Telefoon', 'Telefoonnummer', 'Tel', 'Mobiel']),
       kvk: pick(row, ['KvK', 'KVK', 'KvK-nummer', 'KvKnummer']),

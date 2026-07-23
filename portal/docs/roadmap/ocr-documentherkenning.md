@@ -1,7 +1,29 @@
 # Roadmap: automatische documentherkenning en voorgevulde berichten
 
-Status: ontwerp (nog niet gebouwd). Gekozen aanpak: **volledig lokaal**, geen cliëntdata
+Status: **MVP gebouwd** (juli 2026). Gekozen aanpak: **volledig lokaal**, geen cliëntdata
 naar externe diensten.
+
+## Wat er nu werkt
+
+Bij het uploaden van een document herkent het portaal het type en het boekjaar en
+vult het de titel en het begeleidend bericht automatisch voor. Herkende typen:
+jaarrekening, notulen aandeelhoudersvergadering, bevestiging bij de jaarrekening,
+akkoordverklaring inkomstenbelasting, akkoordverklaring vennootschapsbelasting en
+opdrachtbevestiging.
+
+- Tekst wordt uit de tekstlaag gelezen (digitale PDF's) of via `mammoth` uit Word;
+  bij ingescande PDF's zonder tekstlaag valt de code terug op lokale OCR (Tesseract +
+  poppler, aanwezig in de Docker-image).
+- De invulvelden `{voornaam_klant}`, `{bedrijfsnaam}`, `{boekjaar}`, `{documenttitel}`
+  en `{voornaam_afzender}` worden bij het verzenden per ontvanger ingevuld.
+- Beheerders passen de teksten per type aan onder **Instellingen &rarr; Berichtsjablonen**.
+- Cliënten hebben een veld **Voornaam** (voor een nette aanhef), ook in de CSV-import.
+
+Kern-code: `src/lib/docanalyze/` (`extractText.ts`, `classify.ts`, `templates.ts`,
+`analyze.ts`), datamodel `MessageTemplate` + `DocumentKind` + `Client.firstName` +
+`Document.detectedKind/detectedYear/ocrUsed`.
+
+## Oorspronkelijk ontwerp
 
 ## Doel
 

@@ -1,10 +1,10 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, useTransition } from 'react'
 import { useFormState, useFormStatus } from 'react-dom'
-import { UploadCloud, Plus, X } from 'lucide-react'
+import { UploadCloud, Plus, X, Sparkles, Loader2 } from 'lucide-react'
 import { nanoid } from 'nanoid'
-import { createDossierAction, type FormState } from '../actions'
+import { createDossierAction, analyzeDocumentAction, type FormState } from '../actions'
 
 function Submit() {
   const { pending } = useFormStatus()
@@ -18,17 +18,48 @@ function Submit() {
 interface Row {
   key: string
   fileName: string
+  docTitle: string
 }
 
 export function NewDossierForm() {
   const [state, action] = useFormState(createDossierAction, {} as FormState)
-  const [rows, setRows] = useState<Row[]>([{ key: nanoid(), fileName: '' }])
+  const [rows, setRows] = useState<Row[]>([{ key: nanoid(), fileName: '', docTitle: '' }])
+  const [title, setTitle] = useState('')
+  const [message, setMessage] = useState('')
+  const [analyzing, startAnalyzing] = useTransition()
+  const [recognized, setRecognized] = useState<{ label: string; year: number | null; ocr: boolean } | null>(null)
 
   function addRow() {
-    setRows((r) => [...r, { key: nanoid(), fileName: '' }])
+    setRows((r) => [...r, { key: nanoid(), fileName: '', docTitle: '' }])
   }
   function removeRow(key: string) {
     setRows((r) => (r.length > 1 ? r.filter((x) => x.key !== key) : r))
+  }
+  function setRow(key: string, patch: Partial<Row>) {
+    setRows((r) => r.map((x) => (x.key === key ? { ...x, ...patch } : x)))
+  }
+
+  function onFilePicked(row: Row, index: number, file: File | undefined) {
+    const name = file?.name ?? ''
+    setRow(row.key, { fileName: name })
+    if (!file) return
+    // Automatische herkenning: vul dit documentveld en (voor het eerste
+    // document) de verzoektitel en het begeleidend bericht voor.
+    const fd = new FormData()
+    fd.append('file', file)
+    startAnalyzing(async () => {
+      const res = await analyzeDocumentAction(fd)
+      if (!res.ok || !res.recognized) {
+        if (index === 0) setRecognized(null)
+        return
+      }
+      if (index === 0) {
+        setRecognized({ label: res.kindLabel, year: res.year, ocr: res.ocrUsed })
+        setTitle((t) => t || res.suggestedTitle)
+        setMessage((m) => m || res.suggestedBody)
+      }
+      setRow(row.key, { docTitle: res.suggestedTitle })
+    })
   }
 
   return (
@@ -37,7 +68,15 @@ export function NewDossierForm() {
         <label className="label" htmlFor="title">
           Titel van het verzoek *
         </label>
-        <input id="title" name="title" required className="input" placeholder="Bijv. Aangifte 2025 - akkoordverklaringen" />
+        <input
+          id="title"
+          name="title"
+          required
+          className="input"
+          placeholder="Bijv. Aangifte 2025 - akkoordverklaringen"
+          value={title}
+          onChange={(e) => setTitle(e.target.value)}
+        />
       </div>
 
       <div className="space-y-3">
@@ -61,6 +100,8 @@ export function NewDossierForm() {
               name="docTitle"
               className="input mb-2"
               placeholder="Titel van dit document (bijv. Akkoordverklaring aangifte IB)"
+              value={row.docTitle}
+              onChange={(e) => setRow(row.key, { docTitle: e.target.value })}
             />
             <label className="flex cursor-pointer items-center gap-2 rounded-lg border border-dashed border-slate-300 bg-slate-50 px-3 py-2 text-sm text-slate-500 hover:border-brand-300">
               <UploadCloud className="h-4 w-4 text-slate-400" />
@@ -71,12 +112,23 @@ export function NewDossierForm() {
                 accept=".pdf,.docx,.doc,.odt,.rtf"
                 required
                 className="sr-only"
-                onChange={(e) => {
-                  const f = e.target.files?.[0]?.name ?? ''
-                  setRows((r) => r.map((x) => (x.key === row.key ? { ...x, fileName: f } : x)))
-                }}
+                onChange={(e) => onFilePicked(row, i, e.target.files?.[0])}
               />
             </label>
+            {i === 0 && analyzing && (
+              <p className="mt-2 flex items-center gap-1.5 text-xs text-slate-500">
+                <Loader2 className="h-3.5 w-3.5 animate-spin" /> Document herkennen…
+              </p>
+            )}
+            {i === 0 && !analyzing && recognized && (
+              <p className="mt-2 flex items-center gap-1.5 text-xs text-brand-700">
+                <Sparkles className="h-3.5 w-3.5" /> Herkend als <strong className="font-semibold">
+                  {recognized.label}
+                </strong>
+                {recognized.year ? ` (${recognized.year})` : ''}. Titel en bericht zijn vast ingevuld.
+                {recognized.ocr ? ' Tekst via OCR gelezen.' : ''}
+              </p>
+            )}
           </div>
         ))}
         <button type="button" className="btn-secondary text-sm" onClick={addRow}>
@@ -115,7 +167,19 @@ export function NewDossierForm() {
         <label className="label" htmlFor="message">
           Begeleidend bericht (optioneel)
         </label>
-        <textarea id="message" name="message" rows={3} className="input" placeholder="Tekst in de e-mail aan de ontvanger." />
+        <textarea
+          id="message"
+          name="message"
+          rows={4}
+          className="input"
+          placeholder="Tekst in de e-mail aan de ontvanger."
+          value={message}
+          onChange={(e) => setMessage(e.target.value)}
+        />
+        <p className="mt-1 text-xs text-slate-400">
+          Invulvelden zoals <span className="font-mono">{'{voornaam_klant}'}</span> worden bij het verzenden per
+          ontvanger ingevuld.
+        </p>
       </div>
       <div className="max-w-[220px]">
         <label className="label" htmlFor="linkTtlDays">

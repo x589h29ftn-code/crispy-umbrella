@@ -7,6 +7,7 @@ export const clientSchema = z.object({
   displayName: naam,
   companyName: z.string().trim().max(200).optional().or(z.literal('')),
   contactName: z.string().trim().max(200).optional().or(z.literal('')),
+  firstName: z.string().trim().max(100).optional().or(z.literal('')),
   email: z.string().email().max(200).optional().or(z.literal('')),
   phone: z.string().trim().max(60).optional().or(z.literal('')),
   kvk: z.string().trim().max(20).optional().or(z.literal('')),
