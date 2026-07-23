@@ -18,6 +18,10 @@ opdrachtbevestiging.
   en `{voornaam_afzender}` worden bij het verzenden per ontvanger ingevuld.
 - Beheerders passen de teksten per type aan onder **Instellingen &rarr; Berichtsjablonen**.
 - Cliënten hebben een veld **Voornaam** (voor een nette aanhef), ook in de CSV-import.
+- **Samengevoegd verzoek:** worden meerdere documenten samen geüpload (jaarrekening,
+  notulen en bevestiging gaan vrijwel altijd samen), dan worden titel en bericht
+  automatisch samengevoegd tot één verzoek dat alle stukken benoemt. Elk document
+  behoudt zijn eigen titel; de ontvanger tekent ze na één keer inloggen achter elkaar.
 
 Kern-code: `src/lib/docanalyze/` (`extractText.ts`, `classify.ts`, `templates.ts`,
 `analyze.ts`), datamodel `MessageTemplate` + `DocumentKind` + `Client.firstName` +

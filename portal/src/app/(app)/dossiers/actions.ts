@@ -14,9 +14,11 @@ import { generateSigningToken } from '@/lib/auth/signingToken'
 import { sendMail } from '@/lib/email/transport'
 import { reminderEmail, officeTurnEmail } from '@/lib/email/templates'
 import { activateInitial, currentSigners } from '@/lib/signflow'
+import type { DocumentKind } from '@prisma/client'
 import { extractText } from '@/lib/docanalyze/extractText'
 import { classifyText } from '@/lib/docanalyze/classify'
 import { analyzeDocument, type AnalyzeResult } from '@/lib/docanalyze/analyze'
+import { buildCombinedSuggestion } from '@/lib/docanalyze/templates'
 
 export interface FormState {
   error?: string
@@ -42,6 +44,19 @@ export async function analyzeDocumentAction(
   } catch {
     return { ok: false }
   }
+}
+
+/**
+ * Stelt één gecombineerde titel en begeleidend bericht voor bij meerdere
+ * herkende documenten (jaarrekening, notulen en bevestiging gaan vrijwel altijd
+ * samen). Geeft null bij minder dan twee herkende documenten.
+ */
+export async function combineSuggestionAction(
+  items: { kind: DocumentKind; year: number | null }[]
+): Promise<{ title: string; body: string } | null> {
+  const acc = await requireAccountant()
+  if (!Array.isArray(items) || items.length === 0) return null
+  return buildCombinedSuggestion(items, acc.name)
 }
 
 async function ownedDossier(id: string) {
