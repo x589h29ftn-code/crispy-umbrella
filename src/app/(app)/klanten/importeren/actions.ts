@@ -57,6 +57,7 @@ export async function importClientsAction(_prev: ImportState, formData: FormData
     const vm = pick(row, ['Verificatie', 'Verificatiemethode', 'Ondertekenen via'])
     const data = {
       displayName,
+      clientNumber: pick(row, ['Klantnummer', 'Klantnr', 'Nummer', 'Debiteurnummer', 'Relatienummer']),
       companyName: company,
       contactName: contact,
       firstName: pick(row, ['Voornaam', 'Roepnaam']),

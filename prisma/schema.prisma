@@ -105,6 +105,7 @@ model Session {
 /// Cliëntendatabase van het kantoor (voor automatisch invullen van ontvangers).
 model Client {
   id          String   @id @default(cuid())
+  clientNumber String? // intern klantnummer (bijv. voor de mapstructuur in het archief)
   displayName String
   companyName String?
   contactName String?

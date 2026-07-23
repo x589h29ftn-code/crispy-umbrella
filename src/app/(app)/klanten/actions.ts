@@ -13,6 +13,7 @@ export interface FormState {
 function readClient(formData: FormData) {
   return clientSchema.safeParse({
     displayName: formData.get('displayName'),
+    clientNumber: formData.get('clientNumber'),
     companyName: formData.get('companyName'),
     contactName: formData.get('contactName'),
     firstName: formData.get('firstName'),
@@ -41,6 +42,7 @@ export async function createClientAction(_prev: FormState, formData: FormData): 
   await prisma.client.create({
     data: {
       displayName: d.displayName,
+      clientNumber: clean(d.clientNumber),
       companyName: clean(d.companyName),
       contactName: clean(d.contactName),
       firstName: clean(d.firstName),
@@ -68,6 +70,7 @@ export async function updateClientAction(id: string, _prev: FormState, formData:
     where: { id },
     data: {
       displayName: d.displayName,
+      clientNumber: clean(d.clientNumber),
       companyName: clean(d.companyName),
       contactName: clean(d.contactName),
       firstName: clean(d.firstName),

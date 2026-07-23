@@ -6,6 +6,7 @@ import type { FormState } from './actions'
 
 type Values = Partial<{
   displayName: string
+  clientNumber: string
   companyName: string
   contactName: string
   firstName: string
@@ -67,6 +68,7 @@ export function ClientForm({
     <form action={formAction} className="space-y-5">
       <div className="grid gap-4 sm:grid-cols-2">
         <Field name="displayName" label="Weergavenaam" defaultValue={values?.displayName} required />
+        <Field name="clientNumber" label="Klantnummer" defaultValue={values?.clientNumber} />
         <Field name="companyName" label="Bedrijfsnaam" defaultValue={values?.companyName} />
         <Field name="contactName" label="Contactpersoon" defaultValue={values?.contactName} />
         <Field name="firstName" label="Voornaam (voor de aanhef)" defaultValue={values?.firstName} />
