@@ -19,12 +19,18 @@ function b64ToBytes(b64: string): Uint8Array {
  * Tekent een handtekening-afbeelding (data-URL: PNG of JPEG) in de PDF op het
  * opgegeven tekenvak (PDF-punten, pivot linksonder). Geeft nieuwe PDF-bytes.
  */
+export interface SignatureLabel {
+  name: string
+  dateText: string
+}
+
 export async function stampSignatureImage(
   pdfBytes: Uint8Array,
   placement: SignPlacement,
-  imageDataUrl: string
+  imageDataUrl: string,
+  label?: SignatureLabel
 ): Promise<Uint8Array> {
-  const { PDFDocument } = await import('@cantoo/pdf-lib')
+  const { PDFDocument, StandardFonts, rgb } = await import('@cantoo/pdf-lib')
   const doc = await PDFDocument.load(Uint8Array.from(pdfBytes), { ignoreEncryption: true })
   const pages = doc.getPages()
   const page = pages[placement.page] ?? pages[0]
@@ -37,6 +43,22 @@ export async function stampSignatureImage(
     width: placement.width,
     height: placement.height
   })
+
+  // Zichtbaar stempel "Digitaal ondertekend door: <naam> <datum/tijd>" onder
+  // het handtekeningvak (of erboven als er onder te weinig ruimte is).
+  if (label) {
+    const font = await doc.embedFont(StandardFonts.Helvetica)
+    const bold = await doc.embedFont(StandardFonts.HelveticaBold)
+    const size = 7
+    const lh = size + 2
+    const color = rgb(0.12, 0.16, 0.22)
+    const belowTop = placement.y - 3
+    // Genoeg ruimte onder het vak? Anders het blok boven het vak plaatsen.
+    const top = belowTop - 3 * lh >= 6 ? belowTop : placement.y + placement.height + 3 * lh + 3
+    page.drawText('Digitaal ondertekend door:', { x: placement.x, y: top - lh, size, font: bold, color })
+    page.drawText(label.name, { x: placement.x, y: top - 2 * lh, size, font, color })
+    page.drawText(label.dateText, { x: placement.x, y: top - 3 * lh, size, font, color })
+  }
   return doc.save()
 }
 
