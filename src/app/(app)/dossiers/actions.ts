@@ -19,6 +19,7 @@ import { extractText } from '@/lib/docanalyze/extractText'
 import { classifyText } from '@/lib/docanalyze/classify'
 import { analyzeDocument, type AnalyzeResult } from '@/lib/docanalyze/analyze'
 import { buildCombinedSuggestion } from '@/lib/docanalyze/templates'
+import { scanBuffer, scanEnabled } from '@/lib/security/virusscan'
 
 export interface FormState {
   error?: string
@@ -97,6 +98,11 @@ export async function createDossierAction(_prev: FormState, formData: FormData):
     if (file.size > 18_000_000) return { error: `"${file.name}" is te groot (max 18 MB).` }
     const ext = extname(file.name).slice(1).toLowerCase()
     const bytes = new Uint8Array(await file.arrayBuffer())
+    // Virusscan (indien ingeschakeld). Fail-closed: bij een scanfout weigeren.
+    if (scanEnabled()) {
+      const verdict = await scanBuffer(bytes).catch(() => ({ clean: false, virus: 'scan mislukt' }))
+      if (!verdict.clean) return { error: `"${file.name}" is geweigerd door de virusscan${verdict.virus ? ` (${verdict.virus})` : ''}.` }
+    }
     let pdfBytes: Uint8Array
     if (ext === 'pdf') {
       if (!(bytes[0] === 0x25 && bytes[1] === 0x50 && bytes[2] === 0x44 && bytes[3] === 0x46)) {

@@ -12,7 +12,7 @@ import {
   clearPending2fa,
   requestContext
 } from '@/lib/auth/session'
-import { consume } from '@/lib/ratelimit'
+import { consume, blockedFor, registerFailure, registerSuccess } from '@/lib/ratelimit'
 import { loginSchema } from '@/lib/validation/schemas'
 import { writeAudit } from '@/lib/audit'
 
@@ -28,7 +28,15 @@ export async function loginAction(_prev: FormState, formData: FormData): Promise
   if (!parsed.success) return { error: 'Vul een geldig e-mailadres en wachtwoord in.' }
 
   const { ip } = requestContext()
-  const ok = await consume('login', `${ip ?? 'onbekend'}:${parsed.data.email.toLowerCase()}`)
+  const key = `${ip ?? 'onbekend'}:${parsed.data.email.toLowerCase()}`
+
+  // Oplopende blokkade bij herhaald mislukt inloggen.
+  const blockedMs = await blockedFor(key)
+  if (blockedMs > 0) {
+    const min = Math.ceil(blockedMs / 60_000)
+    return { error: `Te veel mislukte pogingen. Probeer het over ${min} ${min === 1 ? 'minuut' : 'minuten'} opnieuw.` }
+  }
+  const ok = await consume('login', key)
   if (!ok) return { error: 'Te veel pogingen. Probeer het over enkele minuten opnieuw.' }
 
   const accountant = await prisma.accountant.findUnique({ where: { email: parsed.data.email.toLowerCase() } })
@@ -38,10 +46,15 @@ export async function loginAction(_prev: FormState, formData: FormData): Promise
   // responstijd niet verklapt of een e-mailadres bekend is.
   if (!accountant) {
     await hashPassword(parsed.data.password)
+    await registerFailure(key)
     return generic
   }
   const valid = await verifyPassword(accountant.passwordHash, parsed.data.password)
-  if (!valid || !accountant.active) return generic
+  if (!valid || !accountant.active) {
+    await registerFailure(key)
+    return generic
+  }
+  await registerSuccess(key)
 
   if (accountant.totpEnabled && accountant.totpSecret) {
     setPending2fa(accountant.id)
