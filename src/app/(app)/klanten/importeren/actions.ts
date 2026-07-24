@@ -40,6 +40,7 @@ export async function importClientsAction(_prev: ImportState, formData: FormData
     return { error: 'Kon het bestand niet lezen. Gebruik een .xlsx- of .csv-bestand met kolomkoppen.' }
   }
   if (rows.length === 0) return { error: 'Het bestand bevat geen rijen.' }
+  if (rows.length > 5000) return { error: 'Te veel rijen (max 5000). Splits het bestand in delen.' }
 
   let added = 0
   let updated = 0
