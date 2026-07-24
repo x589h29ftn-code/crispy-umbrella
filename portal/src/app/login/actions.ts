@@ -2,7 +2,7 @@
 
 import { redirect } from 'next/navigation'
 import { prisma } from '@/lib/db'
-import { verifyPassword } from '@/lib/auth/password'
+import { verifyPassword, hashPassword } from '@/lib/auth/password'
 import { verifyTotp, decryptTotpSecret } from '@/lib/auth/totp'
 import { consumeBackupCode, looksLikeBackupCode } from '@/lib/auth/backupCodes'
 import {
@@ -34,9 +34,14 @@ export async function loginAction(_prev: FormState, formData: FormData): Promise
   const accountant = await prisma.accountant.findUnique({ where: { email: parsed.data.email.toLowerCase() } })
   // Altijd hetzelfde generieke antwoord (voorkomt account-enumeratie).
   const generic = { error: 'Onjuiste inloggegevens.' }
-  if (!accountant || !accountant.active) return generic
+  // Bestaat het account niet, verbruik toch vergelijkbare rekentijd zodat de
+  // responstijd niet verklapt of een e-mailadres bekend is.
+  if (!accountant) {
+    await hashPassword(parsed.data.password)
+    return generic
+  }
   const valid = await verifyPassword(accountant.passwordHash, parsed.data.password)
-  if (!valid) return generic
+  if (!valid || !accountant.active) return generic
 
   if (accountant.totpEnabled && accountant.totpSecret) {
     setPending2fa(accountant.id)
