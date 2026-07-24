@@ -48,6 +48,11 @@ const schema = z.object({
   SIGN_LINK_TTL_DAYS: z.coerce.number().int().positive().default(10),
   OTP_TTL_MINUTES: z.coerce.number().int().positive().default(10),
 
+  // Virusscan op uploads (optioneel). none = uit; clamav = via een ClamAV-daemon.
+  VIRUS_SCAN: z.enum(['none', 'clamav']).default('none'),
+  CLAMD_HOST: z.string().default('clamav'),
+  CLAMD_PORT: z.coerce.number().default(3310),
+
   // Archief: getekende stukken automatisch wegschrijven naar de klantmap.
   // none = uit; folder = naar een (gekoppelde) map; sharepoint = Microsoft 365.
   ARCHIVE_DRIVER: z.enum(['none', 'folder', 'sharepoint']).default('none'),

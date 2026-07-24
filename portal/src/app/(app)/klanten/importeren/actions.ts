@@ -4,6 +4,7 @@ import { revalidatePath } from 'next/cache'
 import * as XLSX from '@e965/xlsx'
 import { prisma } from '@/lib/db'
 import { requireAccountant } from '@/lib/auth/session'
+import { scanBuffer, scanEnabled } from '@/lib/security/virusscan'
 
 export interface ImportState {
   error?: string
@@ -33,6 +34,10 @@ export async function importClientsAction(_prev: ImportState, formData: FormData
   let rows: Record<string, unknown>[]
   try {
     const buf = Buffer.from(await file.arrayBuffer())
+    if (scanEnabled()) {
+      const verdict = await scanBuffer(buf).catch(() => ({ clean: false, virus: 'scan mislukt' }))
+      if (!verdict.clean) return { error: `Bestand geweigerd door de virusscan${verdict.virus ? ` (${verdict.virus})` : ''}.` }
+    }
     const wb = XLSX.read(buf, { type: 'buffer' })
     const sheet = wb.Sheets[wb.SheetNames[0]]
     rows = XLSX.utils.sheet_to_json<Record<string, unknown>>(sheet, { defval: '' })
