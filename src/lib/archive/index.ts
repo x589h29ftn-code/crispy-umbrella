@@ -22,9 +22,18 @@ export interface ArchiveResult {
   target?: string
 }
 
-/** Maakt één naamdeel veilig voor gebruik als map- of bestandsnaam. */
+/** Maakt één naamdeel veilig voor gebruik als map- of bestandsnaam.
+ * Neutraliseert padtraversal ('.', '..' en leidende punten) zodat een
+ * ingestelde map nooit buiten de archiefmap of -bibliotheek kan wijzen. */
 function safeSegment(s: string): string {
-  return (s || '').replace(/[\\/:*?"<>|]/g, '_').replace(/\s+/g, ' ').trim().slice(0, 120)
+  const cleaned = (s || '')
+    .replace(/[\\/:*?"<>|]/g, '_')
+    .replace(/\s+/g, ' ')
+    .trim()
+    .replace(/^\.+/, '') // verwijder leidende punten ('.', '..', verborgen bestanden)
+    .trim()
+    .slice(0, 120)
+  return cleaned
 }
 /** Splitst een pad op '/', maakt elk deel veilig en laat lege delen weg. */
 function safeSegments(path: string): string[] {

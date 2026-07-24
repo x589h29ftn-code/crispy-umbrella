@@ -5,6 +5,7 @@ import { redirect } from 'next/navigation'
 import type { Accountant } from '@prisma/client'
 import { prisma } from '@/lib/db'
 import { env } from '@/env'
+import { clientIp } from '@/lib/ip'
 
 const SESSION_COOKIE = 'ovp_session'
 const PENDING_COOKIE = 'ovp_2fa'
@@ -22,8 +23,7 @@ function secureCookies(): boolean {
 
 export function requestContext(): { ip?: string; userAgent?: string } {
   const h = headers()
-  const ip =
-    h.get('x-forwarded-for')?.split(',')[0]?.trim() || h.get('x-real-ip') || undefined
+  const ip = clientIp(h.get('x-forwarded-for'), h.get('x-real-ip'))
   const userAgent = h.get('user-agent') || undefined
   return { ip, userAgent }
 }
