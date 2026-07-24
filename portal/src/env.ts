@@ -63,7 +63,19 @@ const schema = z.object({
   SHAREPOINT_CLIENT_SECRET: z.string().optional(),
   SHAREPOINT_DRIVE_ID: z.string().optional(),
   // Basismap in de bibliotheek, bijv. "Getekende stukken". Leeg = de root.
-  SHAREPOINT_BASE_FOLDER: z.string().optional()
+  SHAREPOINT_BASE_FOLDER: z.string().optional(),
+
+  // Beroepscertificaat: gekwalificeerd ondertekenen op persoonlijke titel
+  // (accountant AA/RA) via een gemachtigde TSP. none = uit (standaard, geen
+  // certificaat nodig); digidentity = PKIoverheid-beroepscertificaat in de
+  // cloud via de CSC-API. Per accountant zet je het aan onder Gebruikers.
+  PROFESSIONAL_SIGNING_DRIVER: z.enum(['none', 'digidentity']).default('none'),
+  // Digidentity CSC/AutoSign (OAuth2 client-credentials). Alleen nodig als de
+  // driver op 'digidentity' staat. Testtoegang via hun Sales/Implementation-team.
+  DIGIDENTITY_BASE_URL: z.string().optional(),
+  DIGIDENTITY_CLIENT_ID: z.string().optional(),
+  DIGIDENTITY_CLIENT_SECRET: z.string().optional(),
+  DIGIDENTITY_SCOPE: z.string().optional()
 })
 
 // In dev tolereren we ontbrekende geheimen met veilige placeholders zodat je
