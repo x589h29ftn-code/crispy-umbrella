@@ -52,7 +52,7 @@ export default async function DashboardPage({
     ...(attention ? attentionWhere : statusFilter ? { status: statusFilter } : {})
   }
 
-  const [dossiers, counts, attentionCount] = await Promise.all([
+  const [dossiers, counts, attentionCount, sealingFailed] = await Promise.all([
     prisma.dossier.findMany({
       where,
       orderBy: attention ? { expiresAt: 'asc' } : { createdAt: 'desc' },
@@ -60,8 +60,24 @@ export default async function DashboardPage({
       include: { recipients: true, owner: { select: { name: true } } }
     }),
     prisma.dossier.groupBy({ by: ['status'], where: { ...ownerScope, ...search }, _count: true }),
-    prisma.dossier.count({ where: { ...ownerScope, ...search, ...attentionWhere } })
+    prisma.dossier.count({ where: { ...ownerScope, ...search, ...attentionWhere } }),
+    // Volledig ondertekend, maar het digitale zegel ontbreekt nog. Hier gaat
+    // bewust geen voltooiingsmail uit; een achtergrondtaak probeert het opnieuw.
+    prisma.dossier.findMany({
+      where: { ...ownerScope, status: 'SEALING_FAILED' },
+      orderBy: { updatedAt: 'desc' },
+      take: 10,
+      select: { id: true, title: true, updatedAt: true }
+    })
   ])
+  // Laatste foutmelding per wachtend dossier, voor een bruikbare melding.
+  const sealErrors = sealingFailed.length
+    ? await prisma.auditEvent.findMany({
+        where: { type: 'VERZEGELING_MISLUKT', dossierId: { in: sealingFailed.map((d) => d.id) } },
+        orderBy: { createdAt: 'desc' },
+        select: { dossierId: true, message: true, createdAt: true }
+      })
+    : []
 
   const countFor = (s: DossierStatus) => counts.find((c) => c.status === s)?._count ?? 0
   const linkWith = (extra: Record<string, string | undefined>) => {
@@ -83,6 +99,41 @@ export default async function DashboardPage({
           <Plus className="h-4 w-4" /> Nieuw dossier
         </Link>
       </header>
+
+      {sealingFailed.length > 0 && (
+        <div className="rounded-lg border border-orange-200 bg-orange-50 p-4 text-sm text-orange-900">
+          <p className="flex items-center gap-2 font-medium">
+            <AlertTriangle className="h-4 w-4" />
+            {sealingFailed.length === 1
+              ? '1 dossier wacht op verzegeling'
+              : `${sealingFailed.length} dossiers wachten op verzegeling`}
+          </p>
+          <p className="mt-1 text-orange-800">
+            Deze dossiers zijn door alle partijen ondertekend, maar het digitale zegel ontbreekt nog. Er is nog geen
+            voltooiingsmail verstuurd; het portaal probeert het automatisch opnieuw.
+          </p>
+          <ul className="mt-3 space-y-1">
+            {sealingFailed.map((d) => {
+              const last = sealErrors.find((e) => e.dossierId === d.id)
+              return (
+                <li key={d.id}>
+                  <Link href={`/dossiers/${d.id}`} className="font-medium underline">
+                    {d.title}
+                  </Link>
+                  {last && (
+                    <span className="text-orange-800">
+                      {' '}
+                      — laatste poging{' '}
+                      {last.createdAt.toLocaleTimeString('nl-NL', { hour: '2-digit', minute: '2-digit' })}
+                      {last.message ? `: ${last.message.slice(0, 160)}` : ''}
+                    </span>
+                  )}
+                </li>
+              )
+            })}
+          </ul>
+        </div>
+      )}
 
       {searchParams.nieuw === 'apart' && (
         <div className="rounded-lg border border-blue-200 bg-blue-50 p-4 text-sm text-blue-800">

@@ -17,11 +17,17 @@ const AUDIT_LABEL: Record<string, string> = {
   GEOPEND: 'Ontvanger opende het document',
   OTP_VERSTUURD: 'Verificatiecode verstuurd',
   OTP_GEVERIFIEERD: 'Identiteit geverifieerd',
+  OTP_MISLUKT: 'Onjuiste verificatiecode',
+  OTP_GEBLOKKEERD: 'Verificatie geblokkeerd na te veel pogingen',
   ONDERTEKEND: 'Ondertekend',
+  GEKWALIFICEERD_ONDERTEKEND: 'Gekwalificeerd ondertekend (beroepscertificaat)',
   GEWEIGERD: 'Ondertekening geweigerd',
   HERINNERD: 'Herinnering verstuurd',
   VERLOPEN: 'Verlopen',
   VERZEGELD: 'Definitief verzegeld',
+  VERZEGELING_MISLUKT: 'Verzegeling mislukt',
+  INTEGRITEIT_AFWIJKING: 'Integriteitscontrole afgewezen',
+  GEARCHIVEERD: 'Gearchiveerd',
   GEDOWNLOAD: 'Gedownload',
   INGETROKKEN: 'Ingetrokken'
 }

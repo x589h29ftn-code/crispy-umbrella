@@ -339,6 +339,11 @@ export async function withdrawDossierAction(dossierId: string): Promise<{ ok: bo
   if (!owned) return { ok: false, error: 'Dossier niet gevonden.' }
   const { acc, dossier } = owned
   if (dossier.status === 'ONDERTEKEND') return { ok: false, error: 'Een afgerond dossier kan niet worden ingetrokken.' }
+  // Alles is al getekend; alleen de verzegeling ontbreekt nog. Intrekken zou het
+  // bewijs weggooien terwijl de handtekeningen al gezet zijn.
+  if (dossier.status === 'SEALING_FAILED') {
+    return { ok: false, error: 'Dit dossier is volledig ondertekend en wacht op verzegeling; intrekken kan niet meer.' }
+  }
   await prisma.recipient.updateMany({
     where: { dossierId, status: 'PENDING' },
     data: { tokenHash: null, tokenExpiresAt: null }

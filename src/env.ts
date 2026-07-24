@@ -75,7 +75,41 @@ const schema = z.object({
   DIGIDENTITY_BASE_URL: z.string().optional(),
   DIGIDENTITY_CLIENT_ID: z.string().optional(),
   DIGIDENTITY_CLIENT_SECRET: z.string().optional(),
-  DIGIDENTITY_SCOPE: z.string().optional()
+  DIGIDENTITY_SCOPE: z.string().optional(),
+
+  // === Cryptografische verzegeling (PAdES) via de sealer-sidecar ===
+  // none = uit (geen zegel; alleen de zichtbare stempels en het auditcertificaat).
+  // sealer = verzegelen via de interne Python-sidecar (pyHanko).
+  SEAL_MODE: z.enum(['none', 'sealer']).default('none'),
+  // Interne URL van de sidecar; niet publiek bereikbaar (geen Caddy-route).
+  SEALER_URL: z.string().default('http://sealer:8000'),
+  // Shared secret in een header tussen web en sealer.
+  SEALER_SHARED_SECRET: z.string().optional(),
+  SEALER_TIMEOUT_MS: z.coerce.number().int().positive().default(60000),
+  // Ook verzegelen wanneer er al een gekwalificeerde handtekening in staat?
+  SEAL_WHEN_QUALIFIED_PRESENT: z
+    .string()
+    .default('false')
+    .transform((v) => v === 'true'),
+
+  // === Tijdstempel (TSA) — gelezen door de sidecar, hier gevalideerd zodat een
+  // typefout bij het opstarten zichtbaar wordt in plaats van pas bij ondertekenen.
+  TSA_URL: z.string().optional(),
+  TSA_AUTH_MODE: z.enum(['none', 'basic', 'bearer']).default('none'),
+  TSA_USERNAME: z.string().optional(),
+  TSA_PASSWORD: z.string().optional(),
+  TSA_TIMEOUT_MS: z.coerce.number().int().positive().default(10000),
+  PADES_LEVEL: z.enum(['lt', 'lta']).default('lt'),
+  // Welke driver de sidecar gebruikt voor het organisatiezegel.
+  SEAL_DRIVER: z.enum(['csc', 'globalsign_dss']).default('csc'),
+
+  // Aantal vertrouwde proxy-hops vóór de app (Caddy = 1). Bepaalt hoeveel
+  // waarden uit X-Forwarded-For te vertrouwen zijn.
+  TRUSTED_PROXY_HOPS: z.coerce.number().int().min(0).max(5).default(1),
+
+  // Achtergrondwerker: interval en hoeveel jobs per ronde.
+  WORKER_POLL_MS: z.coerce.number().int().positive().default(15000),
+  WORKER_BATCH: z.coerce.number().int().positive().default(5)
 })
 
 // In dev tolereren we ontbrekende geheimen met veilige placeholders zodat je

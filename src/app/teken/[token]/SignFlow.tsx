@@ -28,13 +28,16 @@ export function SignFlow({
   recipientName,
   dossierTitle,
   documents,
-  fields
+  fields,
+  consentText
 }: {
   token: string
   recipientName: string
   dossierTitle: string
   documents: DocInfo[]
   fields: FieldRect[]
+  /** Exact de tekst die als momentopname bij deze ondertekenaar is vastgelegd. */
+  consentText: string
 }) {
   const [step, setStep] = useState<Step>('intro')
   const [busy, setBusy] = useState(false)
@@ -202,10 +205,7 @@ export function SignFlow({
                 Weigeren
               </button>
             </div>
-            <p className="text-xs text-slate-400">
-              Door te ondertekenen bevestigt u akkoord met de inhoud van dit document. Uw IP-adres en tijdstip worden
-              vastgelegd in het auditspoor.
-            </p>
+            <p className="text-xs text-slate-400">{consentText}</p>
           </div>
         </div>
       )}
