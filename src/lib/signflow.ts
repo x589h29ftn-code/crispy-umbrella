@@ -13,6 +13,12 @@ import { requestEmail, completedEmail, officeTurnEmail } from '@/lib/email/templ
 import { renderTemplate, firstNameFrom } from '@/lib/docanalyze/templates'
 import { archiveDossier, archiveEnabled, buildDefaultFolder } from '@/lib/archive'
 
+/** Datum/tijd voor het zichtbare stempel, bijv. "23-9-2020 14:04:44". */
+function formatStampDate(d: Date): string {
+  const p = (n: number) => String(n).padStart(2, '0')
+  return `${d.getDate()}-${d.getMonth() + 1}-${d.getFullYear()} ${p(d.getHours())}:${p(d.getMinutes())}:${p(d.getSeconds())}`
+}
+
 export type ResolveResult =
   | { ok: true; recipient: Recipient; dossier: Dossier }
   | { ok: false; reason: 'onbekend' | 'verlopen' | 'gebruikt' | 'afgerond' }
@@ -138,6 +144,8 @@ export async function applySignature(
   const dossier = recipient.dossier
 
   const store = storage()
+  const signedAt = new Date()
+  const label = { name: recipient.name, dateText: formatStampDate(signedAt) }
   // Groepeer de velden per document en stempel de handtekening in elk document.
   const byDoc = new Map<string, typeof recipient.fields>()
   for (const f of recipient.fields) {
@@ -151,7 +159,7 @@ export async function applySignature(
     let bytes = await store.get(doc.workingKey)
     for (const f of fields) {
       bytes = Buffer.from(
-        await stampSignatureImage(bytes, { page: f.page, x: f.x, y: f.y, width: f.width, height: f.height }, signatureDataUrl)
+        await stampSignatureImage(bytes, { page: f.page, x: f.x, y: f.y, width: f.width, height: f.height }, signatureDataUrl, label)
       )
     }
     const newKey = await store.put(bytes, 'pdf')
@@ -163,7 +171,7 @@ export async function applySignature(
     prisma.signatureField.updateMany({ where: { recipientId }, data: { filled: true } }),
     prisma.recipient.update({
       where: { id: recipientId },
-      data: { status: 'SIGNED', signedAt: new Date(), tokenUsedAt: new Date() }
+      data: { status: 'SIGNED', signedAt, tokenUsedAt: signedAt }
     })
   ])
   await writeAudit({
