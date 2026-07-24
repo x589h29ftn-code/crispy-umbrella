@@ -12,6 +12,7 @@ import { sendMail } from '@/lib/email/transport'
 import { requestEmail, completedEmail, officeTurnEmail } from '@/lib/email/templates'
 import { renderTemplate, firstNameFrom } from '@/lib/docanalyze/templates'
 import { archiveDossier, archiveEnabled, buildDefaultFolder } from '@/lib/archive'
+import { getProfessionalSigner, accountantCanQualifiedSign, type ProfessionalSigner } from '@/lib/signing-provider'
 
 /** Datum/tijd voor het zichtbare stempel, bijv. "23-9-2020 14:04:44". */
 function formatStampDate(d: Date): string {
@@ -146,6 +147,20 @@ export async function applySignature(
   const store = storage()
   const signedAt = new Date()
   const label = { name: recipient.name, dateText: formatStampDate(signedAt) }
+
+  // Kantoorondertekenaar met ingeschakeld beroepscertificaat? Dan zetten we
+  // daarnaast een gekwalificeerde PAdES-handtekening (via de provider). Staat
+  // de driver op 'none' (standaard), dan blijft dit null en verandert er niets.
+  let qualified: { signer: ProfessionalSigner; title: string | null; credentialId: string | null } | null = null
+  if (recipient.role === 'ZELF' && recipient.accountantId) {
+    const acc = await prisma.accountant.findUnique({ where: { id: recipient.accountantId } })
+    if (acc && accountantCanQualifiedSign(acc)) {
+      const signer = await getProfessionalSigner()
+      if (signer) qualified = { signer, title: acc.professionalTitle, credentialId: acc.signingCredentialId }
+    }
+  }
+  let qualifiedError: string | null = null
+
   // Groepeer de velden per document en stempel de handtekening in elk document.
   const byDoc = new Map<string, typeof recipient.fields>()
   for (const f of recipient.fields) {
@@ -162,9 +177,37 @@ export async function applySignature(
         await stampSignatureImage(bytes, { page: f.page, x: f.x, y: f.y, width: f.width, height: f.height }, signatureDataUrl, label)
       )
     }
+    // Gekwalificeerd (mede)ondertekenen. Best-effort: mislukt de provider, dan
+    // blijft het zichtbare stempel staan en leggen we de fout vast in het
+    // auditspoor (het ondertekenen in het portaal mag nooit klappen).
+    if (qualified) {
+      try {
+        bytes = Buffer.from(
+          await qualified.signer.signPdf({
+            pdfBytes: bytes,
+            signer: { name: recipient.name, professionalTitle: qualified.title, credentialId: qualified.credentialId },
+            reason: 'Ondertekend door de accountant op persoonlijke titel',
+            location: 'Otto Visser & Partners'
+          })
+        )
+      } catch (e) {
+        qualifiedError = (e as Error).message
+        console.error('[gekwalificeerd ondertekenen]', e)
+      }
+    }
     const newKey = await store.put(bytes, 'pdf')
     await store.remove(doc.workingKey)
     await prisma.document.update({ where: { id: documentId }, data: { workingKey: newKey } })
+  }
+  if (qualified) {
+    await writeAudit({
+      type: 'GEKWALIFICEERD_ONDERTEKEND',
+      dossierId: dossier.id,
+      recipientId,
+      accountantId: recipient.accountantId ?? undefined,
+      message: qualifiedError ? `mislukt: ${qualifiedError}` : `${qualified.signer.id} (${qualified.title ?? 'accountant'})`,
+      ...ctx
+    })
   }
 
   await prisma.$transaction([

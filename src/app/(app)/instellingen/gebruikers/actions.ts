@@ -3,6 +3,7 @@
 import { revalidatePath } from 'next/cache'
 import { randomBytes } from 'node:crypto'
 import { prisma } from '@/lib/db'
+import { env } from '@/env'
 import { requireBeheerder } from '@/lib/auth/session'
 import { hashPassword } from '@/lib/auth/password'
 import { z } from 'zod'
@@ -73,6 +74,41 @@ export async function reset2faAction(id: string): Promise<{ ok?: boolean; error?
   await prisma.session.deleteMany({ where: { accountantId: id } })
   revalidatePath('/instellingen/gebruikers')
   return { ok: true }
+}
+
+export interface BeroepState {
+  ok?: boolean
+  error?: string
+  id?: string
+}
+
+/** Beheerder stelt per accountant het beroepscertificaat in (AA/RA, credential-
+ * id bij de provider, aan/uit). Het geheim staat nooit hier: alleen de
+ * verwijzing (credential-id). */
+export async function updateBeroepscertificaatAction(_prev: BeroepState, formData: FormData): Promise<BeroepState> {
+  await requireBeheerder()
+  const id = String(formData.get('id') || '')
+  const title = String(formData.get('professionalTitle') || '')
+  const enabled = formData.get('signingCertEnabled') === 'on'
+  const credentialId = String(formData.get('signingCredentialId') || '').trim()
+  const nbaNumber = String(formData.get('nbaNumber') || '').trim()
+  if (!id) return { error: 'Onbekende gebruiker.' }
+  if (!['', 'AA', 'RA'].includes(title)) return { error: 'Kies AA, RA of geen titel.', id }
+  if (enabled && !credentialId) {
+    return { error: 'Vul het credential-id in om het beroepscertificaat aan te zetten.', id }
+  }
+  await prisma.accountant.update({
+    where: { id },
+    data: {
+      professionalTitle: title || null,
+      nbaNumber: nbaNumber || null,
+      signingCredentialId: credentialId || null,
+      signingCertEnabled: enabled,
+      signingCertProvider: enabled ? env.PROFESSIONAL_SIGNING_DRIVER : null
+    }
+  })
+  revalidatePath('/instellingen/gebruikers')
+  return { ok: true, id }
 }
 
 export async function resetPasswordAction(id: string): Promise<{ tempPassword?: string; error?: string }> {

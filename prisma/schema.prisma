@@ -77,6 +77,14 @@ model Accountant {
   passwordResetExpiresAt DateTime?
   signaturePng String? // opgeslagen handtekening (data-URL of opslagsleutel)
   mustChangePassword Boolean @default(false) // nieuw aangemaakt account
+  // Beroepscertificaat (gekwalificeerd ondertekenen op persoonlijke titel).
+  // Per accountant in te stellen; standaard uit. Het geheim/token van de
+  // provider staat NOOIT hier - alleen de verwijzing (credential-id).
+  professionalTitle   String? // 'AA' of 'RA' (leeg = geen)
+  nbaNumber           String? // inschrijvingsnummer accountantsregister
+  signingCertProvider String? // bv. 'digidentity'
+  signingCredentialId String? // credential-/certificaat-id bij de provider (CSC)
+  signingCertEnabled  Boolean @default(false)
   active       Boolean  @default(true)
   createdAt    DateTime @default(now())
   updatedAt    DateTime @updatedAt
