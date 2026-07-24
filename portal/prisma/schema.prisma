@@ -37,6 +37,10 @@ enum DossierStatus {
   VERZONDEN
   GEDEELTELIJK
   ONDERTEKEND
+  // Alle partijen hebben getekend, maar het cryptografische zegel ontbreekt nog
+  // (signing-API of TSA onbereikbaar). Fail-closed: er gaat geen voltooiingsmail
+  // uit zolang dit de status is; een job probeert het opnieuw.
+  SEALING_FAILED
   GEWEIGERD
   VERLOPEN
 }
@@ -130,6 +134,9 @@ model Client {
   archiveFolder String?
   // Voorkeur voor identiteitsverificatie bij ondertekenen (standaard e-mail).
   verificationMethod VerificationMethod @default(EMAIL)
+  // Voorbereiding losse toegangscode (zie Recipient); schema alleen.
+  accessCodeHash  String?
+  accessCodeSetAt DateTime?
   active      Boolean  @default(true)
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
@@ -160,6 +167,9 @@ model Dossier {
   sentAt         DateTime?
   lastReminderAt DateTime?
   completedAt    DateTime?
+  // Bewaartermijn: gevuld bij afronding (completedAt + 7 jaar). Document én
+  // bewijsdossier worden altijd samen opgeruimd, nooit los van elkaar.
+  retentionUntil DateTime?
   createdAt      DateTime      @default(now())
   updatedAt      DateTime      @updatedAt
 
@@ -183,6 +193,20 @@ model Document {
   workingKey     String? // opslagsleutel: PDF met reeds gezette handtekeningen
   sealedKey      String? // opslagsleutel: definitieve, verzegelde PDF
   documentSha256 String?
+  // Afgeronde PDF inclusief auditcertificaat, platgeslagen, vlak vóór het zegel.
+  // Apart bewaard zodat een mislukte verzegeling opnieuw kan zonder de
+  // auditpagina een tweede keer toe te voegen.
+  preSealKey     String?
+  // Hash over de afgeronde inhoud vlak vóór het cryptografische zegel...
+  preSealSha256  String?
+  // ...en over de uiteindelijke, verzegelde bytes (integriteitscontrole bij download).
+  sealedSha256   String?
+  // Gegevens van het cryptografische zegel (PAdES). sealedAt = serverklok,
+  // timestampedAt = tijd van de TSA en daarmee de bewijstijd.
+  sealedAt       DateTime?
+  timestampedAt  DateTime?
+  sealCertSerial String?
+  sealTsaUrl     String?
   // Automatische herkenning bij upload (suggestie; door de gebruiker aanpasbaar).
   detectedKind   DocumentKind?
   detectedYear   Int?
@@ -225,6 +249,23 @@ model Recipient {
   tokenExpiresAt DateTime?
   tokenUsedAt    DateTime?
 
+  // Momentopname van de instemmingstekst zoals die op het scherm stond. Een
+  // later gewijzigd sjabloon mag niet veranderen wat er is gelezen.
+  consentTextSnapshot String?
+  consentTextHash     String?
+  consentShownAt      DateTime?
+
+  // Welke documentbytes deze ondertekenaar te zien kreeg (bij SEQUENTIAL ziet de
+  // tweede ondertekenaar andere bytes dan de eerste). { "<documentId>": "<sha256>" }
+  presentedHashes Json?
+  presentedAt     DateTime?
+
+  // Voorbereiding losse toegangscode als extra kanaal. Schema alleen: er is
+  // (nog) geen UI en geen handhaving.
+  accessCodeHash       String?
+  accessCodeSetAt      DateTime?
+  accessCodeVerifiedAt DateTime?
+
   createdAt DateTime         @default(now())
   fields    SignatureField[]
 
@@ -266,8 +307,33 @@ model AuditEvent {
   userAgent    String?
   metadata     Json?
   createdAt    DateTime    @default(now())
+  // Hashketen: maakt manipulatie in de database aantoonbaar. hash = sha256 over
+  // (prevHash + type + dossierId + recipientId + message + metadata + createdAt).
+  prevHash     String?
+  hash         String?
 
   @@index([dossierId])
+  @@index([createdAt])
+}
+
+// Durable job queue op Postgres (geen extra broker nodig). Wordt gebruikt voor
+// o.a. het opnieuw proberen van de verzegeling, herinneringen, verlopen en
+// opruimen. Claimen gebeurt met SELECT ... FOR UPDATE SKIP LOCKED.
+model Job {
+  id          String    @id @default(cuid())
+  kind        String // SEAL_RETRY | REMINDER | EXPIRE | ARCHIVE | RETENTION_CLEANUP
+  payload     Json
+  runAt       DateTime  @default(now())
+  attempts    Int       @default(0)
+  maxAttempts Int       @default(10)
+  lockedAt    DateTime?
+  lockedBy    String?
+  lastError   String?
+  completedAt DateTime?
+  createdAt   DateTime  @default(now())
+
+  @@index([kind, runAt, completedAt])
+  @@index([lockedAt])
 }
 
 /// Aanpasbaar tekstsjabloon per documenttype (titel + begeleidend bericht).

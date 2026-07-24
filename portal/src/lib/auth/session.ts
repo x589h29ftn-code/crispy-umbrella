@@ -23,7 +23,7 @@ function secureCookies(): boolean {
 
 export function requestContext(): { ip?: string; userAgent?: string } {
   const h = headers()
-  const ip = clientIp(h.get('x-forwarded-for'), h.get('x-real-ip'))
+  const ip = clientIp(h.get('x-forwarded-for'), h.get('x-real-ip'), env.TRUSTED_PROXY_HOPS)
   const userAgent = h.get('user-agent') || undefined
   return { ip, userAgent }
 }

@@ -2,6 +2,7 @@ import { NextResponse, type NextRequest } from 'next/server'
 import { prisma } from '@/lib/db'
 import { getCurrentAccountant, requestContext } from '@/lib/auth/session'
 import { storage } from '@/lib/storage'
+import { sha256Hex } from '@/lib/seal/sealer'
 import { writeAudit } from '@/lib/audit'
 
 // Download van één (verzegeld) document uit een dossier als bijlage.
@@ -23,6 +24,28 @@ export async function GET(req: NextRequest, { params }: { params: { id: string }
   if (!key) return NextResponse.json({ error: 'Geen document' }, { status: 404 })
 
   const bytes = await storage().get(key)
+
+  // Integriteitscontrole: is dit nog exact het bestand dat is verzegeld? Wijkt de
+  // hash af, dan is er onderweg iets aan het bestand veranderd (bijvoorbeeld door
+  // een tool die de PDF herschrijft) en gaat de download niet door.
+  if (doc.sealedKey && key === doc.sealedKey && doc.sealedSha256) {
+    const actual = sha256Hex(bytes)
+    if (actual !== doc.sealedSha256) {
+      await writeAudit({
+        type: 'INTEGRITEIT_AFWIJKING',
+        dossierId: dossier.id,
+        accountantId: acc.id,
+        message: `document ${doc.id}: hash wijkt af van het zegel`,
+        metadata: { expected: doc.sealedSha256, actual },
+        ...requestContext()
+      })
+      return NextResponse.json(
+        { error: 'Integriteitscontrole mislukt: dit bestand wijkt af van de verzegelde versie. Neem contact op met de beheerder.' },
+        { status: 409 }
+      )
+    }
+  }
+
   await writeAudit({ type: 'GEDOWNLOAD', dossierId: dossier.id, accountantId: acc.id, ...requestContext() })
 
   const safeName = doc.fileName.replace(/[^\w.\- ]/g, '_')

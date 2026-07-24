@@ -14,7 +14,9 @@
     "db:migrate": "prisma migrate dev",
     "db:deploy": "prisma migrate deploy",
     "db:seed": "tsx prisma/seed.ts",
-    "db:studio": "prisma studio"
+    "db:studio": "prisma studio",
+    "worker": "tsx --conditions react-server scripts/worker.ts",
+    "audit:verify": "tsx --conditions react-server scripts/verify-audit-chain.ts"
   },
   "prisma": {
     "seed": "tsx prisma/seed.ts"
@@ -37,6 +39,7 @@
     "rate-limiter-flexible": "^5.0.4",
     "react": "^18.3.1",
     "react-dom": "^18.3.1",
+    "server-only": "^0.0.1",
     "tailwind-merge": "^2.5.4",
     "zod": "^3.23.8"
   },

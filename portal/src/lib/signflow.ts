@@ -6,6 +6,8 @@ import { hashSigningToken, generateSigningToken } from '@/lib/auth/signingToken'
 import { storage } from '@/lib/storage'
 import { stampSignatureImage } from '@/lib/pdf/signing'
 import { sealDocument } from '@/lib/pdf/seal'
+import { sealEnabled, sealPdf, sha256Hex, SealRetryableError } from '@/lib/seal/sealer'
+import { enqueueOnce } from '@/lib/jobs/queue'
 import { recomputeStatus } from '@/lib/status'
 import { writeAudit } from '@/lib/audit'
 import { sendMail } from '@/lib/email/transport'
@@ -294,6 +296,149 @@ export async function advanceWorkflow(dossierId: string): Promise<void> {
 
 /** Verzegelt elk document en verstuurt de kopieën. */
 async function finalize(dossierId: string): Promise<void> {
+  await sealAndComplete(dossierId)
+}
+
+/**
+ * Bouwt per document het pre-seal-artefact: auditcertificaat erachter en
+ * platgeslagen. Idempotent — bestaat `preSealKey` al (bijvoorbeeld na een
+ * mislukte verzegeling), dan wordt de auditpagina niet nóg een keer toegevoegd.
+ */
+async function buildPreSealArtifacts(dossierId: string): Promise<void> {
+  const dossier = await prisma.dossier.findUnique({
+    where: { id: dossierId },
+    include: {
+      recipients: { orderBy: { order: 'asc' } },
+      documents: { orderBy: { order: 'asc' } }
+    }
+  })
+  if (!dossier) return
+  const store = storage()
+  const signers = dossier.recipients.map((r) => ({
+    name: r.name,
+    email: r.email,
+    signedAt: r.signedAt,
+    otpVerifiedAt: r.otpVerifiedAt,
+    presentedHashes: (r.presentedHashes ?? null) as Record<string, string> | null,
+    consentTextSnapshot: r.consentTextSnapshot,
+    consentShownAt: r.consentShownAt
+  }))
+
+  for (const doc of dossier.documents) {
+    if (doc.preSealKey || !doc.workingKey) continue
+    const working = await store.get(doc.workingKey)
+    // Stap 3+4: auditcertificaat toevoegen en plat slaan.
+    const { sealedBytes, sha256 } = await sealDocument({
+      pdfBytes: working,
+      dossierTitle: doc.title,
+      dossierId: dossier.id,
+      documentId: doc.id,
+      signers
+    })
+    // Stap 5: hash over precies deze bytes, vlak vóór het zegel.
+    const preSealKey = await store.put(sealedBytes, 'pdf')
+    await prisma.document.update({
+      where: { id: doc.id },
+      data: { preSealKey, preSealSha256: sha256Hex(sealedBytes), documentSha256: sha256 }
+    })
+  }
+}
+
+export interface SealOutcome {
+  ok: boolean
+  error?: string
+  retryable?: boolean
+}
+
+/**
+ * Stap 6+7: verzegelt elk document één keer cryptografisch en legt de
+ * zegelgegevens vast. Fail-closed: lukt het niet, dan is de uitkomst niet ok en
+ * wordt er niets afgerond.
+ *
+ * Staat `SEAL_MODE` op 'none', dan wordt het pre-seal-artefact één-op-één de
+ * definitieve versie (huidig gedrag: zichtbare stempels + auditcertificaat,
+ * zonder cryptografisch zegel).
+ */
+async function applySeals(dossierId: string): Promise<SealOutcome> {
+  const documents = await prisma.document.findMany({
+    where: { dossierId },
+    orderBy: { order: 'asc' }
+  })
+  const store = storage()
+
+  for (const doc of documents) {
+    // Idempotent: al verzegeld? Dan overslaan (nooit twee keer verzegelen).
+    if (doc.sealedKey && doc.sealedSha256) continue
+    if (!doc.preSealKey) continue
+    const preSeal = await store.get(doc.preSealKey)
+
+    if (!sealEnabled()) {
+      const sealedKey = await store.put(preSeal, 'pdf')
+      await prisma.document.update({
+        where: { id: doc.id },
+        data: { sealedKey, sealedSha256: sha256Hex(preSeal), sealedAt: new Date() }
+      })
+      continue
+    }
+
+    try {
+      const result = await sealPdf({
+        pdfBytes: preSeal,
+        appearanceText: 'Verzegeld door Otto Visser & Partners Accountants'
+      })
+      const sealedKey = await store.put(result.sealedBytes, 'pdf')
+      await prisma.document.update({
+        where: { id: doc.id },
+        data: {
+          sealedKey,
+          sealedSha256: result.sealedSha256,
+          sealedAt: new Date(),
+          timestampedAt: result.timestampedAt,
+          sealCertSerial: result.certSerial,
+          sealTsaUrl: result.tsaUrl
+        }
+      })
+    } catch (e) {
+      const retryable = e instanceof SealRetryableError
+      return { ok: false, error: (e as Error).message, retryable }
+    }
+  }
+  return { ok: true }
+}
+
+/**
+ * Verzegelt en rondt af. Wordt aangeroepen zodra iedereen heeft getekend én
+ * door de SEAL_RETRY-job. Idempotent: een al afgerond dossier doet niets.
+ */
+export async function sealAndComplete(dossierId: string): Promise<SealOutcome> {
+  const current = await prisma.dossier.findUnique({ where: { id: dossierId }, select: { status: true } })
+  if (!current) return { ok: false, error: 'dossier niet gevonden', retryable: false }
+  if (current.status === 'ONDERTEKEND') return { ok: true }
+
+  await buildPreSealArtifacts(dossierId)
+  const outcome = await applySeals(dossierId)
+
+  if (!outcome.ok) {
+    // Fail-closed: geen voltooiingsmail, dossier wacht zichtbaar op verzegeling.
+    await prisma.dossier.update({ where: { id: dossierId }, data: { status: 'SEALING_FAILED' } })
+    await writeAudit({
+      type: 'VERZEGELING_MISLUKT',
+      dossierId,
+      message: outcome.error?.slice(0, 500),
+      metadata: { retryable: outcome.retryable ?? false }
+    })
+    if (outcome.retryable) {
+      await enqueueOnce('SEAL_RETRY', dossierId, { dossierId }, { maxAttempts: 12 })
+    }
+    return outcome
+  }
+
+  await completeDossier(dossierId)
+  return { ok: true }
+}
+
+/** Stap 8: status, archief en voltooiingsmails. Vanaf hier is het bestand read-only. */
+async function completeDossier(dossierId: string): Promise<void> {
   const dossier = await prisma.dossier.findUnique({
     where: { id: dossierId },
     include: {
@@ -303,37 +448,31 @@ async function finalize(dossierId: string): Promise<void> {
     }
   })
   if (!dossier) return
-  if (dossier.status === 'ONDERTEKEND') return
 
   const store = storage()
-  const signers = dossier.recipients.map((r) => ({
-    name: r.name,
-    email: r.email,
-    signedAt: r.signedAt,
-    otpVerifiedAt: r.otpVerifiedAt
-  }))
   const attachments: { filename: string; content: Buffer }[] = []
-  const hashes: Record<string, string> = {}
+  const hashes: Record<string, { preSeal: string | null; sealed: string | null; timestampedAt: string | null }> = {}
   for (const doc of dossier.documents) {
-    if (!doc.workingKey) continue
-    const working = await store.get(doc.workingKey)
-    const { sealedBytes, sha256 } = await sealDocument({
-      pdfBytes: working,
-      dossierTitle: doc.title,
-      dossierId: dossier.id,
-      signers
-    })
-    const sealedKey = await store.put(sealedBytes, 'pdf')
-    await prisma.document.update({ where: { id: doc.id }, data: { sealedKey, documentSha256: sha256 } })
-    attachments.push({ filename: doc.fileName, content: Buffer.from(sealedBytes) })
-    hashes[doc.title] = sha256
+    if (!doc.sealedKey) continue
+    // Verbatim: exact de verzegelde bytes, niet opnieuw gegenereerd.
+    const sealed = await store.get(doc.sealedKey)
+    attachments.push({ filename: doc.fileName, content: Buffer.from(sealed) })
+    hashes[doc.title] = {
+      preSeal: doc.preSealSha256,
+      sealed: doc.sealedSha256,
+      timestampedAt: doc.timestampedAt?.toISOString() ?? null
+    }
   }
 
+  const completedAt = new Date()
+  // Bewaartermijn: zeven jaar, gelijk aan de dossierbewaartermijn.
+  const retentionUntil = new Date(completedAt)
+  retentionUntil.setFullYear(retentionUntil.getFullYear() + 7)
   await prisma.dossier.update({
     where: { id: dossierId },
-    data: { status: 'ONDERTEKEND', completedAt: new Date() }
+    data: { status: 'ONDERTEKEND', completedAt, retentionUntil }
   })
-  await writeAudit({ type: 'VERZEGELD', dossierId, metadata: { hashes } })
+  await writeAudit({ type: 'VERZEGELD', dossierId, metadata: { hashes, sealed: sealEnabled() } })
 
   // Getekende stukken automatisch in de klantmap zetten (indien ingesteld).
   if (archiveEnabled() && attachments.length > 0) {

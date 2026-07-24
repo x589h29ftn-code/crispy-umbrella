@@ -1,0 +1,171 @@
+# Verzegeling, tijdstempel en achtergrondtaken
+
+Deze notitie beschrijft wat er bij het hosten extra nodig is sinds het portaal
+documenten cryptografisch kan verzegelen. Bedoeld voor de beheerder/IT'er.
+
+## Waarom
+
+Tot nu toe kreeg een afgerond document een zichtbaar stempel per ondertekenaar en
+een ondertekencertificaat met een SHA-256-vingerafdruk. Die vingerafdruk stond
+alleen in onze eigen database. Een ontvanger kon daarmee niet zelf vaststellen dat
+het stuk onveranderd was.
+
+Met de verzegeling komt er een **digitale handtekening in het document zelf**
+(PAdES). Adobe Acrobat en andere lezers laten dan zien: wie het heeft verzegeld,
+wanneer, en of er na ondertekening iets is gewijzigd.
+
+## Twee nieuwe containers
+
+`docker compose up -d --build` start nu vijf services in plaats van drie:
+
+| Service | Rol | Publiek bereikbaar |
+|---|---|---|
+| `db` | PostgreSQL | nee |
+| `web` | het portaal | via Caddy |
+| `caddy` | HTTPS/reverse proxy | ja (80/443) |
+| **`worker`** | achtergrondtaken (verzegeling opnieuw proberen) | nee |
+| **`sealer`** | verzegelen met pyHanko | **nee, bewust niet** |
+
+De `sealer` heeft **geen `ports:`-blok en geen Caddy-route**. Hij is alleen
+bereikbaar op het interne Docker-netwerk en vraagt bij elke aanroep een shared
+secret in de header `X-Sealer-Secret`. Geef hem geen route naar buiten.
+
+## Instellen
+
+### 1. Zonder certificaat starten (standaard)
+
+In `.env` staat standaard:
+
+```
+SEAL_MODE="none"
+```
+
+Dan werkt het portaal precies als voorheen: zichtbare stempels en het
+ondertekencertificaat, maar **geen** digitaal zegel. Handig om eerst te testen.
+De `sealer`-container mag dan gewoon meedraaien; hij wordt niet gebruikt.
+
+### 2. Verzegeling aanzetten
+
+Nodig: een **organisatiecertificaat** waarvan de private sleutel bij de aanbieder
+in een cloud-HSM staat, plus een **tijdstempeldienst (TSA)**.
+
+> Zet nooit een `.pfx` of `.p12` op de server. Dat mag niet meer en is praktisch
+> onverdedigbaar.
+
+```
+SEAL_MODE="sealer"
+SEALER_SHARED_SECRET="<openssl rand -base64 48>"
+SEAL_DRIVER="csc"            # of globalsign_dss
+TSA_URL="https://<tijdstempeldienst>/tsr"
+PADES_LEVEL="lt"             # lt of lta
+```
+
+Daarnaast de gegevens van de gekozen driver:
+
+**`csc`** — Cloud Signature Consortium API v1 (Digidentity, Cleverbase):
+```
+SEAL_CSC_BASE_URL=""
+SEAL_CSC_CREDENTIAL_ID=""
+SEAL_CSC_OAUTH_TOKEN=""
+SEAL_CSC_SAD=""
+```
+
+**`globalsign_dss`** — GlobalSign Digital Signing Service:
+```
+SEAL_DSS_API_BASE="https://emea.api.dss.globalsign.com:8443/v2"
+SEAL_DSS_API_KEY=""
+SEAL_DSS_API_SECRET=""
+SEAL_DSS_SIGNER_ID=""
+SEAL_DSS_CERT_PEM=""
+```
+
+Wisselen tussen drivers is alleen een `.env`-wijziging, geen verbouwing.
+
+### 3. Controleren of het werkt
+
+```bash
+docker compose exec sealer \
+  curl -fsS -H "X-Sealer-Secret: $SEALER_SHARED_SECRET" http://localhost:8000/health
+```
+
+Antwoord `{"ok": true, ...}` betekent: driver te bouwen én TSA bereikbaar. Bij
+`ok: false` staat in `signer_error` of `tsa_error` wat er mist. Dezelfde controle
+zit als healthcheck in compose.
+
+## Hoe het in de praktijk verloopt
+
+De volgorde is strikt, want zodra er een handtekening in een PDF zit mag het
+bestand niet meer worden bewerkt:
+
+1. Zichtbare handtekeningen en stempels plaatsen.
+2. Ondertekencertificaat als extra pagina toevoegen.
+3. Plat slaan en de hash vastleggen (`preSealSha256`).
+4. **Eén keer** verzegelen via de sealer.
+5. Hash van de verzegelde bytes vastleggen (`sealedSha256`).
+6. Pas daarna: archiveren en de voltooiingsmail versturen.
+
+### Fail-closed: geen zegel, geen afronding
+
+Is de signing-API of de TSA onbereikbaar, dan:
+
+- komt het dossier op status **"Wacht op verzegeling"** (`SEALING_FAILED`);
+- gaat er **géén voltooiingsmail** uit;
+- komt er een taak in de wachtrij die het opnieuw probeert na 1, 5, 15 en 60
+  minuten en daarna elk uur;
+- staat er een melding op het dashboard met de laatste foutmelding;
+- krijgt de eigenaar na drie mislukte pogingen een e-mail;
+- staat elke poging in het auditspoor als `VERZEGELING_MISLUKT`.
+
+Voor de cliënt verandert er niets: die heeft geldig ondertekend, alleen de
+afronding wacht. De `worker`-container regelt het opnieuw proberen, dus die moet
+draaien.
+
+## Publieke controlepagina
+
+Op `/valideren` kan iedereen een document uploaden en zien of het zegel geldig
+is, wie het heeft gezet, wanneer, en of er na ondertekening iets is gewijzigd.
+Het bestand wordt **niet opgeslagen**; het gaat in het geheugen naar de sealer en
+wordt daarna weggegooid. De pagina werkt alleen als `SEAL_MODE="sealer"`.
+
+## Belangrijk bij archiveren
+
+De verzegelde bytes moeten **letterlijk** worden gekopieerd. Een tool die de PDF
+herschrijft, hercomprimeert of metadata toevoegt, maakt de handtekening ongeldig.
+Dat geldt met name voor SharePoint via Microsoft Graph.
+
+Test dit één keer expliciet: archiveer een verzegeld document, download het weer,
+en controleer het op `/valideren`. Bij elke download binnen het portaal wordt de
+hash automatisch opnieuw gecontroleerd; wijkt die af, dan wordt de download
+geblokkeerd en komt er een `INTEGRITEIT_AFWIJKING` in het auditspoor.
+
+## Auditspoor is append-only
+
+Wijzigen en verwijderen van auditregels wordt door de database zelf geweigerd
+(een trigger), niet alleen door afspraak. Daarnaast hangt elke regel met een hash
+aan de vorige. De keten controleren:
+
+```bash
+docker compose exec web npm run audit:verify
+```
+
+Dat meldt óf de keten intact is, óf precies bij welke regel hij breekt.
+
+## Achtergrondtaken
+
+De `worker`-container verwerkt de wachtrij (tabel `Job`). Houd het op **één**
+instance. Instellingen:
+
+```
+WORKER_POLL_MS="15000"   # hoe vaak kijken of er werk is
+WORKER_BATCH="5"         # hoeveel taken per ronde
+```
+
+## Nog te doen bij ingebruikname
+
+- **Back-up.** Dagelijks `pg_dump` én het documentvolume, versleuteld, buiten de
+  host. Bewaar de encryptiesleutels **niet** in dezelfde back-up.
+- **Herstel testen.** Zet minstens één keer per kwartaal een volledige restore op
+  in een schone omgeving en controleer dat een verzegeld document daaruit nog
+  geldig valideert. Leg de uitkomst vast.
+- **Bewaartermijn.** Afgeronde dossiers krijgen automatisch `retentionUntil` op
+  zeven jaar na afronding. De opruimtaak zelf volgt nog.

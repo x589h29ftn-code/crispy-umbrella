@@ -4,6 +4,9 @@ import { prisma } from '@/lib/db'
 import { resolveToken } from '@/lib/signflow'
 import { writeAudit } from '@/lib/audit'
 import { consume } from '@/lib/ratelimit'
+import { storage } from '@/lib/storage'
+import { sha256Hex } from '@/lib/seal/sealer'
+import { CONSENT_TEXT, consentHash } from '@/lib/consent'
 import { SignFlow } from './SignFlow'
 
 export const dynamic = 'force-dynamic'
@@ -51,8 +54,35 @@ export default async function TekenPage({ params }: { params: { token: string } 
   const documents = await prisma.document.findMany({
     where: { id: { in: docIds } },
     orderBy: { order: 'asc' },
-    select: { id: true, title: true }
+    select: { id: true, title: true, workingKey: true }
   })
+
+  // Vastleggen wát deze ondertekenaar te zien krijgt: de letterlijke verklaring
+  // en de hash van de documentbytes op dít moment. Bij één-voor-één ondertekenen
+  // ziet de tweede ondertekenaar andere bytes dan de eerste, en dat is per
+  // persoon aantoonbaar. Eenmalig, bij de eerste keer openen.
+  if (!recipient.presentedAt || !recipient.consentShownAt) {
+    const presented: Record<string, string> = {}
+    const store = storage()
+    for (const doc of documents) {
+      if (!doc.workingKey) continue
+      try {
+        presented[doc.id] = sha256Hex(await store.get(doc.workingKey))
+      } catch (e) {
+        console.error('[teken] kon getoonde hash niet bepalen', e)
+      }
+    }
+    await prisma.recipient.update({
+      where: { id: recipient.id },
+      data: {
+        consentTextSnapshot: recipient.consentTextSnapshot ?? CONSENT_TEXT,
+        consentTextHash: recipient.consentTextHash ?? consentHash(CONSENT_TEXT),
+        consentShownAt: recipient.consentShownAt ?? new Date(),
+        presentedHashes: recipient.presentedAt ? undefined : presented,
+        presentedAt: recipient.presentedAt ?? new Date()
+      }
+    })
+  }
 
   return (
     <main className="min-h-screen bg-slate-100 py-8">
@@ -61,8 +91,9 @@ export default async function TekenPage({ params }: { params: { token: string } 
           token={params.token}
           recipientName={recipient.name}
           dossierTitle={dossier.title}
-          documents={documents}
+          documents={documents.map((d) => ({ id: d.id, title: d.title }))}
           fields={fields}
+          consentText={recipient.consentTextSnapshot ?? CONSENT_TEXT}
         />
       </div>
     </main>
