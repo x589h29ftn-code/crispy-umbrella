@@ -86,9 +86,15 @@ model Accountant {
   // provider staat NOOIT hier - alleen de verwijzing (credential-id).
   professionalTitle   String? // 'AA' of 'RA' (leeg = geen)
   nbaNumber           String? // inschrijvingsnummer accountantsregister
-  signingCertProvider String? // bv. 'digidentity'
-  signingCredentialId String? // credential-/certificaat-id bij de provider (CSC)
+  signingCertProvider String? // bv. 'digidentity' of 'cleverbase'
+  // Het certificaat is persoonsgebonden: één credential hoort bij precies één
+  // accountant en mag nooit worden gedeeld. Daarom uniek.
+  signingCredentialId String? @unique
   signingCertEnabled  Boolean @default(false)
+  // Zet de provider het certificaat op 'disabled' (bijv. bij het eindigen of
+  // schorsen van de NBA-inschrijving), dan leggen we dat hier vast.
+  signingCertDisabledAt DateTime?
+  signingCertStatus     String? // laatst gerapporteerde status bij de provider
   active       Boolean  @default(true)
   createdAt    DateTime @default(now())
   updatedAt    DateTime @updatedAt
@@ -97,6 +103,7 @@ model Accountant {
   dossiers        Dossier[]
   auditEvents     AuditEvent[]
   signerFor       Recipient[] // dossiers waarin deze medewerker een ondertekenaar is
+  cscSessions     CscSigningSession[]
 }
 
 /// Intrekbare serversessie. Alleen de hash van het sessietoken wordt bewaard.
@@ -314,6 +321,37 @@ model AuditEvent {
 
   @@index([dossierId])
   @@index([createdAt])
+}
+
+// Ondertekensessie voor providers waarbij de ACCOUNTANT zelf autoriseert
+// (Cleverbase). Tussen het voorbereiden en het injecteren van de handtekening
+// verlaat de gebruiker de applicatie via een browserredirect; de voorbereide
+// PDF's met placeholder moeten die reis overleven.
+//
+// Eén bevestiging in de app dekt tot 50 hashes, dus een sessie kan meerdere
+// documenten omvatten. De batch is atomair: gedeeltelijk mislukt = geheel mislukt.
+model CscSigningSession {
+  id           String @id @default(cuid())
+  // OAuth2 state: minimaal 32 random bytes. Dit is de CSRF-bescherming op de
+  // redirect en wordt op de callback gevalideerd.
+  state        String @unique
+  accountantId String
+  accountant   Accountant @relation(fields: [accountantId], references: [id], onDelete: Cascade)
+  credentialId String
+  dossierId    String? // waar de accountant vandaan kwam, voor de terugkeer
+  documentIds  String[] // volgorde is bindend: signHash geeft dezelfde orde terug
+  preparedKeys Json // { documentId: opslagsleutel van de PDF met placeholder }
+  hashes       Json // { documentId: sha256 (base64) }
+  serviceToken String? // versleuteld (AES-256-GCM), nooit in leesbare vorm
+  status       String // PREPARED | AUTHORIZING | SIGNED | FAILED | EXPIRED
+  expiresAt    DateTime
+  lastError    String?
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  @@index([state])
+  @@index([status, expiresAt])
+  @@index([accountantId])
 }
 
 // Durable job queue op Postgres (geen extra broker nodig). Wordt gebruikt voor

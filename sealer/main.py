@@ -15,6 +15,8 @@ Beveiliging:
 
 from __future__ import annotations
 
+import base64
+import hashlib
 import hmac
 import io
 import json
@@ -31,6 +33,9 @@ log = logging.getLogger("sealer")
 app = FastAPI(title="OV&P sealer", docs_url=None, redoc_url=None, openapi_url=None)
 
 MAX_PDF_BYTES = int(os.environ.get("SEALER_MAX_PDF_BYTES", 60 * 1024 * 1024))
+# Gereserveerde ruimte voor de handtekening (RSA-2048 = 256 bytes; ruim genomen
+# zodat er ook een tijdstempel en revocatie-informatie bij kunnen).
+SIGNATURE_RESERVE_BYTES = int(os.environ.get("SEALER_SIGNATURE_RESERVE", 16384))
 SHARED_SECRET = os.environ.get("SEALER_SHARED_SECRET", "")
 
 
@@ -106,8 +111,7 @@ async def seal(
     # een 502 (de aanroeper probeert het later opnieuw), nooit een onbehandelde
     # 500 — die zou als definitieve fout gelden en nooit opnieuw geprobeerd worden.
     try:
-        from pyhanko.sign import signers
-        from pyhanko.sign.fields import SigFieldSpec
+        from pyhanko.sign.fields import SigFieldSpec, SigSeedSubFilter
         from pyhanko.sign.signers import PdfSignatureMetadata, PdfSigner
         from pyhanko.pdf_utils.incremental_writer import IncrementalPdfFileWriter
         from pyhanko_certvalidator import ValidationContext
@@ -157,7 +161,7 @@ async def seal(
         embed_validation_info=True,
         validation_context=ValidationContext(allow_fetching=True),
         use_pades_lta=(level == "lta"),
-        subfilter=signers.SigSeedSubFilter.PADES,
+        subfilter=SigSeedSubFilter.PADES,
         # Bewust GEEN certify/DocMDP: een approval signature is robuuster en
         # laat een tweede handtekening (incremental update) intact.
     )
@@ -193,11 +197,11 @@ async def seal(
     cert_serial = None
     try:
         from pyhanko.pdf_utils.reader import PdfFileReader
-        from pyhanko.sign.validation import validate_pdf_signature
+        from pyhanko.sign.validation import async_validate_pdf_signature
 
         reader = PdfFileReader(io.BytesIO(sealed))
         emb = reader.embedded_signatures[-1]
-        status = await validate_pdf_signature(emb, skip_diff=True)
+        status = await async_validate_pdf_signature(emb, skip_diff=True)
         ts = getattr(status, "timestamp_validity", None)
         if ts is not None and getattr(ts, "timestamp", None):
             signing_time = ts.timestamp.isoformat()
@@ -220,6 +224,157 @@ async def seal(
     return Response(content=sealed, media_type="application/pdf", headers=headers)
 
 
+@app.post("/prepare")
+async def prepare(
+    pdf: bytes = File(...),
+    cert_chain: str = Form(...),  # JSON-array van base64-DER, eerste = ondertekenaar
+    reason: str = Form("Ondertekend door de accountant"),
+    location: str = Form("Sneek"),
+    field_name: str = Form("ProfessionalSignature"),
+    x_sealer_secret: Optional[str] = Header(None),
+):
+    """Fase 1 van het ondertekenen met gebruikersautorisatie.
+
+    Zet een handtekening-placeholder met correcte /ByteRange in de PDF en geeft de
+    te ondertekenen SHA-256 terug. De accountant autoriseert daarna in zijn app;
+    de handtekening komt via /inject weer terug.
+
+    Nodig omdat de hashes van ALLE documenten bekend moeten zijn vóór de
+    autorisatie: de SAD leeft maar 300 seconden en dekt de hele batch.
+    """
+    _check_secret(x_sealer_secret)
+    if len(pdf) > MAX_PDF_BYTES:
+        raise HTTPException(413, "PDF te groot.")
+
+    try:
+        from asn1crypto import x509
+        from pyhanko.pdf_utils.incremental_writer import IncrementalPdfFileWriter
+        from pyhanko.sign.fields import SigSeedSubFilter
+        from pyhanko.sign.signers import PdfSignatureMetadata, PdfSigner
+        from pyhanko.sign.signers.pdf_cms import ExternalSigner
+        from pyhanko_certvalidator.registry import SimpleCertificateStore
+    except Exception as exc:  # noqa: BLE001
+        log.exception("prepare niet gereed")
+        return JSONResponse({"error": f"prepare niet gereed: {exc}"}, status_code=502)
+
+    try:
+        chain = [x509.Certificate.load(base64.b64decode(c)) for c in json.loads(cert_chain)]
+        if not chain:
+            return JSONResponse({"error": "cert_chain is leeg"}, status_code=400)
+    except Exception as exc:  # noqa: BLE001
+        return JSONResponse({"error": f"cert_chain ongeldig: {exc}"}, status_code=400)
+
+    registry = SimpleCertificateStore()
+    registry.register_multiple(chain[1:])
+
+    # ExternalSigner: pyHanko bouwt de CMS-structuur, het feitelijke ondertekenen
+    # gebeurt elders (bij de provider, na de pincode van de accountant). De
+    # signature_value hier is alleen om de juiste ruimte te reserveren.
+    ext = ExternalSigner(
+        signing_cert=chain[0],
+        cert_registry=registry,
+        signature_value=bytes(SIGNATURE_RESERVE_BYTES),
+    )
+    meta = PdfSignatureMetadata(
+        field_name=field_name,
+        reason=reason,
+        location=location,
+        subfilter=SigSeedSubFilter.PADES,
+    )
+    pdf_signer = PdfSigner(meta, signer=ext)
+
+    try:
+        writer = IncrementalPdfFileWriter(io.BytesIO(pdf))
+        # Let op: het derde element is het output-handle met de voorbereide PDF.
+        prep_digest, _tbs_doc, output = await pdf_signer.async_digest_doc_for_signing(writer)
+
+        # De provider ondertekent de signedAttrs, NIET de document-digest zelf.
+        # Daarom leveren we die attributen mee terug: bij /inject moeten exact
+        # dezelfde bytes worden gebruikt, anders klopt de handtekening niet.
+        signed_attrs = await ext.signed_attrs(
+            prep_digest.document_digest, "sha256", use_pades=True
+        )
+        to_sign = signed_attrs.dump()
+    except Exception as exc:  # noqa: BLE001
+        log.exception("placeholder plaatsen mislukt")
+        return JSONResponse({"error": f"placeholder mislukt: {exc}"}, status_code=400)
+
+    prepared = output.getvalue()
+    return JSONResponse(
+        {
+            # Dit is de hash die naar de provider gaat.
+            "hashToSign": base64.b64encode(hashlib.sha256(to_sign).digest()).decode(),
+            "documentDigest": base64.b64encode(prep_digest.document_digest).decode(),
+            "signedAttrs": base64.b64encode(to_sign).decode(),
+            # Deze twee wijzen naar het gereserveerde gebied in de PDF waar de
+            # handtekening straks komt. Zonder deze waarden kan /inject niet weten
+            # waar hij moet schrijven, dus ze moeten de redirect overleven.
+            "reservedRegionStart": prep_digest.reserved_region_start,
+            "reservedRegionEnd": prep_digest.reserved_region_end,
+            "preparedPdf": base64.b64encode(prepared).decode(),
+        }
+    )
+
+
+@app.post("/inject")
+async def inject(
+    prepared_pdf: bytes = File(...),
+    signed_attrs: str = Form(...),  # base64, exact zoals /prepare teruggaf
+    document_digest: str = Form(...),  # base64
+    reserved_region_start: int = Form(...),
+    reserved_region_end: int = Form(...),
+    signature_value: str = Form(...),  # base64, van de provider
+    cert_chain: str = Form(...),  # JSON-array van base64-DER
+    x_sealer_secret: Optional[str] = Header(None),
+):
+    """Fase 2: bouwt de CMS met de handtekening van de provider en zet die in de
+    voorbereide PDF. Daarna is het document ondertekend en onaantastbaar."""
+    _check_secret(x_sealer_secret)
+    if len(prepared_pdf) > MAX_PDF_BYTES:
+        raise HTTPException(413, "PDF te groot.")
+
+    try:
+        from asn1crypto import cms as acms
+        from asn1crypto import x509
+        from pyhanko.sign.signers.pdf_cms import ExternalSigner
+        from pyhanko.sign.signers.pdf_byterange import PreparedByteRangeDigest
+        from pyhanko.sign.signers.pdf_signer import PdfTBSDocument
+        from pyhanko_certvalidator.registry import SimpleCertificateStore
+    except Exception as exc:  # noqa: BLE001
+        log.exception("inject niet gereed")
+        return JSONResponse({"error": f"inject niet gereed: {exc}"}, status_code=502)
+
+    try:
+        chain = [x509.Certificate.load(base64.b64decode(c)) for c in json.loads(cert_chain)]
+        attrs = acms.CMSAttributes.load(base64.b64decode(signed_attrs))
+        sig = base64.b64decode(signature_value)
+        doc_digest = base64.b64decode(document_digest)
+    except Exception as exc:  # noqa: BLE001
+        return JSONResponse({"error": f"ongeldige invoer: {exc}"}, status_code=400)
+
+    registry = SimpleCertificateStore()
+    registry.register_multiple(chain[1:])
+    ext = ExternalSigner(signing_cert=chain[0], cert_registry=registry, signature_value=sig)
+
+    try:
+        cms_obj = await ext.async_sign_prescribed_attributes("sha256", attrs)
+        out = io.BytesIO(prepared_pdf)
+        await PdfTBSDocument.async_finish_signing(
+            out,
+            prepared_digest=PreparedByteRangeDigest(
+                document_digest=doc_digest,
+                reserved_region_start=reserved_region_start,
+                reserved_region_end=reserved_region_end,
+            ),
+            signature_cms=cms_obj,
+        )
+    except Exception as exc:  # noqa: BLE001
+        log.exception("injecteren mislukt")
+        return JSONResponse({"error": f"injecteren mislukt: {exc}"}, status_code=400)
+
+    return Response(content=out.getvalue(), media_type="application/pdf")
+
+
 @app.post("/validate")
 async def validate(
     pdf: bytes = File(...),
@@ -232,18 +387,24 @@ async def validate(
 
     try:
         from pyhanko.pdf_utils.reader import PdfFileReader
-        from pyhanko.sign.validation import validate_pdf_signature
+        from pyhanko.sign.validation import async_validate_pdf_signature
         from pyhanko_certvalidator import ValidationContext
     except Exception as exc:  # noqa: BLE001 - afhankelijkheid niet beschikbaar
         log.exception("validatie niet gereed")
         return JSONResponse({"error": f"validatie niet gereed: {exc}"}, status_code=502)
 
+    # Zowel het openen als het uitlezen van de handtekeningen kan op een
+    # beschadigde PDF stuklopen. Dit endpoint is via de publieke controlepagina
+    # bereikbaar, dus dat moet een nette 400 geven en geen 500.
     try:
         reader = PdfFileReader(io.BytesIO(pdf))
+        sigs = list(reader.embedded_signatures)
     except Exception as exc:  # noqa: BLE001
-        return JSONResponse({"error": f"PDF ongeldig: {exc}"}, status_code=400)
+        return JSONResponse(
+            {"error": f"Dit bestand is geen leesbare PDF of is beschadigd: {exc}"},
+            status_code=400,
+        )
 
-    sigs = list(reader.embedded_signatures)
     if not sigs:
         return {"signed": False, "signatures": []}
 
@@ -251,7 +412,7 @@ async def validate(
     results = []
     for emb in sigs:
         try:
-            status = await validate_pdf_signature(emb, signer_validation_context=vc)
+            status = await async_validate_pdf_signature(emb, signer_validation_context=vc)
             ts = getattr(status, "timestamp_validity", None)
             results.append(
                 {

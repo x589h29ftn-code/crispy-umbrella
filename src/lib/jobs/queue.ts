@@ -7,7 +7,13 @@ import type { Prisma } from '@prisma/client'
 // SELECT ... FOR UPDATE SKIP LOCKED kunnen meerdere workers naast elkaar draaien
 // zonder dezelfde job twee keer te pakken.
 
-export type JobKind = 'SEAL_RETRY' | 'REMINDER' | 'EXPIRE' | 'ARCHIVE' | 'RETENTION_CLEANUP'
+export type JobKind =
+  | 'SEAL_RETRY'
+  | 'REMINDER'
+  | 'EXPIRE'
+  | 'ARCHIVE'
+  | 'RETENTION_CLEANUP'
+  | 'CSC_SESSION_CLEANUP'
 
 export interface JobRow {
   id: string

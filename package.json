@@ -16,7 +16,8 @@
     "db:seed": "tsx prisma/seed.ts",
     "db:studio": "prisma studio",
     "worker": "tsx --conditions react-server scripts/worker.ts",
-    "audit:verify": "tsx --conditions react-server scripts/verify-audit-chain.ts"
+    "audit:verify": "tsx --conditions react-server scripts/verify-audit-chain.ts",
+    "csc:check": "tsx --conditions react-server scripts/csc-stub-check.ts"
   },
   "prisma": {
     "seed": "tsx prisma/seed.ts"
