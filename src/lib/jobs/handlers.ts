@@ -78,12 +78,44 @@ async function handleCscSessionCleanup(): Promise<void> {
   }
 }
 
+/**
+ * Eén nieuwe poging na een tijdelijke bounce. De oorspronkelijke link is niet
+ * opnieuw te versturen (van het tekentoken bewaren we alleen de hash), dus de
+ * ontvanger krijgt een nieuwe uitnodiging met een nieuwe link.
+ */
+async function handleMailResend(job: JobRow): Promise<void> {
+  const recipientId = String(payloadOf(job).recipientId ?? '')
+  if (!recipientId) return
+  const r = await prisma.recipient.findUnique({
+    where: { id: recipientId },
+    select: { id: true, status: true, mailStatus: true, mailResendCount: true, dossierId: true, email: true }
+  })
+  if (!r) return
+  // Inmiddels getekend, geweigerd of definitief onbezorgbaar: niets meer doen.
+  if (r.status !== 'PENDING' || r.mailStatus === 'BOUNCED' || r.mailStatus === 'COMPLAINED') return
+
+  await prisma.recipient.update({
+    where: { id: r.id },
+    data: { mailResendCount: { increment: 1 } }
+  })
+  const { activateSigner } = await import('@/lib/signflow')
+  await activateSigner(r.id)
+  await writeAudit({
+    type: 'HERINNERD',
+    dossierId: r.dossierId,
+    recipientId: r.id,
+    message: `automatisch opnieuw verstuurd na tijdelijke bounce (${r.email})`
+  })
+}
+
 export async function runJob(job: JobRow): Promise<void> {
   switch (job.kind) {
     case 'SEAL_RETRY':
       return handleSealRetry(job)
     case 'CSC_SESSION_CLEANUP':
       return handleCscSessionCleanup()
+    case 'MAIL_RESEND':
+      return handleMailResend(job)
     // REMINDER, EXPIRE, ARCHIVE en RETENTION_CLEANUP volgen in een later
     // werkpakket; de queue en de worker staan er al klaar voor.
     default:

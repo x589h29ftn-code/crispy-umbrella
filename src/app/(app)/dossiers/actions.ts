@@ -12,6 +12,7 @@ import { dossierCreateSchema, saveFieldsSchema, type SaveFieldsInput } from '@/l
 import { writeAudit } from '@/lib/audit'
 import { generateSigningToken } from '@/lib/auth/signingToken'
 import { sendMail } from '@/lib/email/transport'
+import { mailBlocked } from '@/lib/email/status'
 import { reminderEmail, officeTurnEmail } from '@/lib/email/templates'
 import { activateInitial, currentSigners } from '@/lib/signflow'
 import type { DocumentKind } from '@prisma/client'
@@ -297,8 +298,19 @@ export async function remindDossierAction(dossierId: string): Promise<{ ok: bool
   const active = currentSigners(dossier, dossier.recipients)
   if (active.length === 0) return { ok: false, error: 'Er is niemand die nu aan de beurt is.' }
 
+  // Naar een gebouncet of als spam gemarkeerd adres blijven mailen schaadt de
+  // bezorgbaarheid van het hele domein. Eerst het adres corrigeren.
+  const reachable = active.filter((r) => !mailBlocked(r))
+  if (reachable.length === 0) {
+    return {
+      ok: false,
+      error:
+        'De mail naar dit adres komt niet aan. Corrigeer eerst het e-mailadres van de ontvanger en verstuur het verzoek opnieuw.'
+    }
+  }
+
   const ttlMs = dossier.linkTtlDays * 24 * 60 * 60 * 1000
-  for (const r of active) {
+  for (const r of reachable) {
     if (r.role === 'ZELF' && r.accountantId) {
       const mail = officeTurnEmail({
         recipientName: r.name,

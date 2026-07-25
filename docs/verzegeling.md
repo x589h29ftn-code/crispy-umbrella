@@ -238,6 +238,60 @@ npm run csc:check
   handtekening, dan wordt het organisatiezegel standaard overgeslagen. Zet
   `SEAL_WHEN_QUALIFIED_PRESENT=true` als je beide wilt.
 
+## Mail: weten of de uitnodiging is aangekomen
+
+Bij SMTP (Microsoft 365) weet je alleen dat je de mail aan de server hebt
+aangeboden. Of hij is afgeleverd, gebounced of in de spamfolder belandde, weet je
+niet. In een bewijsdossier is "verzonden" daarmee de zwakste schakel — en precies
+de schakel waar een betwisting begint.
+
+Zet daarom `MAIL_TRANSPORT` op **`postmark`** of **`resend`**. Het portaal:
+
+- bewaart het message-id van de provider bij de ontvanger;
+- verwerkt de terugkoppeling op `/api/webhooks/mail` (afgeleverd, bounce,
+  spamklacht, geopend);
+- legt elke gebeurtenis vast in het auditspoor met de volledige payload;
+- toont op het dashboard **"uitnodigingen komen niet aan"** met de reden.
+
+Gebruik een **apart subdomein** voor deze mail (bijvoorbeeld
+`mail.ottovisseraccountants.nl`) met eigen SPF, DKIM en DMARC. Zo raakt een
+mailincident de reputatie van het hoofddomein niet.
+
+### Het webhook-eindpunt beveiligen
+
+Zonder instellingen worden **alle** webhooks geweigerd — nooit stilzwijgend open.
+
+- **Postmark:** zet de webhook-URL in met basicauth, bijvoorbeeld
+  `https://hookuser:GEHEIM@portaal.example.nl/api/webhooks/mail`, en vul
+  `MAIL_WEBHOOK_USER` en `MAIL_WEBHOOK_PASSWORD`. Optioneel `MAIL_WEBHOOK_IPS`
+  als extra slot.
+- **Resend:** vul `RESEND_WEBHOOK_SECRET` (`whsec_…`). De Svix-signatuur wordt
+  gecontroleerd, inclusief een tijdvenster van vijf minuten zodat een onderschepte
+  call niet later opnieuw bruikbaar is.
+
+Dezelfde gebeurtenis twee keer aangeboden doet niets extra: dat wordt op
+`providerEventId` afgevangen.
+
+### Bounces
+
+| Situatie | Wat het portaal doet |
+|---|---|
+| **Harde bounce** (adres bestaat niet) | status BOUNCED, mail naar de eigenaar, geen herinneringen meer |
+| **Tijdelijke bounce** (mailbox vol) | één automatische herzending na een uur; bounce hij dan weer, dan als hard behandelen |
+| **Spamklacht** | status COMPLAINED, mail naar de eigenaar, geen herinneringen meer |
+
+Herinneren naar een gebouncet adres is geblokkeerd: doorgaan schaadt de
+bezorgbaarheid van het hele domein. Corrigeer eerst het adres en verstuur het
+verzoek opnieuw.
+
+### Openen: bewust géén bewijs
+
+`MAIL_GEOPEND` komt van een tracking-pixel en is in twee richtingen onbetrouwbaar:
+geblokkeerde afbeeldingen geven een gemiste opening, en privacybescherming die
+mail vooraf ophaalt (zoals Apple Mail Privacy Protection) geeft een opening die er
+niet was. Het wordt daarom wél gelogd als procesindicatie, maar staat **niet** op
+het ondertekencertificaat. Standaard staat het meten uit (`MAIL_TRACK_OPENS`).
+
 ## Nog te doen bij ingebruikname
 
 - **Back-up.** Dagelijks `pg_dump` én het documentvolume, versleuteld, buiten de
