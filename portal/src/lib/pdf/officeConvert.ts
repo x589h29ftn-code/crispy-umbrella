@@ -4,6 +4,7 @@ import { tmpdir } from 'node:os'
 import { basename, extname, join } from 'node:path'
 import { pathToFileURL } from 'node:url'
 import { runTool } from '@/lib/sandbox'
+import { withDocPrepLock } from '@/lib/docprep-lock'
 
 // Word/Office → PDF, server-side. Geport uit de desktop-app; de Electron-
 // printToPDF-fallback is vervangen omdat er server-side geen Chromium is.
@@ -50,6 +51,11 @@ async function run(cmd: string, args: string[], cwd: string, timeoutMs: number):
 }
 
 async function convertWithLibreOffice(soffice: string, name: string, data: Uint8Array): Promise<Uint8Array> {
+  // Eén zware bewerking tegelijk over alle containers heen; zie lib/docprep-lock.ts.
+  return withDocPrepLock(() => convertWithLibreOfficeUnlocked(soffice, name, data))
+}
+
+async function convertWithLibreOfficeUnlocked(soffice: string, name: string, data: Uint8Array): Promise<Uint8Array> {
   const dir = await mkdtemp(join(tmpdir(), 'ovp-office-'))
   try {
     const safeName = basename(name).replace(/[^\w.\- ]/g, '_') || `document${extname(name)}`

@@ -5,6 +5,7 @@ import { writeAudit } from '@/lib/audit'
 import { sendMail } from '@/lib/email/transport'
 import { reminderEmail, officeTurnEmail } from '@/lib/email/templates'
 import { generateSigningToken } from '@/lib/auth/signingToken'
+import { blobBewaardagen } from '@/lib/retention'
 
 // De levensloop van een verzoek dat niet normaal afloopt: herinneren, verlopen,
 // opnieuw versturen, en de eigenaar porren als een dossier op zijn waarmerk wacht.
@@ -384,4 +385,96 @@ export async function nudgeWaitingSignatures(opts?: { now?: Date }): Promise<{ e
     })
   }
   return { eigenaren: perEigenaar.size, dossiers: wachtend.length }
+}
+
+/** Op welke dagen na afronding er wordt gepord over archiveren. */
+export const ARCHIVEER_NUDGE_DAGEN = [60, 80]
+
+/**
+ * Port over dossiers die zijn afgerond maar nog niet als gearchiveerd zijn
+ * afgevinkt.
+ *
+ * Zonder deze nudge is het bewaarmodel een geheugenspel: de bestanden verdwijnen
+ * pas 90 dagen NA het vinkje, dus een dossier dat niemand afvinkt blijft eeuwig
+ * staan. Dat is de veilige kant (vollopen is beter dan verlies), maar het moet wel
+ * opvallen.
+ *
+ * Op dag 60 gaat er een bericht naar de eigenaar. Op dag 80 naar de eigenaar én de
+ * beheerders, met de eerlijke tekst: er gebeurt niets automatisch, maar het dossier
+ * moet daarna handmatig worden opgeschoond.
+ */
+export async function nudgeArchiving(opts?: { now?: Date }): Promise<{ gemaild: number; dossiers: number }> {
+  const now = opts?.now ?? new Date()
+  const [eerste, tweede] = ARCHIVEER_NUDGE_DAGEN
+
+  const kandidaten = await prisma.dossier.findMany({
+    where: {
+      status: 'ONDERTEKEND',
+      archivedAt: null,
+      completedAt: { not: null, lt: new Date(now.getTime() - eerste * 86_400_000) }
+    },
+    orderBy: { completedAt: 'asc' },
+    select: { id: true, title: true, completedAt: true, ownerId: true, owner: { select: { email: true, name: true } } }
+  })
+  if (kandidaten.length === 0) return { gemaild: 0, dossiers: 0 }
+
+  const dagen = (d: Date) => Math.floor((now.getTime() - d.getTime()) / 86_400_000)
+  // Splitsen: bij 80+ dagen gaan ook de beheerders mee.
+  const dringend = kandidaten.filter((d) => d.completedAt && dagen(d.completedAt) >= tweede)
+  const gewoon = kandidaten.filter((d) => d.completedAt && dagen(d.completedAt) < tweede)
+
+  const perEigenaar = new Map<
+    string,
+    { email: string; name: string; regels: { titel: string; id: string; dagen: number }[]; dringend: boolean }
+  >()
+  for (const d of [...gewoon, ...dringend]) {
+    const e = perEigenaar.get(d.ownerId) ?? {
+      email: d.owner.email,
+      name: d.owner.name,
+      regels: [],
+      dringend: false
+    }
+    e.regels.push({ titel: d.title, id: d.id, dagen: d.completedAt ? dagen(d.completedAt) : 0 })
+    if (dringend.some((x) => x.id === d.id)) e.dringend = true
+    perEigenaar.set(d.ownerId, e)
+  }
+
+  const beheerders = dringend.length
+    ? await prisma.accountant.findMany({ where: { role: 'BEHEERDER', active: true }, select: { email: true } })
+    : []
+
+  let gemaild = 0
+  for (const [, e] of perEigenaar) {
+    const lijst = e.regels
+      .sort((a, b) => b.dagen - a.dagen)
+      .map((r) => `- ${r.titel} (${r.dagen} dagen klaar): ${env.APP_URL}/dossiers/${r.id}`)
+      .join('\n')
+    const kop = e.dringend
+      ? `Actie nodig: ${e.regels.length} ondertekend(e) stuk(ken) nog niet in SharePoint`
+      : `Nog te archiveren: ${e.regels.length} ondertekend(e) stuk(ken)`
+    const staart = e.dringend
+      ? `Er gebeurt niets automatisch: zonder vinkje blijven deze bestanden in het portaal staan. ` +
+        `Maar het portaal is geen archief — zet ze in SharePoint en vink ze af, anders moet dit later ` +
+        `handmatig worden opgeschoond.`
+      : `Zet het stuk in de klantmap in SharePoint en vink het daarna af in het portaal. ` +
+        `De bestanden verdwijnen dan ${blobBewaardagen()} dagen later uit het portaal; het bewijsspoor blijft.`
+    try {
+      await sendMail({
+        to: e.dringend ? [e.email, ...beheerders.map((b) => b.email)].join(', ') : e.email,
+        subject: kop,
+        text: `Beste ${e.name},\n\n${lijst}\n\n${staart}`,
+        html:
+          `<p>Beste ${e.name},</p><ul>` +
+          e.regels
+            .sort((a, b) => b.dagen - a.dagen)
+            .map((r) => `<li><a href="${env.APP_URL}/dossiers/${r.id}">${r.titel}</a> — ${r.dagen} dagen klaar</li>`)
+            .join('') +
+          `</ul><p>${staart}</p>`
+      })
+      gemaild += 1
+    } catch (err) {
+      console.error('[archiveer-nudge]', err)
+    }
+  }
+  return { gemaild, dossiers: kandidaten.length }
 }

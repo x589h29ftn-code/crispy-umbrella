@@ -5,6 +5,7 @@ import { consume } from '@/lib/ratelimit'
 import { headers } from 'next/headers'
 import { clientIp } from '@/lib/ip'
 import { env } from '@/env'
+import { requireAccountant } from '@/lib/auth/session'
 
 export interface ValidateState {
   error?: string
@@ -20,6 +21,9 @@ const MAX_BYTES = 30_000_000
  * in het geheugen naar de sealer-sidecar en wordt daarna weggegooid.
  */
 export async function validateAction(_prev: ValidateState, formData: FormData): Promise<ValidateState> {
+  // Achter de login sinds v1.4. Daarmee is er geen onbeauthenticeerde ingang meer
+  // naar de PDF-parser, en is een aparte validator-container niet nodig.
+  await requireAccountant()
   const ip = clientIp(headers().get('x-forwarded-for'), headers().get('x-real-ip'), env.TRUSTED_PROXY_HOPS)
   // Eigen limiet, niet die van de tekenlinks: dit is de publieke controlepagina en
   // een PDF-bom is hier de goedkoopste aanval.

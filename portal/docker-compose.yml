@@ -34,7 +34,9 @@ services:
       # scheiding zou de publieke controlepagina de container met de
       # ondertekengegevens aanspreken.
       SEALER_URL: ${SEALER_URL:-http://sealer:8000}
-      SEALER_VALIDATE_URL: ${SEALER_VALIDATE_URL:-http://validator:8000}
+      # Leeg: validatie gaat naar de sealer zelf. Alleen zetten als er een aparte
+      # validator-service draait (nodig zodra /valideren publiek zou worden).
+      SEALER_VALIDATE_URL: ${SEALER_VALIDATE_URL:-}
     depends_on:
       db:
         condition: service_healthy
@@ -65,7 +67,11 @@ services:
 
   # Cryptografische verzegeling (PAdES) met pyHanko. BEWUST NIET publiek:
   # geen ports-blok en geen Caddy-route, alleen bereikbaar op het interne
-  # compose-netwerk. Zet SEAL_MODE=sealer in .env om hem te gebruiken.
+  # compose-netwerk. Zet SEAL_MODE=qualified in .env om hem te gebruiken.
+  #
+  # Er is één ondertekenmechanisme: het beroepscertificaat van de accountant. Deze
+  # container voert daarvoor /prepare en /inject uit. Een apart organisatiezegel
+  # (en de bijbehorende GlobalSign-driver) is met v1.4 van de lijst gehaald.
   sealer:
     build:
       context: ./sealer
@@ -85,12 +91,6 @@ services:
       SEAL_CSC_CREDENTIAL_ID: ${SEAL_CSC_CREDENTIAL_ID:-}
       SEAL_CSC_OAUTH_TOKEN: ${SEAL_CSC_OAUTH_TOKEN:-}
       SEAL_CSC_SAD: ${SEAL_CSC_SAD:-}
-      # GlobalSign DSS-driver:
-      SEAL_DSS_API_BASE: ${SEAL_DSS_API_BASE:-}
-      SEAL_DSS_API_KEY: ${SEAL_DSS_API_KEY:-}
-      SEAL_DSS_API_SECRET: ${SEAL_DSS_API_SECRET:-}
-      SEAL_DSS_SIGNER_ID: ${SEAL_DSS_SIGNER_ID:-}
-      SEAL_DSS_CERT_PEM: ${SEAL_DSS_CERT_PEM:-}
     healthcheck:
       test:
         - CMD-SHELL
@@ -104,42 +104,17 @@ services:
     expose:
       - '8000'
 
-  # Dezelfde image, andere rol: alleen valideren, géén ondertekengegevens.
+  # GEEN aparte validator-service (meer). Changeset v1.2 punt 5.2 en v1.3 punt 10
+  # vroegen om een tweede container voor /validate, omdat een publieke,
+  # onbeauthenticeerde PDF-upload uitkwam bij de component met de ondertekengegevens.
+  # Sinds v1.4 staat /valideren achter de login: er is geen onbeauthenticeerde
+  # uploadingang meer, en dan is een zesde container geen bescherming maar alleen
+  # extra geheugengebruik op een machine van 4 GB.
   #
-  # Waarom apart. /validate is het enige eindpunt dat via de publieke controlepagina
-  # bereikbaar is en dat bestanden van buiten door een PDF-parser haalt. Die parser
-  # hoort niet in dezelfde container te staan als de sleutelgegevens van het zegel.
-  #
-  # VALIDATOR_ONLY=true doet twee dingen: het proces weigert te starten als er tóch
-  # ondertekengegevens in zijn omgeving staan (de omgekeerde grendel — anders belandt
-  # er over een half jaar één gedeeld env-bestand in beide services), en /seal,
-  # /prepare en /inject geven 403.
-  #
-  # Let op: hieronder staan bewust GEEN SEAL_*- of TSA_PASSWORD-variabelen. Zet ze
-  # hier ook niet "voor de zekerheid" bij; de container start dan niet.
-  validator:
-    build:
-      context: ./sealer
-      dockerfile: Dockerfile
-    restart: unless-stopped
-    environment:
-      SEALER_SHARED_SECRET: ${SEALER_SHARED_SECRET:?zet SEALER_SHARED_SECRET in .env}
-      VALIDATOR_ONLY: 'true'
-    # PDF-bommen zijn hier de goedkoopste aanval; begrens wat één container kan opeten.
-    mem_limit: 768m
-    cpus: 1.0
-    healthcheck:
-      test:
-        - CMD-SHELL
-        - >-
-          curl -fsS -H "X-Sealer-Secret: $${SEALER_SHARED_SECRET}"
-          http://localhost:8000/health || exit 1
-      interval: 60s
-      timeout: 15s
-      retries: 3
-      start_period: 20s
-    expose:
-      - '8000'
+  # Wil het kantoor die pagina ooit toch publiek maken, dan komt de container terug.
+  # De rol bestaat nog in de image (VALIDATOR_ONLY=true in sealer/main.py, met de
+  # omgekeerde grendel en 403 op de ondertekenpaden) en de webapp kan hem aanspreken
+  # via SEALER_VALIDATE_URL. Zie docs/hosting-handleiding.md.
 
   caddy:
     image: caddy:2

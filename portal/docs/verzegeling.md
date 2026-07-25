@@ -1,5 +1,29 @@
 # Verzegeling, tijdstempel en achtergrondtaken
 
+> **Sinds changeset v1.4: één ondertekenmechanisme.**
+>
+> Het **beroepscertificaat van de accountant** is de handtekening én de
+> integriteitsbescherming. Er is geen apart organisatiezegel meer, en de
+> GlobalSign-DSS-driver is verwijderd. Dat scheelt een tweede certificaat
+> (€450–650 per jaar), een tweede storingsbron, en een uitleg die niemand wil geven.
+>
+> `SEAL_MODE` heeft drie waarden:
+>
+> | Waarde | Betekenis |
+> |---|---|
+> | `none` | geen cryptografische handtekening. Banner in het portaal, regel op het certificaat, en `VERZEGELING_OVERGESLAGEN` in het auditspoor. In productie ook `ALLOW_UNSEALED=true` nodig. |
+> | `qualified` | de standaard. De gekwalificeerde handtekening van de accountant is de verzegeling; die zet `sealStage = SEALED`. Vereist een werkende `PROFESSIONAL_SIGNING_DRIVER`, anders weigert de app te starten. |
+> | `organisation` | gereserveerd, niet gebouwd. De app weigert te starten met deze waarde. |
+>
+> `sealer` blijft geaccepteerd als oude naam voor `qualified`, zodat een bestaand
+> `.env` niet stilvalt.
+>
+> De zichtbare tekst hangt af van de documentsoort: op een jaarrekening staat
+> "Ondertekend door \<naam\>, RA", op een stuk waarin de cliënt iets verklaart
+> "Verzegeld door Otto Visser & Partners Accountants". Dat laatste is bewust: bij een
+> akkoordbrief wil je niet de indruk wekken dat de accountant de verklaring van de
+> cliënt mede onderschrijft. Instelbaar met `SIGN_AS_AUTHOR_KINDS`.
+
 Deze notitie beschrijft wat er bij het hosten extra nodig is sinds het portaal
 documenten cryptografisch kan verzegelen. Bedoeld voor de beheerder/IT'er.
 
@@ -46,51 +70,32 @@ De `sealer`-container mag dan gewoon meedraaien; hij wordt niet gebruikt.
 
 ### 2. Verzegeling aanzetten
 
-Nodig: een **organisatiecertificaat** waarvan de private sleutel bij de aanbieder
-in een cloud-HSM staat, plus een **tijdstempeldienst (TSA)**.
+Nodig: een **beroepscertificaat** voor de accountant waarvan de private sleutel bij
+de aanbieder in een cloud-HSM staat, plus een **tijdstempeldienst (TSA)**.
 
 > Zet nooit een `.pfx` of `.p12` op de server. Dat mag niet meer en is praktisch
 > onverdedigbaar.
 
 ```
-SEAL_MODE="sealer"
+SEAL_MODE="qualified"
 SEALER_SHARED_SECRET="<openssl rand -base64 48>"
-SEAL_DRIVER="csc"            # of globalsign_dss
+SEAL_DRIVER="csc"
 TSA_URL="https://<tijdstempeldienst>/tsr"
-PADES_LEVEL="lt"             # lt of lta
+PADES_LEVEL="lt"
+
+PROFESSIONAL_SIGNING_DRIVER="cleverbase"
+CLEVERBASE_CSC_BASE_URL=""
+CLEVERBASE_CSC_CLIENT_ID=""
+CLEVERBASE_CSC_CLIENT_SECRET=""
+CLEVERBASE_CSC_ENV="production"
+CLEVERBASE_REDIRECT_URI="https://<domein>/api/csc/callback"
 ```
 
-Daarnaast de gegevens van de gekozen driver:
+Zet daarna per accountant het certificaat aan onder **Instellingen → Gebruikers**.
 
-**`csc`** — Cloud Signature Consortium API v1 (Digidentity, Cleverbase):
-```
-SEAL_CSC_BASE_URL=""
-SEAL_CSC_CREDENTIAL_ID=""
-SEAL_CSC_OAUTH_TOKEN=""
-SEAL_CSC_SAD=""
-```
-
-**`globalsign_dss`** — GlobalSign Digital Signing Service:
-```
-SEAL_DSS_API_BASE="https://emea.api.dss.globalsign.com:8443/v2"
-SEAL_DSS_API_KEY=""
-SEAL_DSS_API_SECRET=""
-SEAL_DSS_SIGNER_ID=""
-SEAL_DSS_CERT_PEM=""
-```
-
-Wisselen tussen drivers is alleen een `.env`-wijziging, geen verbouwing.
-
-### 3. Controleren of het werkt
-
-```bash
-docker compose exec sealer \
-  curl -fsS -H "X-Sealer-Secret: $SEALER_SHARED_SECRET" http://localhost:8000/health
-```
-
-Antwoord `{"ok": true, ...}` betekent: driver te bouwen én TSA bereikbaar. Bij
-`ok: false` staat in `signer_error` of `tsa_error` wat er mist. Dezelfde controle
-zit als healthcheck in compose.
+De app **weigert te starten** met `SEAL_MODE=qualified` en
+`PROFESSIONAL_SIGNING_DRIVER=none`: er zou dan niets worden verzegeld terwijl de
+configuratie zegt van wel. Dat is de gevaarlijkste stille toestand die er is.
 
 ## Hoe het in de praktijk verloopt
 
@@ -100,9 +105,11 @@ bestand niet meer worden bewerkt:
 1. Zichtbare handtekeningen en stempels plaatsen.
 2. Ondertekencertificaat als extra pagina toevoegen.
 3. Plat slaan en de hash vastleggen (`preSealSha256`).
-4. **Eén keer** verzegelen via de sealer.
-5. Hash van de verzegelde bytes vastleggen (`sealedSha256`).
-6. Pas daarna: archiveren en de voltooiingsmail versturen.
+4. De accountant zet zijn **gekwalificeerde handtekening** (pincode in de app van de
+   provider). Die handtekening ís de verzegeling: hij zet `sealStage = SEALED` en
+   vult `sealedKey`, `sealedSha256`, `timestampedAt` en `sealCertSerial`.
+5. Pas daarna: de voltooiingsmail. Archiveren gebeurt handmatig, met een vinkje in
+   het portaal; zie `beheer.md`.
 
 ### Fail-closed: geen zegel, geen afronding
 
@@ -122,10 +129,26 @@ draaien.
 
 ## Publieke controlepagina
 
-Op `/valideren` kan iedereen een document uploaden en zien of het zegel geldig
+Op `/valideren` (achter de login sinds v1.4) kan een medewerker een document
+uploaden en zien of de handtekening geldig
 is, wie het heeft gezet, wanneer, en of er na ondertekening iets is gewijzigd.
 Het bestand wordt **niet opgeslagen**; het gaat in het geheugen naar de sealer en
-wordt daarna weggegooid. De pagina werkt alleen als `SEAL_MODE="sealer"`.
+wordt daarna weggegooid. De pagina werkt alleen als `SEAL_MODE="qualified"`.
+
+**Waarom achter de login.** Een onbeauthenticeerde upload die door een PDF-parser
+gaat, en dan in de container met de ondertekengegevens, was de zwakste plek in dit
+ontwerp. Eerdere changesets vroegen daarom om een aparte validator-container; achter
+de login is dat niet meer nodig, en het scheelt een zesde container op een machine van
+4 GB.
+
+Wat je daarmee verliest is minder dan het lijkt: een gekwalificeerd certificaat van
+een aanbieder op de EU-vertrouwenslijst wordt door **Acrobat Reader zelf** als geldig
+getoond, met de naam van de ondertekenaar. Een bank of cliënt heeft onze pagina dus
+niet nodig. Deze pagina is er voor de eigen steekproef op het archief.
+
+> Wil het kantoor de pagina later toch publiek maken, dan is de aparte container een
+> voorwaarde. De rol bestaat nog in de image (`VALIDATOR_ONLY=true`, met de omgekeerde
+> grendel en 403 op de ondertekenpaden); zie `hosting-handleiding.md`.
 
 ## Belangrijk bij archiveren
 
@@ -162,9 +185,10 @@ WORKER_BATCH="5"         # hoeveel taken per ronde
 
 ## Beroepscertificaat: ondertekenen op persoonlijke titel
 
-Naast het organisatiezegel kan een accountant (AA/RA) zelf gekwalificeerd
-ondertekenen met een PKIoverheid-beroepscertificaat. Dat is optioneel en staat
-per medewerker aan onder **Instellingen → Gebruikers**.
+Dit is sinds v1.4 **het** ondertekenmechanisme, niet meer een extra. De accountant
+(AA/RA) ondertekent gekwalificeerd met zijn beroepscertificaat; dat vervangt de natte
+handtekening en beschermt tegelijk de integriteit van het document. Staat per
+medewerker aan onder **Instellingen → Gebruikers**.
 
 Twee soorten providers, met een wezenlijk verschil:
 

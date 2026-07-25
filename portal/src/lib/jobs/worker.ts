@@ -40,6 +40,7 @@ export async function runForever(): Promise<void> {
     'REMINDER',
     'EXPIRE',
     'WAARMERK_NUDGE',
+    'ARCHIVE_NUDGE',
     'ORPHAN_CLEANUP'
   ] as const) {
     await enqueueOnce(kind, 'periodiek', {}, { maxAttempts: 1_000_000 }).catch((e) =>

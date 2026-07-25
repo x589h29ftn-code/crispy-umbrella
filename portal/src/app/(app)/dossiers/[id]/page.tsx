@@ -7,6 +7,8 @@ import { StatusBadge } from '@/components/StatusBadge'
 import { UnsealedBanner } from '@/components/UnsealedBanner'
 import { DossierActions } from './DossierActions'
 import { ArchiveFolderCard } from './ArchiveFolderCard'
+import { ArchiveCheck } from './ArchiveCheck'
+import { blobBewaardagen } from '@/lib/retention'
 import { PARTY_LABEL } from '@/lib/status'
 import { currentSigners } from '@/lib/signflow'
 import { archiveEnabled, buildDefaultFolder } from '@/lib/archive'
@@ -42,7 +44,8 @@ export default async function DossierDetailPage({ params }: { params: { id: stri
       recipients: { orderBy: { order: 'asc' }, include: { client: true } },
       auditEvents: { orderBy: { createdAt: 'asc' } },
       documents: { orderBy: { order: 'asc' } },
-      owner: { select: { name: true } }
+      owner: { select: { name: true } },
+      archivedBy: { select: { name: true } }
     }
   })
   if (!dossier) notFound()
@@ -134,6 +137,17 @@ export default async function DossierDetailPage({ params }: { params: { id: stri
               ))}
             </ul>
           </section>
+
+          {dossier.status === 'ONDERTEKEND' && (
+            <ArchiveCheck
+              dossierId={dossier.id}
+              archivedAt={dossier.archivedAt?.toISOString() ?? null}
+              archivedBy={dossier.archivedBy?.name ?? null}
+              archivedNote={dossier.archivedNote}
+              bewaardagen={blobBewaardagen()}
+              suggestie={defaultArchiveFolder}
+            />
+          )}
 
           {showArchive && (
             <ArchiveFolderCard

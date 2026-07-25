@@ -9,9 +9,9 @@ import { prisma } from '@/lib/db'
 import { storage } from '@/lib/storage'
 import { writeAudit, verifyAuditChain, AuditWriteError } from '@/lib/audit'
 import { cleanupOrphanBlobs, ORPHAN_GRACE_MS } from '@/lib/orphans'
-import { purgeExpiredDossiers } from '@/lib/retention'
+import { purgeExpiredDossiers, markArchived } from '@/lib/retention'
 import { sorteerKetens, GEEN_DOSSIER, isLockTimeout } from '@/lib/locks'
-import { assertReadyForRealSealing, assertValidatorHasNoCredentials } from '@/env'
+import { assertReadyForRealSealing } from '@/env'
 
 let fails = 0
 function check(name: string, ok: boolean, extra?: unknown) {
@@ -102,8 +102,15 @@ async function testLosseBestanden(accId: string) {
   await store.remove(gebruikt)
 }
 
-/** 3. Bewaartermijn ruimt alle vijf de sleutels op en verantwoordt dat. */
-async function testVijfSleutels(accId: string) {
+/**
+ * 3. Het bewaarmodel uit changeset v1.4: nooit op de klok, altijd op de vlag.
+ *
+ * Dit is het acceptatiecriterium letterlijk: een ondertekend dossier van 200 dagen
+ * oud ZONDER vinkje heeft nog al zijn bestanden. Zet het vinkje, zet de klok 91 dagen
+ * vooruit, en dan zijn de bestanden weg terwijl alle auditregels en de hashketen
+ * intact zijn.
+ */
+async function testBewaarmodel(accId: string) {
   const store = storage()
   const sleutels = {
     originalKey: await store.put(Buffer.from('origineel'), 'pdf'),
@@ -112,20 +119,60 @@ async function testVijfSleutels(accId: string) {
     postQualifiedKey: await store.put(Buffer.from('na waarmerken'), 'pdf'),
     sealedKey: await store.put(Buffer.from('verzegeld'), 'pdf')
   }
+  const tweehonderdDagenTerug = new Date(Date.now() - 200 * 86_400_000)
   const dossier = await prisma.dossier.create({
     data: {
-      title: 'Bewaartermijn met alle sleutels',
+      title: 'Ondertekend maar nooit afgevinkt',
       ownerId: accId,
       status: 'ONDERTEKEND',
-      retentionUntil: new Date(Date.now() - 86_400_000),
+      completedAt: tweehonderdDagenTerug,
       documents: { create: { title: 'Stuk', fileName: 'stuk.pdf', order: 0, ...sleutels } }
     }
   })
+  await prisma.$executeRawUnsafe(`UPDATE "Dossier" SET "updatedAt" = $1 WHERE id = $2`, tweehonderdDagenTerug, dossier.id)
   await writeAudit({ type: 'AANGEMAAKT', dossierId: dossier.id, message: 'aangemaakt' })
+  await writeAudit({ type: 'VERZEGELD', dossierId: dossier.id, message: 'verzegeld' })
 
-  const res = await purgeExpiredDossiers()
-  check('het dossier is opgeruimd', res.dossiers >= 1, res)
+  // Zonder vinkje: er mag NIETS verdwijnen, hoe oud het ook is.
+  const zonderVinkje = await purgeExpiredDossiers()
+  const naZonder = await prisma.document.findFirstOrThrow({ where: { dossierId: dossier.id } })
+  check(
+    'een ondertekend dossier van 200 dagen zonder vinkje houdt al zijn bestanden',
+    !!naZonder.sealedKey && !!naZonder.originalKey,
+    { sealedKey: naZonder.sealedKey, resultaat: zonderVinkje }
+  )
+  check('en wordt ook niet als opgeruimd geteld', zonderVinkje.blobsGewist === 0, zonderVinkje)
 
+  // Vinkje zetten.
+  const gezet = await markArchived({ dossierId: dossier.id, accountantId: accId, note: '12345 - Test BV/2024' })
+  check('het archiveervinkje is te zetten op een afgerond dossier', gezet.ok, gezet)
+  const gearchiveerd = await prisma.dossier.findUniqueOrThrow({
+    where: { id: dossier.id },
+    select: { archivedAt: true, archivedById: true, archivedNote: true }
+  })
+  check('wie en wanneer staat vast', !!gearchiveerd.archivedAt && gearchiveerd.archivedById === accId, gearchiveerd)
+  const archiefRegel = await prisma.auditEvent.findFirst({
+    where: { dossierId: dossier.id, type: 'GEARCHIVEERD' },
+    select: { message: true }
+  })
+  check('het archiveren staat in het auditspoor met de map', !!archiefRegel?.message?.includes('12345'), archiefRegel)
+
+  // Vinkje net gezet: de termijn is nog niet om.
+  const teVroeg = await purgeExpiredDossiers()
+  const naVroeg = await prisma.document.findFirstOrThrow({ where: { dossierId: dossier.id } })
+  check('direct na het vinkje verdwijnt er nog niets', !!naVroeg.sealedKey, teVroeg)
+
+  // Klok 91 dagen vooruit.
+  const straks = new Date(Date.now() + 91 * 86_400_000)
+  const res = await purgeExpiredDossiers({ now: straks })
+  check('na de termijn zijn de bestanden gewist', res.blobsGewist >= 1, res)
+
+  const naDoc = await prisma.document.findFirstOrThrow({ where: { dossierId: dossier.id } })
+  check(
+    'alle vijf de sleutels zijn leeg',
+    !naDoc.originalKey && !naDoc.workingKey && !naDoc.preSealKey && !naDoc.postQualifiedKey && !naDoc.sealedKey,
+    naDoc
+  )
   for (const [soort, key] of Object.entries(sleutels)) {
     let weg = false
     try {
@@ -133,11 +180,19 @@ async function testVijfSleutels(accId: string) {
     } catch {
       weg = true
     }
-    check(`${soort} is verwijderd`, weg)
+    check(`bestand ${soort} is echt verwijderd`, weg)
   }
 
+  // EN DIT IS DE OMKERING: het bewijs blijft staan.
+  const dossierNog = await prisma.dossier.findUnique({ where: { id: dossier.id }, select: { title: true } })
+  check('het dossier zelf bestaat nog', !!dossierNog)
+  const auditNog = await prisma.auditEvent.count({ where: { dossierId: dossier.id } })
+  check('het auditspoor is niet aangeraakt', auditNog >= 3, auditNog)
+  const docNog = await prisma.document.count({ where: { dossierId: dossier.id } })
+  check('de documentrij met de hashes bestaat nog', docNog === 1, docNog)
+
   const grafsteen = await prisma.auditEvent.findFirst({
-    where: { type: 'BEWAARTERMIJN_OPGERUIMD' },
+    where: { dossierId: dossier.id, type: 'BEWAARTERMIJN_OPGERUIMD' },
     orderBy: { seq: 'desc' },
     select: { metadata: true }
   })
@@ -148,7 +203,36 @@ async function testVijfSleutels(accId: string) {
     Object.keys(perSoort).length === 5 && Object.values(perSoort).every((n) => n === 1),
     perSoort
   )
-  check('en het aantal verwijderde bestanden', meta.blobsVerwijderd === 5 && meta.blobsTotaal === 5, meta)
+  check('en meldt dat het bewijs blijft', meta.bewijsBlijft === true && meta.fase === 'blobs', meta)
+
+  const keten = await verifyAuditChain()
+  check('de hashketen is intact na het wissen van de bestanden', keten.ok, keten)
+}
+
+/** 3b. Nooit afgeronde dossiers mogen zonder vinkje weg. */
+async function testNooitAfgerond(accId: string) {
+  const store = storage()
+  const key = await store.put(Buffer.from('nooit verstuurd'), 'pdf')
+  const oud = new Date(Date.now() - 200 * 86_400_000)
+  const dossier = await prisma.dossier.create({
+    data: {
+      title: 'Concept dat nooit is verstuurd',
+      ownerId: accId,
+      status: 'CONCEPT',
+      documents: { create: { title: 'Stuk', fileName: 'stuk.pdf', order: 0, originalKey: key } }
+    }
+  })
+  await prisma.$executeRawUnsafe(`UPDATE "Dossier" SET "updatedAt" = $1 WHERE id = $2`, oud, dossier.id)
+
+  const res = await purgeExpiredDossiers()
+  check('een oud, nooit verstuurd concept gaat zonder vinkje weg', res.blobsGewist >= 1, res)
+  let weg = false
+  try {
+    await store.get(key)
+  } catch {
+    weg = true
+  }
+  check('het bestand is verwijderd', weg)
 }
 
 /** 4. Verplichte auditregels rollen de transactie terug. */
@@ -210,67 +294,26 @@ function testVergrendeling() {
   check('een gewone fout niet', !isLockTimeout(new Error('iets anders')))
 }
 
-/** 6. De ingebruiknamegrendel: drie voorwaarden zodra er echt verzegeld wordt. */
+/** 6. De ingebruiknamegrendel: bij qualified moet er een provider zijn. */
 function testGrendel() {
-  const compleet = {
-    SEAL_MODE: 'sealer',
-    VALIDATOR_ISOLATED: true,
-    SEALER_URL: 'http://sealer:8000',
-    SEALER_VALIDATE_URL: 'http://validator:8000',
-    AUDIT_ANCHOR_TARGETS: 'archief,mail',
-    AUDIT_HMAC_KEY_V1: 'x'.repeat(40)
-  }
-  check('met alles geregeld mag het portaal starten', !throws(() => assertReadyForRealSealing(compleet)))
+  check(
+    'qualified met een werkende provider mag starten',
+    !throws(() => assertReadyForRealSealing({ SEAL_MODE: 'qualified', PROFESSIONAL_SIGNING_DRIVER: 'cleverbase' }))
+  )
+  // Dit is de gevaarlijkste stille toestand: de configuratie zegt dat er wordt
+  // verzegeld, maar er is niets om mee te verzegelen.
+  check(
+    'qualified zonder provider weigert te starten',
+    throws(() => assertReadyForRealSealing({ SEAL_MODE: 'qualified', PROFESSIONAL_SIGNING_DRIVER: 'none' }))
+  )
   check(
     'zonder verzegeling blokkeert de grendel niets',
-    !throws(() =>
-      assertReadyForRealSealing({ ...compleet, SEAL_MODE: 'none', VALIDATOR_ISOLATED: false, AUDIT_ANCHOR_TARGETS: '', AUDIT_HMAC_KEY_V1: undefined })
-    )
+    !throws(() => assertReadyForRealSealing({ SEAL_MODE: 'none', PROFESSIONAL_SIGNING_DRIVER: 'none' }))
   )
   check(
-    'zonder gescheiden validator weigert hij',
-    throws(() => assertReadyForRealSealing({ ...compleet, VALIDATOR_ISOLATED: false }))
+    'de gereserveerde waarde organisation weigert te starten',
+    throws(() => assertReadyForRealSealing({ SEAL_MODE: 'organisation', PROFESSIONAL_SIGNING_DRIVER: 'cleverbase' }))
   )
-  // De vlag alléén is niet genoeg: wijst de validatie nog naar dezelfde container,
-  // dan is de scheiding een bewering en geen scheiding.
-  check(
-    'de vlag zonder eigen URL is niet genoeg',
-    throws(() => assertReadyForRealSealing({ ...compleet, SEALER_VALIDATE_URL: undefined }))
-  )
-  check(
-    'en dezelfde URL als de sealer ook niet',
-    throws(() => assertReadyForRealSealing({ ...compleet, SEALER_VALIDATE_URL: 'http://sealer:8000' }))
-  )
-  check(
-    'zonder ankerbestemming weigert hij',
-    throws(() => assertReadyForRealSealing({ ...compleet, AUDIT_ANCHOR_TARGETS: '' }))
-  )
-  check(
-    'een onbekende ankerbestemming telt niet mee',
-    throws(() => assertReadyForRealSealing({ ...compleet, AUDIT_ANCHOR_TARGETS: 'ergens-anders' }))
-  )
-  check(
-    'zonder HMAC-sleutel weigert hij',
-    throws(() => assertReadyForRealSealing({ ...compleet, AUDIT_HMAC_KEY_V1: undefined }))
-  )
-
-  // De omgekeerde grendel op de validator-container.
-  check(
-    'de validator mag geen ondertekengegevens in zijn omgeving hebben',
-    throws(() => assertValidatorHasNoCredentials({ VALIDATOR_ONLY: true, CLEVERBASE_CSC_CLIENT_SECRET: 'geheim' }))
-  )
-  check(
-    'zonder die gegevens start hij wel',
-    !assertValidatorHasNoCredentialsFaalt({ VALIDATOR_ONLY: true, CLEVERBASE_CSC_CLIENT_SECRET: '  ' })
-  )
-  check(
-    'buiten de validator gelden die gegevens gewoon',
-    !assertValidatorHasNoCredentialsFaalt({ VALIDATOR_ONLY: false, CLEVERBASE_CSC_CLIENT_SECRET: 'geheim' })
-  )
-}
-
-function assertValidatorHasNoCredentialsFaalt(cfg: Parameters<typeof assertValidatorHasNoCredentials>[0]): boolean {
-  return throws(() => assertValidatorHasNoCredentials(cfg))
 }
 
 async function main() {
@@ -281,7 +324,8 @@ async function main() {
   testGrendel()
   await testNieuweSleutels()
   await testLosseBestanden(acc.id)
-  await testVijfSleutels(acc.id)
+  await testBewaarmodel(acc.id)
+  await testNooitAfgerond(acc.id)
   await testVerplichteAudit(acc.id)
 
   const keten = await verifyAuditChain()

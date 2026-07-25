@@ -25,9 +25,10 @@
     "test:audit": "tsx --conditions react-server scripts/regressie/audit-en-bewaartermijn.ts",
     "test:gelijktijdig": "tsx --conditions react-server scripts/regressie/gelijktijdig-ondertekenen.ts",
     "test:sessie": "tsx --conditions react-server scripts/regressie/ondertekensessie.ts",
-    "test:regressie": "npm run test:opstart && npm run test:audit && npm run test:gelijktijdig && npm run test:sessie && npm run test:levensloop && npm run test:opslag",
+    "test:regressie": "npm run test:opstart && npm run test:labels && npm run test:audit && npm run test:gelijktijdig && npm run test:sessie && npm run test:levensloop && npm run test:opslag",
     "test:levensloop": "tsx --conditions react-server scripts/regressie/levensloop.ts",
-    "test:opslag": "tsx --conditions react-server scripts/regressie/opslag-en-ankers.ts"
+    "test:opslag": "tsx --conditions react-server scripts/regressie/opslag-en-ankers.ts",
+    "test:labels": "tsx --conditions react-server scripts/regressie/labels-en-modus.ts"
   },
   "prisma": {
     "seed": "tsx prisma/seed.ts"
