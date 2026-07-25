@@ -223,6 +223,53 @@ e-mail. Voor Microsoft 365:
 
 ---
 
+## G2. Afvinklijst voor het moment dat er een echt certificaat is
+
+Zolang `SEAL_MODE=none` staat, verzegelt het portaal niet en gelden deze punten
+niet. Zodra je een organisatiecertificaat hebt en `SEAL_MODE=sealer` zet, **weigert
+het portaal te starten** tot deze drie dingen geregeld zijn. Dat is bewust: het zijn
+precies de maatregelen die pas zin hebben als er echt cryptografisch materiaal in
+het spel is, en een notitie in een document wordt vergeten.
+
+De foutmelding bij het opstarten noemt welke ontbreekt en wat je moet doen. Vooraf,
+zodat het geen verrassing is:
+
+**1. De publieke controlepagina in een eigen service.**
+`/validate` is het enige eindpunt dat zonder inloggen bij de component met de
+ondertekengegevens uitkomt. Draai dat als aparte service uit dezelfde image, met:
+
+```
+# in de service die alleen valideert
+VALIDATOR_ONLY=true          # weigert te starten met ondertekengegevens in de env
+# in de web-service
+VALIDATOR_ISOLATED=true      # bevestigt dat de splitsing er is
+```
+
+Zet in die container ook `mem_limit` en `cpus`, want PDF-bommen zijn hier de
+goedkoopste aanval.
+
+**2. Minstens één bestemming voor de auditankers.**
+
+```
+AUDIT_ANCHOR_TARGETS=archief,mail
+AUDIT_ANCHOR_MAIL_TO=administratie@ottovisseraccountants.nl
+```
+
+Twee bestemmingen is beter dan één: het archief is best-effort en mail kan stil
+falen. Komt er drie dagen achter elkaar niets aan, dan mailt het portaal de
+beheerders — zonder die melding heb je geen anker maar de illusie ervan.
+
+**3. Een sleutel voor de HMAC over de auditketen.**
+
+```
+AUDIT_HMAC_KEY_V1=<minstens 32 tekens, uit de sleutelkluis>
+```
+
+Zonder sleutel kan iemand met alléén databasetoegang (een gelekte `DATABASE_URL`,
+een gestolen dump) de hele hashketen consistent herschrijven. **Bewaar deze sleutel
+niet in dezelfde back-up als de database** — dan back-up je het slot met de sleutel
+erin.
+
 ## H. Beheer (onthouden voor later)
 
 Voer deze commando's uit vanuit de map `/opt/signaturing`.

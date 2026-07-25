@@ -15,6 +15,9 @@ export type JobKind =
   | 'RETENTION_CLEANUP'
   | 'CSC_SESSION_CLEANUP'
   | 'MAIL_RESEND'
+  | 'ORPHAN_CLEANUP'
+  | 'WAARMERK_NUDGE'
+  | 'AUDIT_ANCHOR'
 
 export interface JobRow {
   id: string

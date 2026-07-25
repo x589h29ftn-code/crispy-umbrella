@@ -21,7 +21,9 @@ const MAX_BYTES = 30_000_000
  */
 export async function validateAction(_prev: ValidateState, formData: FormData): Promise<ValidateState> {
   const ip = clientIp(headers().get('x-forwarded-for'), headers().get('x-real-ip'), env.TRUSTED_PROXY_HOPS)
-  if (!(await consume('token', ip ?? 'onbekend'))) {
+  // Eigen limiet, niet die van de tekenlinks: dit is de publieke controlepagina en
+  // een PDF-bom is hier de goedkoopste aanval.
+  if (!(await consume('validate', ip ?? 'onbekend'))) {
     return { error: 'Te veel verzoeken. Probeer het over enkele minuten opnieuw.' }
   }
   if (!sealEnabled()) {

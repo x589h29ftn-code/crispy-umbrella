@@ -144,6 +144,33 @@ const schema = z.object({
     .default('false')
     .transform((v) => v === 'true'),
 
+  // Waar de rate-limitertellers staan. 'postgres' is de standaard: bij meerdere
+  // webcontainers gelden in-memory limieten per container en is de bescherming
+  // feitelijk verzwakt. 'memory' is er voor tests zonder database.
+  RATE_LIMIT_STORE: z.enum(['postgres', 'memory']).default('postgres'),
+
+  // === Ankers van het auditspoor (buiten de database) ===
+  // Komma-gescheiden: 'archief' en/of 'mail'. Leeg = geen ankers.
+  AUDIT_ANCHOR_TARGETS: z.string().default(''),
+  AUDIT_ANCHOR_MAIL_TO: z.string().email().optional(),
+  AUDIT_ANCHOR_ARCHIVE_FOLDER: z.string().default('_Auditankers'),
+  // Bevestigt dat de publieke validator een eigen service is (zie punt 5.2 van
+  // changeset v1.2). Vereist zodra er echt verzegeld wordt.
+  VALIDATOR_ISOLATED: z
+    .string()
+    .default('false')
+    .transform((v) => v === 'true'),
+  // Zet in de validator-container. Die weigert te starten met ondertekengegevens
+  // in zijn omgeving: de omgekeerde grendel, zodat de scheiding niet stil verdwijnt
+  // als er ooit één gedeeld env-bestand komt.
+  VALIDATOR_ONLY: z
+    .string()
+    .default('false')
+    .transform((v) => v === 'true'),
+  // Sleutel voor de HMAC over de auditketen. Vereist zodra er echt verzegeld wordt;
+  // vóór die tijd staat de keten op een kale hash (zie docs/beheer.md).
+  AUDIT_HMAC_KEY_V1: z.string().min(32).optional(),
+
   // === Tijdstempel (TSA) — gelezen door de sidecar, hier gevalideerd zodat een
   // typefout bij het opstarten zichtbaar wordt in plaats van pas bij ondertekenen.
   TSA_URL: z.string().optional(),
@@ -228,6 +255,89 @@ export function assertSealingChoiceIsDeliberate(cfg: {
   )
 }
 
+/**
+ * De ingebruiknamegrendel.
+ *
+ * Drie dingen waren "genoteerd als voorwaarde voor ingebruikname". Notities worden
+ * vergeten, grendels niet. Zodra er écht verzegeld wordt (`SEAL_MODE` niet meer
+ * `none`) staat er een echt certificaat in de sealer, en dan moeten deze drie er
+ * zijn. Vóór dat moment blokkeren ze niets, want er valt dan ook niets te
+ * beschermen.
+ *
+ * Zie docs/hosting-handleiding.md: daar staat dezelfde lijst als afvinklijst, zodat
+ * dit geen verrassing is op het moment dat het kantoor live wil.
+ */
+export function assertReadyForRealSealing(cfg: {
+  SEAL_MODE: string
+  VALIDATOR_ISOLATED: boolean
+  AUDIT_ANCHOR_TARGETS: string
+  AUDIT_HMAC_KEY_V1?: string
+}): void {
+  if (cfg.SEAL_MODE === 'none') return
+  const ontbreekt: string[] = []
+  if (!cfg.VALIDATOR_ISOLATED) {
+    ontbreekt.push(
+      'VALIDATOR_ISOLATED=true — draai de publieke controlepagina (/validate) als eigen service, ' +
+        'met VALIDATOR_ONLY=true in die container zodat die weigert te starten met ondertekengegevens ' +
+        'in zijn omgeving'
+    )
+  }
+  const targets = cfg.AUDIT_ANCHOR_TARGETS.split(',')
+    .map((s) => s.trim().toLowerCase())
+    .filter((s) => s === 'archief' || s === 'mail')
+  if (targets.length === 0) {
+    ontbreekt.push(
+      'AUDIT_ANCHOR_TARGETS — zet minstens één bestemming ("archief", "mail" of beide) waar de kop ' +
+        'van het auditspoor buiten de database wordt vastgelegd'
+    )
+  }
+  if (!cfg.AUDIT_HMAC_KEY_V1) {
+    ontbreekt.push(
+      'AUDIT_HMAC_KEY_V1 — sleutel voor de HMAC over de auditketen (minstens 32 tekens), zodat ' +
+        'iemand met alléén databasetoegang de keten niet consistent kan herschrijven. Bewaar deze ' +
+        'sleutel NIET in dezelfde back-up als de database'
+    )
+  }
+  if (ontbreekt.length === 0) return
+  throw new Error(
+    `SEAL_MODE=${cfg.SEAL_MODE} betekent dat er met een echt certificaat wordt verzegeld. ` +
+      `Dan moeten deze ${ontbreekt.length === 1 ? 'voorwaarde' : `${ontbreekt.length} voorwaarden`} ` +
+      `geregeld zijn (zie docs/hosting-handleiding.md):\n\n` +
+      ontbreekt.map((r) => `  - ${r}`).join('\n\n')
+  )
+}
+
+/**
+ * De omgekeerde grendel voor de validator-container: die mag geen
+ * ondertekengegevens in zijn omgeving hebben. Zonder deze controle belandt er over
+ * een half jaar één gedeeld env-bestand in beide services en is de scheiding weg
+ * zonder dat iemand het merkt.
+ */
+export function assertValidatorHasNoCredentials(cfg: {
+  VALIDATOR_ONLY: boolean
+  SEALER_SHARED_SECRET?: string
+  CLEVERBASE_CSC_CLIENT_SECRET?: string
+  SEAL_CSC_OAUTH_TOKEN?: string
+  SEAL_DSS_API_SECRET?: string
+}): void {
+  if (!cfg.VALIDATOR_ONLY) return
+  const gevonden = (
+    [
+      ['CLEVERBASE_CSC_CLIENT_SECRET', cfg.CLEVERBASE_CSC_CLIENT_SECRET],
+      ['SEAL_CSC_OAUTH_TOKEN', cfg.SEAL_CSC_OAUTH_TOKEN],
+      ['SEAL_DSS_API_SECRET', cfg.SEAL_DSS_API_SECRET]
+    ] as const
+  )
+    .filter(([, v]) => !!v && String(v).trim() !== '')
+    .map(([k]) => k)
+  if (gevonden.length === 0) return
+  throw new Error(
+    'VALIDATOR_ONLY=true, maar er staan ondertekengegevens in de omgeving van deze container: ' +
+      `${gevonden.join(', ')}. De validator verwerkt bestanden van buiten en mag daar niet bij kunnen. ` +
+      'Haal ze uit het env-bestand van deze service.'
+  )
+}
+
 let cached: z.infer<typeof schema> | null = null
 
 export function getEnv(): z.infer<typeof schema> {
@@ -239,6 +349,8 @@ export function getEnv(): z.infer<typeof schema> {
   }
   assertNoStubInProduction(parsed.data)
   assertSealingChoiceIsDeliberate(parsed.data)
+  assertReadyForRealSealing(parsed.data)
+  assertValidatorHasNoCredentials(parsed.data)
   cached = parsed.data
   return cached
 }

@@ -34,11 +34,23 @@ export async function runForever(): Promise<void> {
   const workerId = newWorkerId()
   console.log(`[worker] gestart (${workerId}), interval ${env.WORKER_POLL_MS} ms`)
   // Zorg dat de terugkerende taken lopen; daarna plannen ze zichzelf.
-  for (const kind of ['CSC_SESSION_CLEANUP', 'RETENTION_CLEANUP'] as const) {
+  for (const kind of [
+    'CSC_SESSION_CLEANUP',
+    'RETENTION_CLEANUP',
+    'REMINDER',
+    'EXPIRE',
+    'WAARMERK_NUDGE',
+    'ORPHAN_CLEANUP'
+  ] as const) {
     await enqueueOnce(kind, 'periodiek', {}, { maxAttempts: 1_000_000 }).catch((e) =>
       console.error(`[worker] kon ${kind} niet inplannen`, e)
     )
   }
+  // Het dagelijkse anker heeft een eigen dedupe-sleutel, omdat er ook ankers per
+  // afgerond dossier in de wachtrij komen.
+  await enqueueOnce('AUDIT_ANCHOR', 'dagelijks', {}, { maxAttempts: 1_000_000 }).catch((e) =>
+    console.error('[worker] kon AUDIT_ANCHOR niet inplannen', e)
+  )
   const shutdown = (signal: string) => {
     console.log(`[worker] ${signal} ontvangen, afronden…`)
     stopping = true

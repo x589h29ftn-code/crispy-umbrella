@@ -1,8 +1,8 @@
-import { execFile } from 'node:child_process'
 import { mkdtemp, readFile, rm, writeFile, readdir } from 'node:fs/promises'
 import { existsSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
+import { runTool } from '@/lib/sandbox'
 
 // Haalt tekst uit een geüpload document voor automatische herkenning.
 // Strategie: eerst de tekstlaag (snel, foutloos voor digitale PDF's zoals uit
@@ -47,12 +47,13 @@ async function pdfTextLayer(bytes: Uint8Array): Promise<string> {
   }
 }
 
-function run(cmd: string, args: string[], cwd: string, timeoutMs: number): Promise<void> {
-  return new Promise((resolve, reject) => {
-    execFile(cmd, args, { timeout: timeoutMs, cwd, env: { ...process.env, HOME: cwd } }, (error) =>
-      error ? reject(error) : resolve()
-    )
-  })
+/**
+ * Zelfde behandeling als de Office-conversie: eigen werkmap als HOME, uitgeklede
+ * omgeving zonder proxy of geheimen, harde tijdslimiet. Zie lib/sandbox.ts voor wat
+ * dat wél en niet is.
+ */
+async function run(cmd: string, args: string[], cwd: string, timeoutMs: number): Promise<void> {
+  await runTool(cmd, args, { cwd, timeoutMs })
 }
 
 function findBin(candidates: string[]): string | null {

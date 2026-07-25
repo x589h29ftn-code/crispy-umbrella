@@ -2,6 +2,7 @@ import 'server-only'
 import { prisma } from '@/lib/db'
 import { storage } from '@/lib/storage'
 import { writeAudit } from '@/lib/audit'
+import { lockAuditChains } from '@/lib/locks'
 
 // Bewaartermijn: afgeronde dossiers krijgen `retentionUntil` op zeven jaar na
 // afronding. Daarna worden ze opgeruimd.
@@ -41,16 +42,49 @@ export async function purgeExpiredDossiers(opts?: {
     select: {
       id: true,
       title: true,
-      documents: { select: { id: true, originalKey: true, workingKey: true, preSealKey: true, sealedKey: true } }
+      documents: {
+        select: {
+          id: true,
+          originalKey: true,
+          workingKey: true,
+          preSealKey: true,
+          postQualifiedKey: true,
+          sealedKey: true
+        }
+      }
     }
   })
 
   const result: PurgeResult = { dossiers: 0, documents: 0, auditEvents: 0, skipped: [] }
 
   for (const dossier of expired) {
-    const keys = dossier.documents.flatMap((d) =>
-      [d.originalKey, d.workingKey, d.preSealKey, d.sealedKey].filter((k): k is string => !!k)
-    )
+    // Alle VIJF de sleutels. Blijft er één staan, dan liggen er na zeven jaar nog
+    // onverzegelde tussenversies met persoonsgegevens op het volume terwijl de
+    // administratie zegt dat het dossier is opgeruimd. Dat is een verplichting,
+    // geen nettigheid. Dezelfde sleutel kan in meer dan één kolom staan (bij het
+    // waarmerken zijn postQualifiedKey en sealedKey gelijk), dus ontdubbelen.
+    const perSoort: Record<string, number> = {
+      originalKey: 0,
+      workingKey: 0,
+      preSealKey: 0,
+      postQualifiedKey: 0,
+      sealedKey: 0
+    }
+    const keySet = new Set<string>()
+    for (const d of dossier.documents) {
+      for (const [soort, key] of Object.entries({
+        originalKey: d.originalKey,
+        workingKey: d.workingKey,
+        preSealKey: d.preSealKey,
+        postQualifiedKey: d.postQualifiedKey,
+        sealedKey: d.sealedKey
+      })) {
+        if (!key) continue
+        perSoort[soort] += 1
+        keySet.add(key)
+      }
+    }
+    const keys = [...keySet]
 
     if (dryRun) {
       result.dossiers += 1
@@ -76,15 +110,25 @@ export async function purgeExpiredDossiers(opts?: {
         // Documenten, ontvangers, velden en auditregels hangen met cascade aan
         // het dossier, dus die gaan hiermee mee.
         await tx.dossier.delete({ where: { id: dossier.id } })
+        // Ketenlock ná de rijlock, volgens de globale volgorde in lib/locks.ts, en
+        // alleen voor de keten van dít dossier: een gelijktijdige schrijver mag er
+        // niet net nog een regel in duwen. De grafsteen op de dossierloze keten
+        // gebeurt buiten deze transactie, zodat er nooit twee ketenlocks tegelijk
+        // worden vastgehouden.
+        await lockAuditChains(tx, [dossier.id])
         return n
       })
 
       // Daarna de bestanden. Een achterblijvend bestand is hinderlijk maar niet
       // gevaarlijk; het omgekeerde (bestand weg, administratie nog aanwezig) zou
       // verwarrender zijn.
+      let verwijderd = 0
       for (const key of keys) {
         await storage()
           .remove(key)
+          .then(() => {
+            verwijderd += 1
+          })
           .catch((e) => console.error(`[bewaartermijn] bestand ${key} niet verwijderd`, e))
       }
 
@@ -97,7 +141,11 @@ export async function purgeExpiredDossiers(opts?: {
           dossierId: dossier.id,
           auditRegels: auditCount,
           documenten: dossier.documents.length,
-          laatsteHash: laatste?.hash ?? null
+          laatsteHash: laatste?.hash ?? null,
+          // Per sleuteltype, zodat aantoonbaar is dat het compleet was.
+          sleutels: perSoort,
+          blobsVerwijderd: verwijderd,
+          blobsTotaal: keys.length
         }
       })
 

@@ -164,6 +164,12 @@ export async function preparePdfForExternalSigning(input: {
   form.append('field_name', input.fieldName ?? 'ProfessionalSignature')
 
   const res = await postToSealer('/prepare', form, env.SEALER_TIMEOUT_MS)
+  // Dezelfde afspraak als bij /seal: staat er al een handtekening in dit veld, dan
+  // is er niets voor te bereiden en hoeft de accountant niet opnieuw te bevestigen.
+  if (res.status === 409) {
+    const body = (await res.json().catch(() => ({}))) as { certSerial?: string; signingTime?: string }
+    throw new AlreadySealedError(body.certSerial ?? null, body.signingTime ? new Date(body.signingTime) : null)
+  }
   if (!res.ok) {
     const detail = await res.text().catch(() => '')
     const msg = `voorbereiden mislukt (${res.status}): ${detail.slice(0, 300)}`
@@ -207,6 +213,10 @@ export interface ValidationSignature {
   trusted?: boolean
   coversWholeDocument?: boolean
   signerName?: string | null
+  /** Uitgever van het certificaat; nodig om zelfondertekend te herkennen. */
+  issuerName?: string | null
+  /** Subject gelijk aan issuer: dan is het certificaat zelfondertekend. */
+  selfIssued?: boolean | null
   certSerial?: string | null
   timestamp?: string | null
   summary?: string | null

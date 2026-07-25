@@ -91,6 +91,66 @@ if (sealed.length === 0) {
   }
 }
 
+// --- 4. Zijn de sleutelversies in deze back-up allemaal beschikbaar? ---
+//
+// Dit is de controle die de rest waardeloos maakt als hij ontbreekt. Een restore
+// van drie jaar oud is versleuteld met de sleutel van toen. Staat die niet meer in
+// de omgeving, dan komt er wel een database uit de back-up maar geen leesbaar
+// document — en dat merk je nu pas terwijl een cliënt wacht.
+console.log('\nSleutelversies')
+{
+  const store = storage()
+  const alle = await prisma.document.findMany({
+    select: { fileName: true, originalKey: true, workingKey: true, preSealKey: true, postQualifiedKey: true, sealedKey: true }
+  })
+  const perVersie = new Map<number, { totaal: number; leesbaar: number; voorbeeld: string }>()
+  let onbekend = 0
+  for (const doc of alle) {
+    const keys = [doc.originalKey, doc.workingKey, doc.preSealKey, doc.postQualifiedKey, doc.sealedKey].filter(
+      (k): k is string => !!k
+    )
+    for (const key of keys) {
+      if (!store.keyVersionOf) {
+        console.log('  (deze opslagdriver kan de sleutelversie niet lezen; overgeslagen)')
+        break
+      }
+      let versie: number
+      try {
+        versie = await store.keyVersionOf(key)
+      } catch {
+        onbekend += 1
+        continue
+      }
+      const entry = perVersie.get(versie) ?? { totaal: 0, leesbaar: 0, voorbeeld: doc.fileName }
+      entry.totaal += 1
+      // Eén keer per versie echt proberen te ontsleutelen; meer is verspilling.
+      if (entry.leesbaar === 0) {
+        try {
+          await store.get(key)
+          entry.leesbaar = 1
+        } catch {
+          entry.leesbaar = 0
+        }
+      }
+      perVersie.set(versie, entry)
+    }
+  }
+  if (perVersie.size === 0) {
+    console.log('  (geen bestanden in deze back-up)')
+  }
+  for (const [versie, e] of [...perVersie.entries()].sort((a, b) => a[0] - b[0])) {
+    if (e.leesbaar === 1) {
+      ok(`sleutelversie ${versie}: ${e.totaal} bestand(en), sleutel aanwezig en werkend`)
+    } else {
+      bad(
+        `sleutelversie ${versie}: ${e.totaal} bestand(en), maar die sleutel ontbreekt of werkt niet ` +
+          `(zet STORAGE_ENCRYPTION_KEY${versie === 1 ? '' : `_V${versie}`} terug uit de sleutelkluis)`
+      )
+    }
+  }
+  if (onbekend > 0) bad(`${onbekend} bestand(en) waarvan de sleutelversie niet te lezen is`)
+}
+
 // --- Uitkomst ---
 console.log()
 if (fails === 0) {
