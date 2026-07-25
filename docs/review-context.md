@@ -184,12 +184,14 @@ intact, geldig, dekt het hele document, en elke byte-wijziging wordt afgekeurd.
 
 ## A7. Gekwalificeerd ondertekenen (beroepscertificaat)
 
-Twee soorten providers, met een wezenlijk verschil:
+Eén driver:
 
 | Driver | Wie autoriseert | Gevolg |
 |---|---|---|
-| `digidentity` | de server (client-credentials) | automatisch |
 | `cleverbase` | de **accountant** met pincode in de app | browserredirect nodig |
+
+De oude `digidentity`-driver (server tekent namens de accountant, best-effort)
+is verwijderd en wordt bij opstart geweigerd.
 
 Bij Cleverbase komt een dossier op `WACHT_OP_WAARMERK` zodra alle partijen hebben
 getekend. De accountant selecteert op `/te-ondertekenen/waarmerken` wat hij wil

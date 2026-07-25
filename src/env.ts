@@ -110,19 +110,17 @@ const schema = z.object({
 
   // Beroepscertificaat: gekwalificeerd ondertekenen op persoonlijke titel
   // (accountant AA/RA) via een gemachtigde TSP. none = uit (standaard, geen
-  // certificaat nodig); digidentity = PKIoverheid-beroepscertificaat in de
-  // cloud via de CSC-API. Per accountant zet je het aan onder Gebruikers.
+  // certificaat nodig); cleverbase = de CSC-route waarbij de accountant zelf
+  // autoriseert. Per accountant zet je het aan onder Gebruikers.
+  //
+  // 'digidentity' staat er alleen nog in om een bestaand .env-bestand een
+  // duidelijke foutmelding te geven in plaats van een stille gedragswijziging;
+  // de driver zelf is verwijderd. Zie assertOneSigningMechanism hieronder.
   PROFESSIONAL_SIGNING_DRIVER: z.enum(['none', 'digidentity', 'cleverbase']).default('none'),
-  // Digidentity CSC/AutoSign (OAuth2 client-credentials). Alleen nodig als de
-  // driver op 'digidentity' staat. Testtoegang via hun Sales/Implementation-team.
-  DIGIDENTITY_BASE_URL: z.string().optional(),
-  DIGIDENTITY_CLIENT_ID: z.string().optional(),
-  DIGIDENTITY_CLIENT_SECRET: z.string().optional(),
-  DIGIDENTITY_SCOPE: z.string().optional(),
 
-  // Cleverbase (CSC v1). Anders dan Digidentity autoriseert hier de ACCOUNTANT
-  // zelf: het portaal stuurt hem via een browserredirect naar Cleverbase, waar
-  // hij in de app met pincode bevestigt. Eén bevestiging dekt tot 50 hashes.
+  // Cleverbase (CSC v1). De ACCOUNTANT autoriseert zelf: het portaal stuurt hem
+  // via een browserredirect naar Cleverbase, waar hij in de app met pincode
+  // bevestigt. Eén bevestiging dekt tot 50 hashes.
   CLEVERBASE_CSC_BASE_URL: z.string().optional(),
   CLEVERBASE_CSC_CLIENT_ID: z.string().optional(),
   CLEVERBASE_CSC_CLIENT_SECRET: z.string().optional(),
@@ -306,10 +304,35 @@ export function assertReadyForRealSealing(cfg: {
       'SEAL_MODE=qualified betekent dat de gekwalificeerde handtekening van de accountant de ' +
         'verzegeling is, maar PROFESSIONAL_SIGNING_DRIVER staat op "none". Er zou dan niets worden ' +
         'verzegeld terwijl de configuratie zegt van wel.\n\n' +
-        'Zet PROFESSIONAL_SIGNING_DRIVER=cleverbase (of digidentity) met de bijbehorende gegevens, ' +
-        'of zet SEAL_MODE=none met ALLOW_UNSEALED=true zolang er nog geen certificaat is.'
+        'Zet PROFESSIONAL_SIGNING_DRIVER=cleverbase met de bijbehorende gegevens, of zet ' +
+        'SEAL_MODE=none met ALLOW_UNSEALED=true zolang er nog geen certificaat is.'
     )
   }
+}
+
+/**
+ * Eén ondertekenmechanisme.
+ *
+ * De digidentity-driver tekende tijdens het ondertekenen namens de accountant,
+ * en deed dat best-effort: viel de provider weg, dan bleef alleen het zichtbare
+ * stempel staan en liep het dossier door naar ONDERTEKEND. Een document dat
+ * ondertekend oogt zonder gekwalificeerde handtekening — precies op het punt
+ * waar je op vertrouwt.
+ *
+ * De driver is verwijderd. Deze grendel staat er zodat een bestaand
+ * .env-bestand een leesbare weigering krijgt in plaats van stilletjes ander
+ * gedrag te vertonen. Bewust vóór de SEAL_MODE-check: ook met SEAL_MODE=none
+ * zou de instelling suggereren dat er gewaarmerkt wordt.
+ */
+export function assertOneSigningMechanism(cfg: { PROFESSIONAL_SIGNING_DRIVER: string }): void {
+  if (cfg.PROFESSIONAL_SIGNING_DRIVER !== 'digidentity') return
+  throw new Error(
+    'PROFESSIONAL_SIGNING_DRIVER=digidentity bestaat niet meer. Die driver tekende namens de ' +
+      'accountant en viel stil terug op alleen een zichtbaar stempel als de provider wegviel.\n\n' +
+      'Er is nog één mechanisme: zet PROFESSIONAL_SIGNING_DRIVER=cleverbase (de accountant ' +
+      'autoriseert zelf met pincode), of PROFESSIONAL_SIGNING_DRIVER=none als er nog geen ' +
+      'beroepscertificaat is.'
+  )
 }
 
 let cached: z.infer<typeof schema> | null = null
@@ -322,6 +345,7 @@ export function getEnv(): z.infer<typeof schema> {
     throw new Error(`Ongeldige of ontbrekende omgevingsvariabelen:\n${issues}`)
   }
   assertNoStubInProduction(parsed.data)
+  assertOneSigningMechanism(parsed.data)
   assertSealingChoiceIsDeliberate(parsed.data)
   assertReadyForRealSealing(parsed.data)
   cached = parsed.data

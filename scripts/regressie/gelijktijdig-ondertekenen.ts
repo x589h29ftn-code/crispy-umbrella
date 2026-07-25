@@ -8,8 +8,8 @@
  */
 import { prisma } from '@/lib/db'
 import { storage } from '@/lib/storage'
-import { applySignature } from '@/lib/signflow'
-import { verifyAuditChain } from '@/lib/audit'
+import { applySignature, buildPreSealArtifacts } from '@/lib/signflow'
+import { verifyAuditChain, writeAudit } from '@/lib/audit'
 
 let fails = 0
 function check(name: string, ok: boolean, extra?: unknown) {
@@ -101,9 +101,21 @@ async function main() {
     ontvangers.push(r)
   }
 
+  // Het versturen en openen loopt in deze test niet via de echte route, dus die
+  // twee auditregels zetten we zelf. Ze horen straks op het certificaat te staan.
+  for (const r of ontvangers) {
+    await writeAudit({ type: 'VERZONDEN', dossierId: dossier.id, recipientId: r.id, message: r.email })
+    await writeAudit({ type: 'GEOPEND', dossierId: dossier.id, recipientId: r.id, message: r.email })
+  }
+
   // Allebei tegelijk, zonder onderling wachten.
   const resultaten = await Promise.allSettled(
-    ontvangers.map((r) => applySignature(r.id, pngDataUrl(), { ip: '127.0.0.1', userAgent: 'regressie' }))
+    ontvangers.map((r) =>
+      applySignature(r.id, pngDataUrl(), {
+        ip: '127.0.0.1',
+        userAgent: 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/139.0 Safari/537.36'
+      })
+    )
   )
   const mislukt = resultaten.filter((r) => r.status === 'rejected')
   check('beide ondertekeningen zijn verwerkt zonder fout', mislukt.length === 0, mislukt)
@@ -138,6 +150,33 @@ async function main() {
 
   const keten = await verifyAuditChain()
   check('auditketen is intact na gelijktijdig ondertekenen', keten.ok, keten)
+
+  // Het ondertekencertificaat is het enige bewijsstuk dat met het bestand
+  // meereist. IP en apparaat stonden er ooit altijd als "-" op terwijl ze wél in
+  // het auditspoor zaten: het veld werd afgedrukt maar nooit gevuld. Dat valt
+  // niemand op, want er staat gewoon iets. Vandaar een harde controle op de
+  // inhoud en niet alleen op het bestaan van het certificaat.
+  await buildPreSealArtifacts(dossier.id)
+  const metCert = await prisma.document.findUniqueOrThrow({
+    where: { id: doc.id },
+    select: { preSealKey: true }
+  })
+  check('er is een pre-seal versie met certificaat', !!metCert.preSealKey)
+  const certTekst = metCert.preSealKey ? await tekstVan(await storage().get(metCert.preSealKey)) : ''
+
+  check('certificaat vermeldt het IP-adres', certTekst.includes('127.0.0.1'), certTekst.slice(-1200))
+  check('geen leeg IP-veld op het certificaat', !/IP-adres bij ondertekenen: -/.test(certTekst))
+  check('certificaat vat het apparaat leesbaar samen', certTekst.includes('computer, Windows, Chrome'))
+  check('certificaat bevat de volledige user-agent', certTekst.includes('AppleWebKit/537.36'))
+  check(
+    'certificaat vermeldt wanneer de uitnodiging is verstuurd',
+    /Uitnodiging verstuurd: \d{2}-\d{2}-\d{4}/.test(certTekst)
+  )
+  check('certificaat vermeldt wanneer het is geopend', /Voor het eerst geopend: \d{2}-\d{2}-\d{4}/.test(certTekst))
+  check('certificaat beschrijft de omvang van het stuk', /Omvang: \d+ pagina/.test(certTekst))
+  check('certificaat telt de handtekeningvelden', /handtekeningveld/.test(certTekst))
+  check('certificaat benoemt de tijdzone', certTekst.includes('Europe/Amsterdam'))
+  check('certificaat benoemt de identiteitscontrole', /Identiteitscontrole: /.test(certTekst))
 
   console.log(fails === 0 ? '\nALLES GOED' : `\n${fails} TEST(EN) MISLUKT`)
   await prisma.$disconnect()

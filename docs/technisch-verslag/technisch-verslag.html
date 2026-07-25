@@ -79,7 +79,7 @@
     <li><span>Documentherkenning</span><span class="s">tekstlaag, OCR, sjablonen</span></li>
     <li><span>Gelijktijdigheid en vergrendeling</span><span class="s">waar het bijna stukging</span></li>
     <li><span>Back-up en herstel</span><span class="s">wat het kroonjuweel is</span></li>
-    <li><span>Kwaliteit en tests</span><span class="s">156 controles</span></li>
+    <li><span>Kwaliteit en tests</span><span class="s">171 controles</span></li>
     <li><span>Hosting en beheer</span><span class="s">4 GB veilig maken</span></li>
     <li><span>Wat bewust niet is gebouwd</span><span class="s">en waarom</span></li>
     <li><span>Wat nog niet bewezen is</span><span class="s">eerlijk over de grenzen</span></li>
@@ -149,7 +149,7 @@
     <tr><td>Datamodellen</td><td>14, met 10 opsommingstypen</td></tr>
     <tr><td>Soorten auditgebeurtenissen</td><td>33</td></tr>
     <tr><td>Omgevingsvariabelen</td><td>92, allemaal gevalideerd bij het opstarten</td></tr>
-    <tr><td>Automatische controles</td><td>156 (131 applicatie, 21 sealer, 4 validatormodus)</td></tr>
+    <tr><td>Automatische controles</td><td>171 (146 applicatie, 21 sealer, 4 validatormodus)</td></tr>
   </table>
 </section>
 
@@ -421,11 +421,31 @@
   conclusie trekt.</p>
 
   <h3>5.4 Het ondertekencertificaat</h3>
-  <p>Een extra pagina achter het document, in het Nederlands, met per ondertekenaar
-  alle gegevens hierboven, de SHA-256 van de ondertekende inhoud, en het onderscheid
-  tussen de serverklok en de tijdstempeldienst. Staat de verzegeling uit, dan staat er
-  <strong>&ldquo;Dit document is niet verzegeld.&rdquo;</strong> Die regel is niet te
-  onderdrukken.</p>
+  <p>Een extra pagina achter het document, in het Nederlands. Het uitgangspunt: iemand
+  die over vijf jaar <em>alleen dit PDF-bestand</em> in handen krijgt, zonder toegang tot
+  het portaal, moet het hele verloop kunnen nalopen. Alles wat daarvoor nodig is staat
+  dus op het blad en niet alleen in de database.</p>
+  <table>
+    <tr><th>Blok</th><th>Wat er staat</th></tr>
+    <tr><td>Document</td><td>titel, dossierkenmerk, omvang in pagina&rsquo;s en het aantal handtekening-, paraaf- en datumvelden. Zo beschrijft het certificaat aantoonbaar het stuk waar het aan vastzit.</td></tr>
+    <tr><td>Per ondertekenaar</td><td>naam en e-mail, wanneer de uitnodiging is verstuurd, wanneer het stuk voor het eerst is geopend, wanneer de verificatiecode is ingevoerd en wanneer er is getekend &mdash; plus IP-adres, een leesbare samenvatting van het apparaat en de volledige user-agent.</td></tr>
+    <tr><td>Identiteitscontrole</td><td>in gewone taal welke controle is uitgevoerd: e-mailcode, sms-code, of ingelogde kantoormedewerker met tweefactorauthenticatie.</td></tr>
+    <tr><td>Instemming</td><td>de letterlijke tekst die deze persoon op het scherm las, met het tijdstip. Een later gewijzigd sjabloon verandert niet wat er is gelezen.</td></tr>
+    <tr><td>Integriteit</td><td>de SHA-256 van de ondertekende inhoud, plus per ondertekenaar de hash van de versie die d&iacute;e persoon zag.</td></tr>
+  </table>
+  <p>Alle tijden staan in <code>Europe/Amsterdam</code>, met de zomer- of wintertijd zoals
+  die op dat moment gold. Dat staat er met zoveel woorden bij: een kaal &ldquo;12:24:59&rdquo;
+  is onbruikbaar zodra iemand het naast een logregel uit een ander systeem legt.</p>
+  <p>Staat de verzegeling uit, dan staat er <strong>&ldquo;Dit document is niet
+  verzegeld.&rdquo;</strong> Die regel is niet te onderdrukken, en het opmaken reserveert
+  bewust ruimte zodat hij nooit los op een volgende pagina belandt, weg van de
+  vingerafdruk waar hij over gaat.</p>
+  <div class="note"><strong>Wat hier fout ging.</strong> Het certificaat dr&uacute;kte
+  IP-adres en apparaat al af, maar kreeg ze nooit aangeleverd: er stond bij iedere
+  ondertekenaar een streepje. De gegevens zaten w&eacute;l in het auditspoor. Het viel
+  niemand op, want er stond gewoon i&eacute;ts. Ze worden nu bij het opmaken uit het
+  auditspoor gehaald &mdash; &eacute;&eacute;n bron van waarheid &mdash; en een
+  regressietest controleert de inhoud van het certificaat, niet alleen het bestaan ervan.</div>
 </section>
 
 <!-- ============================================================ 6 -->
@@ -455,7 +475,26 @@
   certificaat (&euro;450&ndash;650 per jaar), een tweede storingsbron, en de vraag welke
   van de twee er nu eigenlijk toe doet.</p>
 
-  <h3>6.3 De vijf eindpunten van de sealer</h3>
+  <h3>6.3 En waarom er ook geen tweede ondertekendriver meer is</h3>
+  <p>Er was een driver (<code>digidentity</code>) die t&iacute;jdens het ondertekenen
+  namens de accountant tekende, zonder handeling van hem. Prettig in gebruik, maar hij
+  tekende <strong>best-effort</strong>: viel de provider weg, dan bleef het zichtbare
+  stempel staan, kwam er een auditregel &ldquo;mislukt: &hellip;&rdquo; en liep het
+  dossier door naar ONDERTEKEND. Het resultaat was een stuk dat ondertekend oogt zonder
+  gekwalificeerde handtekening, en niemand kreeg bericht.</p>
+  <p>Dat is de verkeerde faalrichting op precies het punt waar je op vertrouwt. De
+  Cleverbase-route faalt juist dicht: kan er niet gewaarmerkt worden, dan gaat het
+  dossier naar <code>SEALING_FAILED</code> en de deur niet uit. De driver is verwijderd
+  en de applicatie weigert te starten als hij nog in het <code>.env</code>-bestand staat,
+  met een melding die zegt wat er in de plaats moet.</p>
+  <div class="note"><strong>Waarom niet gewoon de fout doorgeven.</strong> Dat was de
+  andere optie: het ondertekenen laten klappen als de provider wegvalt. Maar dan
+  verliest de cli&euml;nt zijn handtekening door een storing bij een derde partij, terwijl
+  hij er zelf niets aan kan doen. Het waarmerken h&oacute;ort dus niet in die stap thuis
+  &mdash; het gebeurt later, apart, waar mislukken alleen het kantoor raakt en het
+  dossier netjes blijft wachten.</div>
+
+  <h3>6.4 De vijf eindpunten van de sealer</h3>
   <table>
     <tr><th>Eindpunt</th><th>Wat het doet</th></tr>
     <tr><td><code>/health</code></td><td>kan de driver worden gebouwd, is de TSA bereikbaar</td></tr>
@@ -465,7 +504,7 @@
     <tr><td><code>/validate</code></td><td>controleert de handtekening(en); slaat niets op</td></tr>
   </table>
 
-  <h3>6.4 Tweefasig ondertekenen, en waarom dat nodig is</h3>
+  <h3>6.5 Tweefasig ondertekenen, en waarom dat nodig is</h3>
   <p>Bij Cleverbase autoriseert de <em>accountant</em>, niet de server: hij bevestigt
   met een pincode in de app van de provider, na een browserredirect. Daardoor moet het
   ondertekenen in twee delen:</p>
@@ -501,7 +540,7 @@
   <p>De verzameling is <strong>atomair</strong>: mislukt er &eacute;&eacute;n, dan wordt
   er niets ge&iuml;njecteerd. Een half ondertekende verzameling is erger dan geen.</p>
 
-  <h3>6.5 De PDF bepaalt of er al ondertekend is, nooit de database</h3>
+  <h3>6.6 De PDF bepaalt of er al ondertekend is, nooit de database</h3>
   <p>Tussen het wegschrijven van de bytes en het committen van de databaserij kan het
   proces omvallen. De rij weet dan niet dat er al is ondertekend, een nieuwe poging
   ondertekent opnieuw, en er staan twee handtekeningen in &eacute;&eacute;n document.
@@ -515,7 +554,7 @@
   een placeholder niet als handtekening, dus de controle is wel zinvol. Dat is precies
   het soort ding dat je niet moet beredeneren maar meten.</div>
 
-  <h3>6.6 De zichtbare tekst per documentsoort</h3>
+  <h3>6.7 De zichtbare tekst per documentsoort</h3>
   <table>
     <tr><th>Documentsoort</th><th>Wat er in de handtekening staat</th></tr>
     <tr><td><code>JAARREKENING</code></td><td>Ondertekend door &lt;naam&gt;, AA of RA</td></tr>
@@ -530,7 +569,7 @@
   &ldquo;tekenen we op het aangiftestuk zelf of alleen op de akkoordbrief?&rdquo; later
   kan komen.</p>
 
-  <h3>6.7 De controlepagina</h3>
+  <h3>6.8 De controlepagina</h3>
   <p>Onder <strong>Document controleren</strong> kan een medewerker een ondertekend
   stuk uploaden. De pagina geeft <strong>&eacute;&eacute;n eindoordeel</strong> met drie
   toestanden:</p>
@@ -1021,13 +1060,13 @@
   <p class="kicker">Hoofdstuk 15</p>
   <h2>Kwaliteit en tests</h2>
 
-  <h3>15.1 156 automatische controles</h3>
+  <h3>15.1 171 automatische controles</h3>
   <table>
     <tr><th>Pakket</th><th>Aantal</th><th>Wat het dekt</th></tr>
-    <tr><td>Opstartregels</td><td>7</td><td>de harde weigeringen bij het opstarten</td></tr>
+    <tr><td>Opstartregels</td><td>11</td><td>de harde weigeringen bij het opstarten</td></tr>
     <tr><td>Labels en modus</td><td>13</td><td>ondertekenen versus verzegelen per documentsoort</td></tr>
     <tr><td>Auditspoor</td><td>18</td><td>hashketen, append-only trigger, certificaat, opslagversleuteling</td></tr>
-    <tr><td>Gelijktijdig ondertekenen</td><td>8</td><td>twee indieningen op hetzelfde moment</td></tr>
+    <tr><td>Gelijktijdig ondertekenen</td><td>19</td><td>twee indieningen op hetzelfde moment, en de inhoud van het ondertekencertificaat</td></tr>
     <tr><td>Ondertekensessie</td><td>8</td><td>versleuteld bewaren en wissen, eigenaarscontrole</td></tr>
     <tr><td>Levensloop</td><td>32</td><td>herinneren, verlopen, opnieuw verzenden, nudge</td></tr>
     <tr><td>Opslag en bewaartermijn</td><td>45</td><td>nieuwe sleutels, weesbestanden, het bewaarmodel, de grendel</td></tr>
@@ -1037,11 +1076,15 @@
   <p>Ze draaien tegen een echte PostgreSQL en een echte pyHanko, niet tegen nagemaakte
   onderdelen. De sealertests gebruiken een zelf aangemaakt testcertificaat.</p>
 
-  <h3>15.2 Van de twee races is bewezen dat de test ze vangt</h3>
+  <h3>15.2 Van de reparaties is bewezen dat de test ze vangt</h3>
   <p>Een test die groen staat bewijst niets als hij ook groen zou staan zonder de
   reparatie. Van beide vergrendelingen is de code tijdelijk uitgeschakeld en is
   vastgesteld dat de test dan faalt &mdash; bij het stempelen verdwijnt dan de eerste
   handtekening, bij het auditspoor vorkt de keten. Daarna weer aan, en groen.</p>
+  <p>Hetzelfde is gedaan met het ondertekencertificaat: door het IP en de user-agent
+  weer op <code>null</code> te zetten, precies zoals de oorspronkelijke fout, vallen er
+  vier controles om. Juist bij die fout is dat belangrijk, want het certificaat z&aacute;g
+  er correct uit &mdash; er stond alleen een streepje waar een IP-adres hoorde.</p>
 
   <h3>15.3 Wat er verder is aangetoond</h3>
   <ul>
@@ -1140,6 +1183,8 @@
     <tr><td><strong>Periodiek hervernieuwen van tijdstempels</strong></td><td>Bij zeven jaar bewaartermijn en ingebedde revocatiegegevens is het document self-contained. Hervernieuwen beschermt tegen cryptografische verzwakking over decennia.</td></tr>
     <tr><td><strong>Netwerkisolatie voor de conversieprocessen</strong></td><td>Zou een eigen container vragen. Wat er is, staat in hoofdstuk 9.4; de bewering is bijgesteld naar wat er werkelijk wordt afgedwongen.</td></tr>
     <tr><td><strong>Juridische kwalificaties in de interface</strong></td><td>Er staat &ldquo;digitaal ondertekend&rdquo; en &ldquo;verzegeld&rdquo;, niet &ldquo;eIDAS-niveau X&rdquo; &mdash; behalve bij een echte gekwalificeerde handtekening. Bewust geen overclaim.</td></tr>
+    <tr><td><strong>Een tweede ondertekendriver die namens de accountant tekent</strong></td><td>Was er (<code>digidentity</code>), is verwijderd. Hij tekende best-effort en liet een dossier doorlopen naar ONDERTEKEND zonder gekwalificeerde handtekening als de provider wegviel. Zie 6.3.</td></tr>
+    <tr><td><strong>Een geavanceerde handtekening (AES) voor de cli&euml;nt</strong></td><td>Zou per ondertekenaar een certificaat op naam bij een TSP vragen, met identificatie via iDIN of een ID-scan v&oacute;&oacute;r elke handtekening &mdash; kosten en wrijving per stuk. Voor akkoordbrieven en opdrachtbevestigingen volstaat de huidige methode. Pas bouwen als een tegenpartij het concreet eist, en dan voor dat ene documenttype.</td></tr>
   </table>
 </section>
 
@@ -1183,7 +1228,7 @@
   &ldquo;verzonden&rdquo; de zwakste schakel in het bewijsdossier.</p>
 
   <h3>18.5 Er draait geen pijplijn</h3>
-  <p>De 156 controles draaien handmatig. Dat is het grootste procesgat: handmatige
+  <p>De 171 controles draaien handmatig. Dat is het grootste procesgat: handmatige
   tests verlopen binnen enkele maanden zonder dat iemand het merkt.</p>
 
   <h3>18.6 Eén openstaande vraag voor het kantoor</h3>

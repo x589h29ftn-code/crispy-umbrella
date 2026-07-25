@@ -5,7 +5,12 @@
  *
  *   npm run test:opstart
  */
-import { assertSealingChoiceIsDeliberate, assertNoStubInProduction, CLEVERBASE_STUB_CLIENT_ID } from '@/env'
+import {
+  assertSealingChoiceIsDeliberate,
+  assertNoStubInProduction,
+  assertOneSigningMechanism,
+  CLEVERBASE_STUB_CLIENT_ID
+} from '@/env'
 
 let fails = 0
 function check(name: string, ok: boolean, extra?: unknown) {
@@ -22,6 +27,17 @@ function throws(fn: () => void): boolean {
     return false
   } catch {
     return true
+  }
+}
+
+/** De tekst van de weigering. Een grendel die niet uitlegt wat te doen, kost
+ *  iemand een avond zoeken. */
+function message(fn: () => void): string {
+  try {
+    fn()
+    return ''
+  } catch (e) {
+    return (e as Error).message
   }
 }
 
@@ -44,6 +60,27 @@ check(
 check(
   'de teststub-omgeving weigert in productie',
   throws(() => assertNoStubInProduction({ NODE_ENV: 'production', CLEVERBASE_CSC_ENV: 'stub' }))
+)
+
+// Eén ondertekenmechanisme. De digidentity-driver tekende namens de accountant
+// en viel stil terug op alleen een zichtbaar stempel als de provider wegviel.
+// Hij is verwijderd; de grendel zorgt dat een oud .env-bestand een leesbare
+// weigering krijgt in plaats van ander gedrag.
+check(
+  'de verwijderde digidentity-driver weigert te starten',
+  throws(() => assertOneSigningMechanism({ PROFESSIONAL_SIGNING_DRIVER: 'digidentity' }))
+)
+check(
+  'de melding wijst naar het mechanisme dat er wél is',
+  message(() => assertOneSigningMechanism({ PROFESSIONAL_SIGNING_DRIVER: 'digidentity' })).includes('cleverbase')
+)
+check(
+  'cleverbase mag gewoon starten',
+  !throws(() => assertOneSigningMechanism({ PROFESSIONAL_SIGNING_DRIVER: 'cleverbase' }))
+)
+check(
+  'zonder beroepscertificaat mag ook gewoon starten',
+  !throws(() => assertOneSigningMechanism({ PROFESSIONAL_SIGNING_DRIVER: 'none' }))
 )
 check(
   'het openbare stub-clientid weigert in productie, ook met witruimte eromheen',

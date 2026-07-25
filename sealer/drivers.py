@@ -35,7 +35,7 @@ def build_signer():
             CSCSigner,
         )
 
-        base_url = _env("SEAL_CSC_BASE_URL") or _env("DIGIDENTITY_BASE_URL")
+        base_url = _env("SEAL_CSC_BASE_URL")
         credential_id = _env("SEAL_CSC_CREDENTIAL_ID")
         oauth_token = _env("SEAL_CSC_OAUTH_TOKEN")
         if not (base_url and credential_id and oauth_token):
