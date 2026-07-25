@@ -109,6 +109,9 @@ export function ValidateForm() {
                     )}
                   </div>
                 </div>
+                {sig.trustError && (
+                  <p className="mt-3 rounded-lg bg-amber-50 p-3 text-sm text-amber-900">{sig.trustError}</p>
+                )}
                 {sig.summary && (
                   <p className="mt-4 break-words rounded-lg bg-slate-50 p-3 font-mono text-xs text-slate-600">
                     {sig.summary}

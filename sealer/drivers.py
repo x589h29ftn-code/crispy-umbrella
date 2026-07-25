@@ -115,7 +115,7 @@ def build_signer():
 
     if driver == "globalsign_dss":
         from asn1crypto import pem, x509
-        from pyhanko.sign.general import SimpleCertificateStore
+        from pyhanko_certvalidator.registry import SimpleCertificateStore
 
         cert_pem = _env("SEAL_DSS_CERT_PEM")
         if not cert_pem:

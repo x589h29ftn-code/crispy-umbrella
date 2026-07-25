@@ -4,6 +4,7 @@ import type { DossierStatus, Prisma } from '@prisma/client'
 import { prisma } from '@/lib/db'
 import { requireOnboarded } from '@/lib/auth/session'
 import { StatusBadge } from '@/components/StatusBadge'
+import { UnsealedBanner } from '@/components/UnsealedBanner'
 import { STATUS_LABEL } from '@/lib/status'
 import { recipientsWithMailProblem } from '@/lib/email/status'
 import { deliveryFeedbackAvailable } from '@/lib/email/transport'
@@ -51,7 +52,15 @@ export default async function DashboardPage({
   const where: Prisma.DossierWhereInput = {
     ...ownerScope,
     ...search,
-    ...(attention ? attentionWhere : statusFilter ? { status: statusFilter } : {})
+    // Een dossier dat op verzegeling wacht is inhoudelijk ondertekend en mag niet
+    // uit het filter vallen; het krijgt in de lijst een waarschuwingsbadge.
+    ...(attention
+      ? attentionWhere
+      : statusFilter === 'ONDERTEKEND'
+        ? { status: { in: ['ONDERTEKEND', 'SEALING_FAILED', 'WACHT_OP_WAARMERK'] as DossierStatus[] } }
+        : statusFilter
+          ? { status: statusFilter }
+          : {})
   }
 
   const [dossiers, counts, attentionCount, sealingFailed] = await Promise.all([
@@ -104,6 +113,8 @@ export default async function DashboardPage({
           <Plus className="h-4 w-4" /> Nieuw dossier
         </Link>
       </header>
+
+      <UnsealedBanner scope="dashboard" />
 
       {sealingFailed.length > 0 && (
         <div className="rounded-lg border border-orange-200 bg-orange-50 p-4 text-sm text-orange-900">

@@ -41,6 +41,22 @@ export interface SealResult {
   driver: string | null
 }
 
+/**
+ * De sealer meldde dat dit veld al is ondertekend. Geen fout: het document was
+ * al verzegeld, alleen de database wist dat nog niet (bijvoorbeeld doordat het
+ * proces omviel tussen het wegschrijven van de bytes en het committen van de rij).
+ * De aanroeper haalt de administratie in en verzegelt niet opnieuw.
+ */
+export class AlreadySealedError extends Error {
+  readonly alreadySealed = true as const
+  constructor(
+    readonly certSerial: string | null,
+    readonly signingTime: Date | null
+  ) {
+    super('document is al verzegeld in dit veld')
+  }
+}
+
 /** Staat de cryptografische verzegeling aan? */
 export function sealEnabled(): boolean {
   return env.SEAL_MODE === 'sealer'
@@ -85,6 +101,12 @@ export async function sealPdf(req: SealRequest): Promise<SealResult> {
   form.append('appearance_box', JSON.stringify(req.appearanceBox ?? null))
 
   const res = await postToSealer('/seal', form, env.SEALER_TIMEOUT_MS)
+  if (res.status === 409) {
+    // Al verzegeld in dit veld: administratie inhalen, niet opnieuw tekenen.
+    const body = (await res.json().catch(() => ({}))) as { certSerial?: string; signingTime?: string }
+    const t = body.signingTime ? new Date(body.signingTime) : null
+    throw new AlreadySealedError(body.certSerial ?? null, t && !Number.isNaN(t.getTime()) ? t : null)
+  }
   if (!res.ok) {
     const detail = await res.text().catch(() => '')
     const msg = `sealer gaf ${res.status}: ${detail.slice(0, 500)}`
@@ -188,7 +210,13 @@ export interface ValidationSignature {
   certSerial?: string | null
   timestamp?: string | null
   summary?: string | null
+  /** De handtekening zelf is niet te lezen; er staat dan niets anders vast. */
   error?: string
+  /**
+   * De integriteit staat vast, maar de uitgever is niet te controleren
+   * (bijvoorbeeld: geen ingebedde revocatiegegevens, of een onbekende CA).
+   */
+  trustError?: string
 }
 
 /** Valideert een PDF via de sidecar. Slaat niets op. */

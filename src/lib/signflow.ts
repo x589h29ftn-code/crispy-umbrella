@@ -6,7 +6,7 @@ import { hashSigningToken, generateSigningToken } from '@/lib/auth/signingToken'
 import { storage } from '@/lib/storage'
 import { stampSignatureImage } from '@/lib/pdf/signing'
 import { sealDocument } from '@/lib/pdf/seal'
-import { sealEnabled, sealPdf, sha256Hex, SealRetryableError } from '@/lib/seal/sealer'
+import { sealEnabled, sealPdf, sha256Hex, SealRetryableError, AlreadySealedError } from '@/lib/seal/sealer'
 import { enqueueOnce } from '@/lib/jobs/queue'
 import { recomputeStatus } from '@/lib/status'
 import { writeAudit } from '@/lib/audit'
@@ -190,36 +190,75 @@ export async function applySignature(
     arr.push(f)
     byDoc.set(f.documentId, arr)
   }
-  for (const [documentId, fields] of byDoc) {
-    const doc = fields[0].document
-    if (!doc.workingKey) continue
-    let bytes = await store.get(doc.workingKey)
-    for (const f of fields) {
-      bytes = Buffer.from(
-        await stampSignatureImage(bytes, { page: f.page, x: f.x, y: f.y, width: f.width, height: f.height }, signatureDataUrl, label)
-      )
-    }
-    // Gekwalificeerd (mede)ondertekenen. Best-effort: mislukt de provider, dan
-    // blijft het zichtbare stempel staan en leggen we de fout vast in het
-    // auditspoor (het ondertekenen in het portaal mag nooit klappen).
-    if (qualified) {
-      try {
-        bytes = Buffer.from(
-          await qualified.signer.signPdf({
-            pdfBytes: bytes,
-            signer: { name: recipient.name, professionalTitle: qualified.title, credentialId: qualified.credentialId },
-            reason: 'Ondertekend door de accountant op persoonlijke titel',
-            location: 'Otto Visser & Partners'
-          })
-        )
-      } catch (e) {
-        qualifiedError = (e as Error).message
-        console.error('[gekwalificeerd ondertekenen]', e)
-      }
-    }
-    const newKey = await store.put(bytes, 'pdf')
-    await store.remove(doc.workingKey)
-    await prisma.document.update({ where: { id: documentId }, data: { workingKey: newKey } })
+  // Bij PARALLEL ondertekenen kunnen twee ontvangers tegelijk indienen. Zonder
+  // serialisatie is dit lees-bewerk-schrijf een race: beiden lezen dezelfde
+  // workingKey, stempelen hun eigen handtekening op diezelfde versie, en de
+  // laatste schrijver wint. Eén handtekening verdwijnt dan zonder foutmelding,
+  // terwijl beide ontvangers op SIGNED staan.
+  //
+  // De rijvergrendeling hieronder laat gelijktijdige indieningen netjes op elkaar
+  // wachten, zodat elke stempel op het resultaat van de vorige komt. Het PDF-werk
+  // gebeurt binnen de vergrendeling; dat is bij deze documentgroottes goed te doen
+  // en correctheid weegt hier zwaarder dan een korte transactie.
+  const documentIds = [...byDoc.keys()].sort()
+  for (const documentId of documentIds) {
+    const fields = byDoc.get(documentId)!
+    // De hele lees-bewerk-schrijf zit binnen de vergrendeling. Zou het
+    // wegschrijven erbuiten vallen, dan is de race terug.
+    await prisma.$transaction(
+      async (tx) => {
+        await tx.$queryRaw`SELECT id FROM "Document" WHERE id = ${documentId} FOR UPDATE`
+        // Binnen de vergrendeling opnieuw lezen: een gelijktijdige indiening kan
+        // de sleutel net hebben vervangen.
+        const fresh = await tx.document.findUnique({
+          where: { id: documentId },
+          select: { workingKey: true }
+        })
+        if (!fresh?.workingKey) return
+
+        let bytes = await store.get(fresh.workingKey)
+        for (const f of fields) {
+          bytes = Buffer.from(
+            await stampSignatureImage(
+              bytes,
+              { page: f.page, x: f.x, y: f.y, width: f.width, height: f.height },
+              signatureDataUrl,
+              label
+            )
+          )
+        }
+
+        // Gekwalificeerd (mede)ondertekenen. Best-effort: mislukt de provider, dan
+        // blijft het zichtbare stempel staan en leggen we de fout vast in het
+        // auditspoor (het ondertekenen in het portaal mag nooit klappen).
+        if (qualified) {
+          try {
+            bytes = Buffer.from(
+              await qualified.signer.signPdf({
+                pdfBytes: bytes,
+                signer: {
+                  name: recipient.name,
+                  professionalTitle: qualified.title,
+                  credentialId: qualified.credentialId
+                },
+                reason: 'Ondertekend door de accountant op persoonlijke titel',
+                location: 'Otto Visser & Partners'
+              })
+            )
+          } catch (e) {
+            qualifiedError = (e as Error).message
+            console.error('[gekwalificeerd ondertekenen]', e)
+          }
+        }
+
+        // Bytes eerst, dan de rij. Een blob zonder rij is opruimbaar; een rij
+        // zonder blob is dataverlies.
+        const newKey = await store.put(bytes, 'pdf')
+        await tx.document.update({ where: { id: documentId }, data: { workingKey: newKey } })
+        await store.remove(fresh.workingKey).catch(() => {})
+      },
+      { timeout: 120_000, maxWait: 30_000 }
+    )
   }
   if (qualified) {
     await writeAudit({
@@ -353,13 +392,19 @@ async function buildPreSealArtifacts(dossierId: string): Promise<void> {
       dossierTitle: doc.title,
       dossierId: dossier.id,
       documentId: doc.id,
+      sealed: sealEnabled(),
       signers
     })
     // Stap 5: hash over precies deze bytes, vlak vóór het zegel.
     const preSealKey = await store.put(sealedBytes, 'pdf')
     await prisma.document.update({
       where: { id: doc.id },
-      data: { preSealKey, preSealSha256: sha256Hex(sealedBytes), documentSha256: sha256 }
+      data: {
+        preSealKey,
+        preSealSha256: sha256Hex(sealedBytes),
+        documentSha256: sha256,
+        sealStage: 'PRESEAL'
+      }
     })
   }
 }
@@ -424,15 +469,18 @@ async function applySealsOnTop(dossierId: string): Promise<SealOutcome> {
   const documents = await prisma.document.findMany({ where: { dossierId }, orderBy: { order: 'asc' } })
   const store = storage()
   for (const doc of documents) {
-    if (!doc.sealedKey) continue
-    const current = await store.get(doc.sealedKey)
+    if (doc.sealStage === 'SEALED') continue
+    // Altijd vanaf het gewaarmerkte artefact beginnen, niet vanaf sealedKey: die
+    // kan bij een eerdere poging al deels zijn vervangen.
+    const bron = doc.postQualifiedKey ?? doc.sealedKey
+    if (!bron) continue
+    const current = await store.get(bron)
     try {
       const result = await sealPdf({
         pdfBytes: current,
         appearanceText: 'Verzegeld door Otto Visser & Partners Accountants'
       })
       const newKey = await store.put(result.sealedBytes, 'pdf')
-      await store.remove(doc.sealedKey).catch(() => {})
       await prisma.document.update({
         where: { id: doc.id },
         data: {
@@ -441,10 +489,20 @@ async function applySealsOnTop(dossierId: string): Promise<SealOutcome> {
           sealedAt: new Date(),
           timestampedAt: result.timestampedAt,
           sealCertSerial: result.certSerial,
-          sealTsaUrl: result.tsaUrl
+          sealTsaUrl: result.tsaUrl,
+          sealStage: 'SEALED'
         }
       })
+      if (doc.sealedKey && doc.sealedKey !== newKey) await store.remove(doc.sealedKey).catch(() => {})
     } catch (e) {
+      if (e instanceof AlreadySealedError) {
+        // Het zegel stond er al; alleen de administratie liep achter.
+        await prisma.document.update({
+          where: { id: doc.id },
+          data: { sealStage: 'SEALED', sealCertSerial: e.certSerial, timestampedAt: e.signingTime }
+        })
+        continue
+      }
       return { ok: false, error: (e as Error).message, retryable: e instanceof SealRetryableError }
     }
   }
@@ -468,16 +526,23 @@ async function applySeals(dossierId: string): Promise<SealOutcome> {
   const store = storage()
 
   for (const doc of documents) {
-    // Idempotent: al verzegeld? Dan overslaan (nooit twee keer verzegelen).
-    if (doc.sealedKey && doc.sealedSha256) continue
+    // Idempotent op de expliciete stand, niet op gevulde sleutels.
+    if (doc.sealStage === 'SEALED') continue
     if (!doc.preSealKey) continue
     const preSeal = await store.get(doc.preSealKey)
 
     if (!sealEnabled()) {
+      // Geen cryptografisch zegel: het pre-seal-artefact wordt de definitieve
+      // versie. Vastleggen in het auditspoor welke stukken uit deze periode komen.
       const sealedKey = await store.put(preSeal, 'pdf')
       await prisma.document.update({
         where: { id: doc.id },
-        data: { sealedKey, sealedSha256: sha256Hex(preSeal), sealedAt: new Date() }
+        data: { sealedKey, sealedSha256: sha256Hex(preSeal), sealedAt: new Date(), sealStage: 'SEALED' }
+      })
+      await writeAudit({
+        type: 'VERZEGELING_OVERGESLAGEN',
+        dossierId,
+        message: `${doc.title} — verzegeling staat uit (SEAL_MODE=none)`
       })
       continue
     }
@@ -496,10 +561,33 @@ async function applySeals(dossierId: string): Promise<SealOutcome> {
           sealedAt: new Date(),
           timestampedAt: result.timestampedAt,
           sealCertSerial: result.certSerial,
-          sealTsaUrl: result.tsaUrl
+          sealTsaUrl: result.tsaUrl,
+          sealStage: 'SEALED'
         }
       })
-    } catch (e) {
+    } catch (e: unknown) {
+      // De sealer meldt dat dit veld al is ondertekend: de bytes waren dus al
+      // verzegeld en alleen de administratie liep achter. Inhalen, geen fout.
+      if (e instanceof AlreadySealedError) {
+        const sealedKey = await store.put(preSeal, 'pdf')
+        await prisma.document.update({
+          where: { id: doc.id },
+          data: {
+            sealedKey,
+            sealedSha256: sha256Hex(preSeal),
+            sealedAt: new Date(),
+            timestampedAt: e.signingTime,
+            sealCertSerial: e.certSerial,
+            sealStage: 'SEALED'
+          }
+        })
+        await writeAudit({
+          type: 'VERZEGELD',
+          dossierId,
+          message: `${doc.title} — was al verzegeld, administratie ingehaald`
+        })
+        continue
+      }
       const retryable = e instanceof SealRetryableError
       return { ok: false, error: (e as Error).message, retryable }
     }
@@ -525,9 +613,21 @@ export async function sealAndComplete(dossierId: string): Promise<SealOutcome> {
   // stopt het hier: hij autoriseert dat zelf (pincode in de app van de provider).
   // De handtekening komt ná het auditcertificaat, want daarna mag het bestand
   // niet meer worden bewerkt.
+  //
+  // Belangrijk: alleen als er nog iets te waarmerken IS. Staat de gekwalificeerde
+  // handtekening er al op en faalde daarna alleen het organisatiezegel, dan zou
+  // terugvallen naar deze wachtstand de accountant onnodig opnieuw om een pincode
+  // vragen — bij een batch van vijftig stukken vijftig keer.
   if (awaitsQualifiedSignature(current.owner)) {
-    await prisma.dossier.update({ where: { id: dossierId }, data: { status: 'WACHT_OP_WAARMERK' } })
-    return { ok: true }
+    const teWaarmerken = await prisma.document.count({
+      where: { dossierId, preSealKey: { not: null }, sealStage: 'PRESEAL' }
+    })
+    if (teWaarmerken > 0) {
+      await prisma.dossier.update({ where: { id: dossierId }, data: { status: 'WACHT_OP_WAARMERK' } })
+      return { ok: true }
+    }
+    // Alles al gewaarmerkt: verder met het zegel en afronden.
+    return completeAfterQualifiedSigning(dossierId)
   }
 
   const outcome = await applySeals(dossierId)

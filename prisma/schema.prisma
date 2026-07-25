@@ -49,6 +49,15 @@ enum DossierStatus {
   VERLOPEN
 }
 
+// Hoe ver het verzegelen van een document is. Expliciet, zodat een retry weet
+// waar hij moet beginnen en niet werk weggooit dat al klaar was.
+enum SealStage {
+  NONE // niets voorbereid
+  PRESEAL // auditcertificaat erop, platgeslagen, hash vastgelegd
+  QUALIFIED // gekwalificeerde handtekening van de accountant staat erop
+  SEALED // definitief; organisatiezegel gezet of niet van toepassing
+}
+
 // Bezorgstatus van een verstuurde mail, zoals de provider die terugkoppelt.
 enum MailStatus {
   QUEUED // aangeboden aan de provider
@@ -218,6 +227,15 @@ model Document {
   // Apart bewaard zodat een mislukte verzegeling opnieuw kan zonder de
   // auditpagina een tweede keer toe te voegen.
   preSealKey     String?
+  // Tweede herstartpunt: de PDF ná de gekwalificeerde handtekening van de
+  // accountant, vóór het organisatiezegel. Zonder dit punt zou een mislukt zegel
+  // de retry terugzetten naar vóór het waarmerken, en dat kost bij een batch van
+  // vijftig stukken vijftig keer opnieuw een pincode.
+  postQualifiedKey    String?
+  postQualifiedSha256 String?
+  // Expliciet vastleggen hoe ver het verzegelen is, in plaats van het af te leiden
+  // uit gevulde sleutels. Dat afleiden was precies waar de idempotentie op stuk liep.
+  sealStage      SealStage @default(NONE)
   // Hash over de afgeronde inhoud vlak vóór het cryptografische zegel...
   preSealSha256  String?
   // ...en over de uiteindelijke, verzegelde bytes (integriteitscontrole bij download).
@@ -350,7 +368,7 @@ model AuditEvent {
   // Doorlopend volgnummer. De hashketen alleen laat het verwijderen van de
   // OUDSTE regels ongemerkt (er is dan geen volgende regel die niet meer
   // aansluit); een gat in de nummering wel.
-  seq          BigInt   @default(autoincrement())
+  seq          BigInt   @unique @default(autoincrement())
 
   @@index([dossierId])
   @@index([createdAt])
@@ -376,6 +394,18 @@ model CscSigningSession {
   preparedKeys Json // { documentId: opslagsleutel van de PDF met placeholder }
   hashes       Json // { documentId: sha256 (base64) }
   serviceToken String? // versleuteld (AES-256-GCM), nooit in leesbare vorm
+  // De handtekeningen van de provider, versleuteld. Bewust vastgelegd vóór het
+  // injecteren: valt het proces halverwege een batch van vijftig om, dan is het
+  // cryptografische werk niet verloren en hoeft de accountant niet opnieuw met
+  // zijn pincode te bevestigen. Wordt gewist zodra alles is geïnjecteerd.
+  //
+  // Beperkte gevoeligheid: een handtekening over hash H past alleen in een PDF
+  // waarvan de signedAttrs-digest exact H is. Het is geen sleutel en geen
+  // herbruikbaar token voor andere documenten.
+  signatureValues Json?
+  // De hashes exact zoals ze naar /oauth2/authorize zijn gestuurd, zodat vóór
+  // injectie te controleren is of ze nog kloppen (zie 4.2).
+  sentHashes   Json?
   status       String // PREPARED | AUTHORIZING | SIGNED | FAILED | EXPIRED
   expiresAt    DateTime
   lastError    String?

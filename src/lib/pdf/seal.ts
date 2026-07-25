@@ -22,6 +22,8 @@ export interface SealInput {
   pdfBytes: Uint8Array
   dossierTitle: string
   dossierId: string
+  /** Staat de cryptografische verzegeling aan? Zo niet, dan zegt het certificaat dat. */
+  sealed?: boolean
   /** Nodig om per ondertekenaar de juiste getoonde hash te kunnen tonen. */
   documentId?: string
   signers: SealSigner[]
@@ -123,7 +125,7 @@ export async function sealDocument(input: SealInput): Promise<SealResult> {
     // wanneer er één voor één wordt ondertekend).
     const shown = input.documentId ? s.presentedHashes?.[input.documentId] : undefined
     if (shown) {
-      line(`    Getoonde documentversie (SHA-256): ${shown.slice(0, 32)}`, { size: 8, color: grey })
+      line(`    Versie die deze persoon zag (SHA-256): ${shown.slice(0, 32)}`, { size: 8, color: grey })
       line(`    ${shown.slice(32)}`, { size: 8, color: grey })
     }
     if (s.consentTextSnapshot) {
@@ -141,6 +143,13 @@ export async function sealDocument(input: SealInput): Promise<SealResult> {
       'zegel in dit document, dan controleert uw PDF-lezer de integriteit automatisch en ' +
       'geldt het tijdstip uit de tijdstempeldienst als het moment van verzegeling.'
   )
+  y -= 4
+  paragraph(
+    'Let op: de vingerafdruk die per ondertekenaar is vermeld, hoort bij de versie die ' +
+      'díe persoon op het scherm zag. Bij ondertekenen op volgorde verschilt die per ' +
+      'persoon en wijkt hij dus af van de vingerafdruk van dit eindbestand. Dat is geen ' +
+      'aanwijzing dat er iets is gewijzigd.'
+  )
   y -= 6
 
   const hashLine1 = sha256.slice(0, 32)
@@ -151,6 +160,23 @@ export async function sealDocument(input: SealInput): Promise<SealResult> {
   page.drawText(hashLine2, { x: margin, y, size: 10, font: bold, color: accent })
   y -= 26
   page.drawText(`Certificaat opgemaakt op ${fmt(new Date())} (serverklok)`, { x: margin, y, size: 9, font, color: grey })
+  // Niet onderdrukbaar: staat de verzegeling uit, dan hoort dat op het certificaat.
+  if (input.sealed === false) {
+    y -= 20
+    page.drawText('Dit document is niet verzegeld.', {
+      x: margin,
+      y,
+      size: 10,
+      font: bold,
+      color: rgb(0.72, 0.25, 0.05)
+    })
+    y -= 13
+    paragraph(
+      'Er staat geen digitaal zegel in dit bestand. De echtheid is daarom niet automatisch ' +
+        'door uw PDF-lezer te controleren; alleen bovenstaande vingerafdruk en dit certificaat ' +
+        'leggen de inhoud vast.'
+    )
+  }
 
   const sealedBytes = await doc.save()
   return { sealedBytes, sha256 }

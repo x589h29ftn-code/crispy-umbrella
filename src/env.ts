@@ -126,6 +126,13 @@ const schema = z.object({
   // none = uit (geen zegel; alleen de zichtbare stempels en het auditcertificaat).
   // sealer = verzegelen via de interne Python-sidecar (pyHanko).
   SEAL_MODE: z.enum(['none', 'sealer']).default('none'),
+  // Zonder verzegeling gaan er stukken de deur uit zonder cryptografische
+  // bescherming. Dat mag tijdens een pilot, maar niet per ongeluk: in productie
+  // moet die keuze expliciet met een tweede vlag worden bevestigd.
+  ALLOW_UNSEALED: z
+    .string()
+    .default('false')
+    .transform((v) => v === 'true'),
   // Interne URL van de sidecar; niet publiek bereikbaar (geen Caddy-route).
   SEALER_URL: z.string().default('http://sealer:8000'),
   // Shared secret in een header tussen web en sealer.
@@ -201,6 +208,26 @@ export function assertNoStubInProduction(cfg: {
   }
 }
 
+/**
+ * Weigert een productiestart met verzegeling uit, tenzij dat expliciet is
+ * bevestigd. Eén vlag zet iemand per ongeluk; twee niet.
+ */
+export function assertSealingChoiceIsDeliberate(cfg: {
+  NODE_ENV: string
+  SEAL_MODE: string
+  ALLOW_UNSEALED: boolean
+}): void {
+  if (cfg.NODE_ENV !== 'production') return
+  if (cfg.SEAL_MODE !== 'none') return
+  if (cfg.ALLOW_UNSEALED) return
+  throw new Error(
+    'SEAL_MODE=none in productie: verzonden documenten zijn dan niet cryptografisch ' +
+      'beschermd. Is dat bewust (bijvoorbeeld tijdens een pilot zonder certificaat), zet dan ' +
+      'ook ALLOW_UNSEALED=true. Anders: stel een organisatiecertificaat en TSA_URL in en zet ' +
+      'SEAL_MODE=sealer.'
+  )
+}
+
 let cached: z.infer<typeof schema> | null = null
 
 export function getEnv(): z.infer<typeof schema> {
@@ -211,6 +238,7 @@ export function getEnv(): z.infer<typeof schema> {
     throw new Error(`Ongeldige of ontbrekende omgevingsvariabelen:\n${issues}`)
   }
   assertNoStubInProduction(parsed.data)
+  assertSealingChoiceIsDeliberate(parsed.data)
   cached = parsed.data
   return cached
 }

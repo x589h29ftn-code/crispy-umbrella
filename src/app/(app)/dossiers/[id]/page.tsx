@@ -4,6 +4,7 @@ import { Download, PencilRuler, CheckCircle2, Clock, XCircle, FileText } from 'l
 import { prisma } from '@/lib/db'
 import { requireOnboarded } from '@/lib/auth/session'
 import { StatusBadge } from '@/components/StatusBadge'
+import { UnsealedBanner } from '@/components/UnsealedBanner'
 import { DossierActions } from './DossierActions'
 import { ArchiveFolderCard } from './ArchiveFolderCard'
 import { PARTY_LABEL } from '@/lib/status'
@@ -26,6 +27,7 @@ const AUDIT_LABEL: Record<string, string> = {
   VERLOPEN: 'Verlopen',
   VERZEGELD: 'Definitief verzegeld',
   VERZEGELING_MISLUKT: 'Verzegeling mislukt',
+  VERZEGELING_OVERGESLAGEN: 'Verzegeling overgeslagen (staat uit)',
   INTEGRITEIT_AFWIJKING: 'Integriteitscontrole afgewezen',
   GEARCHIVEERD: 'Gearchiveerd',
   GEDOWNLOAD: 'Gedownload',
@@ -81,6 +83,8 @@ export default async function DossierDetailPage({ params }: { params: { id: stri
           )}
         </div>
       </header>
+
+      <UnsealedBanner scope="dossier" />
 
       <div className="grid gap-6 lg:grid-cols-3">
         <div className="space-y-6 lg:col-span-2">

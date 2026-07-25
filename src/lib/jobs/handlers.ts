@@ -45,7 +45,8 @@ async function handleSealRetry(job: JobRow): Promise<void> {
     }).catch((e) => console.error('[seal retry mail]', e))
   }
 
-  // Niet-herhaalbare fout: niet blijven proberen.
+  // Een document dat pyHanko structureel weigert geeft een 400, geen 502. Zo'n
+  // fout is definitief: dan niet blijven rondlopen maar stoppen en melden.
   if (outcome.retryable === false) {
     await writeAudit({
       type: 'VERZEGELING_MISLUKT',

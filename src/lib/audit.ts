@@ -30,6 +30,11 @@ export type AuditType =
   | 'VERLOPEN'
   | 'VERZEGELD'
   | 'VERZEGELING_MISLUKT'
+  // Verzegeling stond uit (SEAL_MODE=none): zo is later aanwijsbaar welke stukken
+  // uit die periode komen.
+  | 'VERZEGELING_OVERGESLAGEN'
+  // Grafsteen bij het opruimen door de bewaartermijn, in de ketenloze reeks.
+  | 'BEWAARTERMIJN_OPGERUIMD'
   | 'INTEGRITEIT_AFWIJKING'
   | 'GEDOWNLOAD'
   | 'INGETROKKEN'
@@ -91,6 +96,9 @@ function chainHash(input: {
  * of verwijdert, breekt de keten vanaf dat punt. In de database staat daarnaast
  * een trigger die UPDATE en DELETE hoe dan ook weigert.
  */
+/** Vaste namespace voor de advisory locks van het auditspoor. */
+const AUDIT_LOCK_NAMESPACE = 71_413
+
 export async function writeAudit(input: AuditInput): Promise<void> {
   try {
     const createdAt = new Date()
@@ -99,35 +107,47 @@ export async function writeAudit(input: AuditInput): Promise<void> {
     // opruiming de keten breken. Een keten die altijd "gebroken" is, wordt
     // genegeerd en beschermt dus niets. Regels zonder dossier (inloggen,
     // certificaat ingetrokken) vormen samen één eigen keten.
-    const prev = await prisma.auditEvent.findFirst({
-      where: { dossierId: input.dossierId ?? null },
-      orderBy: [{ seq: 'desc' }],
-      select: { hash: true }
-    })
-    const prevHash = prev?.hash ?? null
-    const hash = chainHash({
-      prevHash,
-      type: input.type,
-      dossierId: input.dossierId,
-      recipientId: input.recipientId,
-      message: input.message,
-      metadata: input.metadata,
-      createdAt
-    })
-    await prisma.auditEvent.create({
-      data: {
+    const chainKey = input.dossierId ?? '(zonder dossier)'
+    await prisma.$transaction(async (tx) => {
+      // Eén schrijver per keten. Zonder deze vergrendeling lezen twee
+      // gelijktijdige schrijvers (twee ondertekenaars die op hetzelfde moment
+      // indienen) dezelfde laatste regel, verwijzen beide nieuwe regels naar
+      // dezelfde prevHash, en vorkt de keten. De verificatie meldt dan voor
+      // altijd een breuk die niemand heeft veroorzaakt — precies het soort
+      // valse alarm waardoor een controle wordt genegeerd.
+      // De casts zijn nodig: zonder ze stuurt de driver een bigint mee en bestaat
+      // er geen pg_advisory_xact_lock met die signatuur.
+      await tx.$executeRaw`SELECT pg_advisory_xact_lock(${AUDIT_LOCK_NAMESPACE}::int, hashtext(${chainKey})::int)`
+      const prev = await tx.auditEvent.findFirst({
+        where: { dossierId: input.dossierId ?? null },
+        orderBy: [{ seq: 'desc' }],
+        select: { hash: true }
+      })
+      const prevHash = prev?.hash ?? null
+      const hash = chainHash({
+        prevHash,
         type: input.type,
         dossierId: input.dossierId,
-        accountantId: input.accountantId,
         recipientId: input.recipientId,
         message: input.message,
-        ipAddress: input.ip,
-        userAgent: input.userAgent,
         metadata: input.metadata,
-        createdAt,
-        prevHash,
-        hash
-      }
+        createdAt
+      })
+      await tx.auditEvent.create({
+        data: {
+          type: input.type,
+          dossierId: input.dossierId,
+          accountantId: input.accountantId,
+          recipientId: input.recipientId,
+          message: input.message,
+          ipAddress: input.ip,
+          userAgent: input.userAgent,
+          metadata: input.metadata,
+          createdAt,
+          prevHash,
+          hash
+        }
+      })
     })
   } catch (e) {
     console.error('[audit] kon auditregel niet schrijven', e)
@@ -146,14 +166,19 @@ export interface ChainVerifyResult {
 /**
  * Loopt de volledige hashketen door en meldt waar hij breekt.
  *
- * Wat dit wél aantoont: elke wijziging aan een regel, en elke verwijdering
- * middenin de reeks (de volgende regel sluit dan niet meer aan of er ontbreekt
- * een volgnummer).
+ * Wat dit aantoont:
+ *  - elke wijziging aan een regel (de inhoud past niet meer bij de hash);
+ *  - elke verwijdering middenin een keten (de volgende regel sluit niet aan);
+ *  - het verwijderen van de KOP van een keten. Dat werkt via één invariant: de
+ *    eerste regel van een keten heeft prevHash = null. Knipt iemand de kop eraf,
+ *    dan begint de keten met een regel die naar een hash verwijst die niet meer
+ *    bestaat, en dat is zichtbaar.
  *
- * Wat dit NIET aantoont: het verwijderen van de oudste regels aan het begin.
- * Daarvoor is een anker buiten deze database nodig. De opruiming door de
- * bewaartermijn doet precies dat legitiem, dus het beginvolgnummer wordt
- * gerapporteerd in plaats van als fout aangemerkt.
+ * Waar de grens ligt: dit beschermt tegen DELETE. Wie de noodschakelaar
+ * app.audit_purge kan zetten, kan ook UPDATE en daarmee de hele keten
+ * herschrijven. Het is dus een beveiliging tegen applicatiefouten en tegen
+ * databasetoegang zónder applicatietoegang, niet tegen een beheerder met alle
+ * rechten. Zie docs/beheer.md.
  *
  * Regels van vóór de invoering van de keten (hash = null) worden overgeslagen.
  */
@@ -190,8 +215,8 @@ export async function verifyAuditChain(batchSize = 2000): Promise<ChainVerifyRes
 
       const key = row.dossierId ?? ''
       let s = state.get(key)
+      const isChainStart = !s
       if (!s) {
-        // Begin van deze keten: nemen we als startpunt.
         s = { prevHash: row.prevHash, started: true }
         state.set(key, s)
       }
@@ -209,6 +234,12 @@ export async function verifyAuditChain(batchSize = 2000): Promise<ChainVerifyRes
         }
       })
 
+      // De invariant die het afknippen van de kop aantoonbaar maakt: de eerste
+      // regel van een keten hoort prevHash = null te hebben. Is dat niet zo, dan
+      // verwijst hij naar een voorganger die er niet meer is.
+      if (isChainStart && row.prevHash !== null) {
+        return fail('eerste regel van deze keten verwijst naar een ontbrekende voorganger')
+      }
       if (row.prevHash !== s.prevHash) return fail('prevHash sluit niet aan binnen deze keten')
       const expected = chainHash({
         prevHash: row.prevHash,

@@ -81,12 +81,34 @@ Wat dit aantoont:
 
 - ✅ elke wijziging aan een auditregel
 - ✅ het verwijderen van een regel middenin een dossier
-- ❌ het verwijderen van de oudste regels van een dossier is niet aan de keten
-  zelf te zien; daarvoor zou een anker buiten de database nodig zijn
+- ✅ het afknippen van de kop van een keten (de eerste regel verwijst dan naar een
+  voorganger die niet meer bestaat)
+- ❌ het volledig verwijderen van een dossier mét zijn hele keten is niet aan de
+  keten zelf te zien; daarvoor zou een anker buiten de database nodig zijn
+
+Schrijven gebeurt onder een advisory lock per keten. Zonder die vergrendeling
+lezen twee ondertekenaars die op hetzelfde moment indienen dezelfde laatste regel,
+verwijzen beide nieuwe regels naar dezelfde voorganger, en vorkt de keten. De
+controle zou daarna voor altijd een breuk melden die niemand heeft veroorzaakt —
+en een controle die altijd rood staat, wordt genegeerd.
 
 Daarnaast weigert de database zelf (via een trigger) elke UPDATE en DELETE op het
 auditspoor. Alleen de geplande opruiming zet die kortstondig uit, binnen één
-transactie.
+transactie, met `SET LOCAL app.audit_purge = 'on'`.
+
+**Wat die trigger wél en niet tegenhoudt.** Hij beschermt tegen een fout in de
+applicatie (een verkeerde `update`/`delete` die per ongeluk het auditspoor raakt)
+en tegen iemand die alleen databasetoegang heeft en niet weet van de
+noodschakelaar. Hij beschermt **niet** tegen een beheerder met volledige rechten op
+de database: die kan dezelfde schakelaar zetten, of de trigger uitschakelen. Wie
+dat wil dichtzetten heeft een anker buiten de database nodig — een append-only
+logdienst of een dagelijkse hash naar een externe plek. Zolang dat er niet is,
+geldt: het auditspoor is aantoonbaar onaangetast tegenover *de applicatie*, niet
+tegenover *de databasebeheerder*.
+
+Het opruimen na de bewaartermijn laat wel een grafsteen achter
+(`BEWAARTERMIJN_OPGERUIMD`) met het aantal verwijderde regels en de laatste hash van
+de opgeruimde keten. Een dossier verdwijnt dus nooit helemaal zonder spoor.
 
 ## Sleutelrotatie
 
@@ -145,3 +167,26 @@ taken zelf opnieuw in:
 | `RETENTION_CLEANUP` | elke 24 uur |
 
 Houd het op **één** worker-instance.
+
+## Regressietests
+
+Een klein pakket scripts dat de afspraken controleert die je niet met het oog kunt
+nazien. Ze draaien tegen een **testdatabase** — nooit tegen productie, want ze maken
+en verwijderen dossiers en breken opzettelijk een hashketen.
+
+```bash
+npm run test:regressie      # alles achter elkaar
+npm run test:opstart        # de harde weigeringen bij opstarten
+npm run test:audit          # hashketen, append-only trigger, bewaartermijn, certificaat
+npm run test:gelijktijdig   # twee ondertekenaars op hetzelfde moment
+npm run test:sessie         # ondertekensessie: versleuteld bewaren en wissen
+```
+
+De sealer heeft een eigen test met een zelfondertekend testcertificaat (idempotentie,
+manipulatiedetectie, en dat de controlepagina niets van internet ophaalt):
+
+```bash
+python -m venv .venv-sealer
+.venv-sealer/bin/pip install -r sealer/requirements.txt
+.venv-sealer/bin/python scripts/regressie/sealer.py
+```
