@@ -14,6 +14,7 @@ export type JobKind =
   | 'ARCHIVE'
   | 'RETENTION_CLEANUP'
   | 'CSC_SESSION_CLEANUP'
+  | 'MAIL_RESEND'
 
 export interface JobRow {
   id: string

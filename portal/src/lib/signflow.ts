@@ -106,7 +106,27 @@ export async function activateSigner(recipientId: string): Promise<void> {
     url: `${env.APP_URL}/teken/${raw}`,
     message: resolvedMessage
   })
-  await sendMail({ to: r.email, ...mail }).catch((e) => console.error('[activate client mail]', e))
+  // Het message-id vastleggen zodat de bezorgstatus (afgeleverd/bounce) later aan
+  // deze ontvanger gekoppeld kan worden.
+  try {
+    const sent = await sendMail({ to: r.email, ...mail })
+    await prisma.recipient.update({
+      where: { id: r.id },
+      data: {
+        mailMessageId: sent.messageId,
+        mailStatus: 'SENT',
+        mailStatusAt: new Date(),
+        mailBounceType: null,
+        mailBounceReason: null
+      }
+    })
+  } catch (e) {
+    console.error('[activate client mail]', e)
+    await prisma.recipient.update({
+      where: { id: r.id },
+      data: { mailStatus: 'FAILED', mailStatusAt: new Date(), mailBounceReason: (e as Error).message.slice(0, 500) }
+    })
+  }
   await writeAudit({ type: 'VERZONDEN', dossierId: dossier.id, recipientId: r.id, message: r.email })
 }
 

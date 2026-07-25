@@ -49,6 +49,16 @@ enum DossierStatus {
   VERLOPEN
 }
 
+// Bezorgstatus van een verstuurde mail, zoals de provider die terugkoppelt.
+enum MailStatus {
+  QUEUED // aangeboden aan de provider
+  SENT // provider heeft hem verstuurd
+  DELIVERED // aangekomen bij de ontvangende server
+  BOUNCED // definitief geweigerd
+  COMPLAINED // als spam gemarkeerd door de ontvanger
+  FAILED // versturen mislukt aan onze kant
+}
+
 enum VerificationMethod {
   EMAIL
   SMS
@@ -277,6 +287,21 @@ model Recipient {
   accessCodeSetAt      DateTime?
   accessCodeVerifiedAt DateTime?
 
+  // Bezorging van de uitnodigingsmail. Bij SMTP weet je alleen dat de mail is
+  // aangeboden; met een transactionele provider koppelen we de status terug.
+  mailMessageId  String? // message-id van de provider, om webhooks te matchen
+  mailStatus     MailStatus?
+  mailStatusAt   DateTime?
+  mailBounceType String? // 'hard' | 'soft' | providerspecifiek
+  mailBounceReason String?
+  // Alleen procesindicatie: openen is onbetrouwbaar in twee richtingen en komt
+  // daarom NIET op het ondertekencertificaat.
+  mailOpenedAt   DateTime?
+  // Aantal keren automatisch opnieuw verzonden na een tijdelijke bounce.
+  mailResendCount Int @default(0)
+
+  @@index([mailMessageId])
+
   createdAt DateTime         @default(now())
   fields    SignatureField[]
 
@@ -356,6 +381,23 @@ model CscSigningSession {
   @@index([state])
   @@index([status, expiresAt])
   @@index([accountantId])
+}
+
+// Ruwe webhook-gebeurtenissen van de mailprovider. Bestaat vooral voor
+// idempotentie: dezelfde gebeurtenis twee keer aangeboden mag niets extra doen.
+// De volledige payload blijft bewaard als bewijsmateriaal.
+model MailEvent {
+  id              String   @id @default(cuid())
+  provider        String // 'postmark' | 'resend'
+  providerEventId String   @unique
+  type            String // Delivery | Bounce | SpamComplaint | Open | ...
+  messageId       String?
+  recipientId     String?
+  payload         Json
+  createdAt       DateTime @default(now())
+
+  @@index([messageId])
+  @@index([recipientId])
 }
 
 // Durable job queue op Postgres (geen extra broker nodig). Wordt gebruikt voor

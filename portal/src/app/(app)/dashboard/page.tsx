@@ -1,10 +1,12 @@
 import Link from 'next/link'
-import { Plus, FileText, Search, AlertTriangle } from 'lucide-react'
+import { Plus, FileText, Search, AlertTriangle, MailWarning } from 'lucide-react'
 import type { DossierStatus, Prisma } from '@prisma/client'
 import { prisma } from '@/lib/db'
 import { requireOnboarded } from '@/lib/auth/session'
 import { StatusBadge } from '@/components/StatusBadge'
 import { STATUS_LABEL } from '@/lib/status'
+import { recipientsWithMailProblem } from '@/lib/email/status'
+import { deliveryFeedbackAvailable } from '@/lib/email/transport'
 import { formatDateTime } from '@/lib/utils'
 
 const FILTERS: (DossierStatus | 'ALLE')[] = ['ALLE', 'CONCEPT', 'VERZONDEN', 'GEDEELTELIJK', 'ONDERTEKEND']
@@ -70,6 +72,9 @@ export default async function DashboardPage({
       select: { id: true, title: true, updatedAt: true }
     })
   ])
+  // Ontvangers waarvan de mail niet aankomt: zonder signaal bloedt zo'n dossier
+  // stil dood.
+  const mailProblems = deliveryFeedbackAvailable() ? await recipientsWithMailProblem(acc.id, isBeheerder) : []
   // Laatste foutmelding per wachtend dossier, voor een bruikbare melding.
   const sealErrors = sealingFailed.length
     ? await prisma.auditEvent.findMany({
@@ -131,6 +136,38 @@ export default async function DashboardPage({
                 </li>
               )
             })}
+          </ul>
+        </div>
+      )}
+
+      {mailProblems.length > 0 && (
+        <div className="rounded-lg border border-rose-200 bg-rose-50 p-4 text-sm text-rose-900">
+          <p className="flex items-center gap-2 font-medium">
+            <MailWarning className="h-4 w-4" />
+            {mailProblems.length === 1
+              ? '1 uitnodiging komt niet aan'
+              : `${mailProblems.length} uitnodigingen komen niet aan`}
+          </p>
+          <p className="mt-1 text-rose-800">
+            Corrigeer het e-mailadres en verstuur het verzoek opnieuw. Er gaan geen herinneringen meer naar deze
+            adressen.
+          </p>
+          <ul className="mt-3 space-y-1">
+            {mailProblems.map((r) => (
+              <li key={r.id}>
+                <Link href={`/dossiers/${r.dossier.id}`} className="font-medium underline">
+                  {r.dossier.title}
+                </Link>{' '}
+                — {r.name} &lt;{r.email}&gt;
+                <span className="text-rose-800">
+                  {r.mailStatus === 'COMPLAINED'
+                    ? ' · als spam gemarkeerd'
+                    : r.mailBounceReason
+                      ? ` · ${r.mailBounceReason.slice(0, 120)}`
+                      : ' · niet bezorgd'}
+                </span>
+              </li>
+            ))}
           </ul>
         </div>
       )}

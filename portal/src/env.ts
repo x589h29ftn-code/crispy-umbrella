@@ -35,7 +35,22 @@ const schema = z.object({
   SMTP_PASS: z.string().optional(),
   MAIL_FROM: z.string().default('Otto Visser & Partners <noreply@ottovisseraccountants.nl>'),
   POSTMARK_TOKEN: z.string().optional(),
+  POSTMARK_MESSAGE_STREAM: z.string().default('outbound'),
   RESEND_API_KEY: z.string().optional(),
+  // Openen meten via een tracking-pixel. Standaard uit: het is in twee
+  // richtingen onbetrouwbaar (geblokkeerde afbeeldingen missen een opening,
+  // privacybescherming die mail vooraf ophaalt meldt een opening die er niet was).
+  MAIL_TRACK_OPENS: z
+    .string()
+    .default('false')
+    .transform((v) => v === 'true'),
+  // Beveiliging van het webhook-eindpunt. Postmark: HTTP-basicauth op de URL,
+  // eventueel met een IP-lijst. Resend: Svix-signatuur.
+  MAIL_WEBHOOK_USER: z.string().optional(),
+  MAIL_WEBHOOK_PASSWORD: z.string().optional(),
+  // Komma-gescheiden lijst; leeg = geen IP-beperking.
+  MAIL_WEBHOOK_IPS: z.string().optional(),
+  RESEND_WEBHOOK_SECRET: z.string().optional(),
 
   // Sms (optioneel; alleen nodig als cliënten sms-verificatie kiezen).
   SMS_PROVIDER: z.enum(['none', 'messagebird', 'twilio']).default('none'),
