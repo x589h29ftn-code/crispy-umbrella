@@ -14,7 +14,6 @@ import { sendMail } from '@/lib/email/transport'
 import { requestEmail, completedEmail, officeTurnEmail } from '@/lib/email/templates'
 import { renderTemplate, firstNameFrom } from '@/lib/docanalyze/templates'
 import { archiveDossier, archiveEnabled, buildDefaultFolder } from '@/lib/archive'
-import { getProfessionalSigner, accountantCanQualifiedSign, type ProfessionalSigner } from '@/lib/signing-provider'
 
 /** Datum/tijd voor het zichtbare stempel, bijv. "23-9-2020 14:04:44". */
 function formatStampDate(d: Date): string {
@@ -170,18 +169,10 @@ export async function applySignature(
   const signedAt = new Date()
   const label = { name: recipient.name, dateText: formatStampDate(signedAt) }
 
-  // Kantoorondertekenaar met ingeschakeld beroepscertificaat? Dan zetten we
-  // daarnaast een gekwalificeerde PAdES-handtekening (via de provider). Staat
-  // de driver op 'none' (standaard), dan blijft dit null en verandert er niets.
-  let qualified: { signer: ProfessionalSigner; title: string | null; credentialId: string | null } | null = null
-  if (recipient.role === 'ZELF' && recipient.accountantId) {
-    const acc = await prisma.accountant.findUnique({ where: { id: recipient.accountantId } })
-    if (acc && accountantCanQualifiedSign(acc)) {
-      const signer = await getProfessionalSigner()
-      if (signer) qualified = { signer, title: acc.professionalTitle, credentialId: acc.signingCredentialId }
-    }
-  }
-  let qualifiedError: string | null = null
+  // Hier wordt alléén het zichtbare stempel gezet. De gekwalificeerde
+  // handtekening komt later in de keten (na het auditcertificaat, via de
+  // CSC-route in sealAndComplete), want ná het waarmerken mag het bestand niet
+  // meer worden bewerkt. Eén ondertekenmechanisme — zie docs/verzegeling.md.
 
   // Groepeer de velden per document en stempel de handtekening in elk document.
   const byDoc = new Map<string, typeof recipient.fields>()
@@ -238,29 +229,6 @@ export async function applySignature(
           )
         }
 
-        // Gekwalificeerd (mede)ondertekenen. Best-effort: mislukt de provider, dan
-        // blijft het zichtbare stempel staan en leggen we de fout vast in het
-        // auditspoor (het ondertekenen in het portaal mag nooit klappen).
-        if (qualified) {
-          try {
-            bytes = Buffer.from(
-              await qualified.signer.signPdf({
-                pdfBytes: bytes,
-                signer: {
-                  name: recipient.name,
-                  professionalTitle: qualified.title,
-                  credentialId: qualified.credentialId
-                },
-                reason: 'Ondertekend door de accountant op persoonlijke titel',
-                location: 'Otto Visser & Partners'
-              })
-            )
-          } catch (e) {
-            qualifiedError = (e as Error).message
-            console.error('[gekwalificeerd ondertekenen]', e)
-          }
-        }
-
         // Nooit dezelfde sleutel overschrijven: bij een rollback zou de blob dan
         // gewijzigd zijn en de database niet, en stempelt de volgende ondertekenaar
         // op een bestand dat volgens de database nog onbewerkt is. Elke schrijfactie
@@ -295,21 +263,6 @@ export async function applySignature(
         },
         { mode: 'required', tx }
       )
-      if (qualified) {
-        await writeAudit(
-          {
-            type: 'GEKWALIFICEERD_ONDERTEKEND',
-            dossierId: dossier.id,
-            recipientId,
-            accountantId: recipient.accountantId ?? undefined,
-            message: qualifiedError
-              ? `mislukt: ${qualifiedError}`
-              : `${qualified.signer.id} (${qualified.title ?? 'accountant'})`,
-            ...ctx
-          },
-          { mode: 'required', tx }
-        )
-      }
     },
     { timeout: 180_000, maxWait: 30_000 }
   )
@@ -393,7 +346,7 @@ async function finalize(dossierId: string): Promise<void> {
  * platgeslagen. Idempotent — bestaat `preSealKey` al (bijvoorbeeld na een
  * mislukte verzegeling), dan wordt de auditpagina niet nóg een keer toegevoegd.
  */
-async function buildPreSealArtifacts(dossierId: string): Promise<void> {
+export async function buildPreSealArtifacts(dossierId: string): Promise<void> {
   const dossier = await prisma.dossier.findUnique({
     where: { id: dossierId },
     include: {
@@ -403,15 +356,59 @@ async function buildPreSealArtifacts(dossierId: string): Promise<void> {
   })
   if (!dossier) return
   const store = storage()
+
+  // IP, apparaat en de momenten van versturen/openen staan niet op Recipient maar
+  // in het auditspoor — dat is de bewijsadministratie. Ze hier ophalen houdt één
+  // bron van waarheid en voorkomt dat het certificaat en het spoor uiteenlopen.
+  const events = await prisma.auditEvent.findMany({
+    where: { dossierId, type: { in: ['VERZONDEN', 'GEOPEND', 'ONDERTEKEND'] }, recipientId: { not: null } },
+    orderBy: { createdAt: 'asc' },
+    select: { recipientId: true, type: true, createdAt: true, ipAddress: true, userAgent: true }
+  })
+  type Spoor = { sentAt?: Date; openedAt?: Date; ip?: string | null; userAgent?: string | null }
+  const spoor = new Map<string, Spoor>()
+  for (const e of events) {
+    if (!e.recipientId) continue
+    const s = spoor.get(e.recipientId) ?? {}
+    // Eerste uitnodiging en eerste opening: dat is de doorlooptijd die telt.
+    if (e.type === 'VERZONDEN' && !s.sentAt) s.sentAt = e.createdAt
+    if (e.type === 'GEOPEND' && !s.openedAt) s.openedAt = e.createdAt
+    // Bij ONDERTEKEND juist de laatste: dat is de handtekening die er staat.
+    if (e.type === 'ONDERTEKEND') {
+      s.ip = e.ipAddress
+      s.userAgent = e.userAgent
+    }
+    spoor.set(e.recipientId, s)
+  }
+
   const signers = dossier.recipients.map((r) => ({
     name: r.name,
     email: r.email,
     signedAt: r.signedAt,
     otpVerifiedAt: r.otpVerifiedAt,
+    sentAt: spoor.get(r.id)?.sentAt ?? null,
+    openedAt: spoor.get(r.id)?.openedAt ?? null,
+    ip: spoor.get(r.id)?.ip ?? null,
+    userAgent: spoor.get(r.id)?.userAgent ?? null,
+    // Kantoorgebruikers tekenen ingelogd; die krijgen geen verificatiecode.
+    verification: (r.role === 'ZELF' ? 'KANTOOR' : r.verificationMethod) as 'EMAIL' | 'SMS' | 'KANTOOR',
     presentedHashes: (r.presentedHashes ?? null) as Record<string, string> | null,
     consentTextSnapshot: r.consentTextSnapshot,
     consentShownAt: r.consentShownAt
   }))
+
+  // Veldtelling per document, zodat het certificaat het stuk beschrijft waar het
+  // aan vastzit.
+  const veldTelling = await prisma.signatureField.groupBy({
+    by: ['documentId', 'kind'],
+    where: { dossierId },
+    _count: { _all: true }
+  })
+  const veldenVoor = (documentId: string) => {
+    const aantal = (k: 'SIGNATURE' | 'INITIALS' | 'DATE') =>
+      veldTelling.find((v) => v.documentId === documentId && v.kind === k)?._count._all ?? 0
+    return { signature: aantal('SIGNATURE'), initials: aantal('INITIALS'), date: aantal('DATE') }
+  }
 
   for (const doc of dossier.documents) {
     if (doc.preSealKey || !doc.workingKey) continue
@@ -423,6 +420,7 @@ async function buildPreSealArtifacts(dossierId: string): Promise<void> {
       dossierId: dossier.id,
       documentId: doc.id,
       sealed: sealEnabled(),
+      fieldCounts: veldenVoor(doc.id),
       signers
     })
     // Stap 5: hash over precies deze bytes, vlak vóór het zegel.
@@ -447,8 +445,10 @@ export interface SealOutcome {
 
 /**
  * Wacht dit dossier op een gekwalificeerde handtekening waarvoor de accountant
- * zelf moet autoriseren? Alleen bij providers met een gebruikersronde; bij
- * 'digidentity' tekent de server zelf en is er niets om op te wachten.
+ * zelf moet autoriseren? Dat is het enige ondertekenmechanisme dat er nog is:
+ * de sleutel staat bij de provider in een HSM en komt alleen in beweging als de
+ * accountant zelf autoriseert. Er is bewust geen variant waarbij de server
+ * namens hem tekent.
  */
 function awaitsQualifiedSignature(owner: { signingCertEnabled: boolean; signingCredentialId: string | null }): boolean {
   return env.PROFESSIONAL_SIGNING_DRIVER === 'cleverbase' && owner.signingCertEnabled && !!owner.signingCredentialId

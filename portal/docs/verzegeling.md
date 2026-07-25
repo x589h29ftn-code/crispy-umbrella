@@ -190,12 +190,24 @@ Dit is sinds v1.4 **het** ondertekenmechanisme, niet meer een extra. De accounta
 handtekening en beschermt tegelijk de integriteit van het document. Staat per
 medewerker aan onder **Instellingen → Gebruikers**.
 
-Twee soorten providers, met een wezenlijk verschil:
+Er is precies één provider:
 
 | Provider | Wie autoriseert | Gevolg |
 |---|---|---|
-| `digidentity` | de server (OAuth client-credentials) | gaat automatisch, geen handeling |
 | `cleverbase` | de **accountant zelf**, met pincode in de app | expliciete stap in het portaal |
+
+Er was ooit een tweede (`digidentity`) waarbij de server namens de accountant
+tekende, zonder handeling van hem. Die is verwijderd, en niet alleen omdat één
+mechanisme eenvoudiger is: hij tekende **best-effort**. Viel de provider weg, dan
+bleef het zichtbare stempel gewoon staan, kwam er een auditregel "mislukt: …" en
+liep het dossier door naar ONDERTEKEND. Het resultaat was een stuk dat ondertekend
+oogt zonder gekwalificeerde handtekening, zonder dat iemand bericht kreeg —
+een stille afwaardering precies op het punt waar je op vertrouwt.
+
+De Cleverbase-route faalt juist dicht: kan er niet gewaarmerkt worden, dan gaat
+het dossier naar `SEALING_FAILED` en de deur niet uit. Staat de driver nog op
+`digidentity`, dan weigert de applicatie te starten met een melding die zegt wat
+er moet gebeuren.
 
 ### Waarom het bij Cleverbase een aparte stap is
 

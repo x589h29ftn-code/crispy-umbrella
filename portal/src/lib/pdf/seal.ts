@@ -3,14 +3,30 @@ import { createHash } from 'node:crypto'
 // Verzegelt de definitieve PDF: berekent de SHA-256-hash en voegt een
 // Nederlands auditcertificaat als extra pagina toe. Zo is elke latere
 // byte-wijziging aantoonbaar en staat het bewijs in het document zelf.
+//
+// Het certificaat moet op zichzelf te lezen zijn. Iemand die over vijf jaar
+// alleen dit PDF-bestand in handen krijgt — zonder toegang tot het portaal —
+// moet kunnen zien wie er tekende, wanneer, vanaf welk apparaat, en of het
+// bestand sindsdien is gewijzigd. Alles wat daarvoor nodig is staat dus op het
+// blad zelf en niet alleen in de database.
+
+/** Alle tijden op het certificaat staan in Nederlandse tijd. */
+const TIJDZONE = 'Europe/Amsterdam'
 
 export interface SealSigner {
   name: string
   email: string
+  /** IP en apparaat op het moment van ondertekenen (uit het auditspoor). */
   ip?: string | null
   userAgent?: string | null
+  /** Wanneer de uitnodiging naar deze persoon is verstuurd. */
+  sentAt?: Date | null
+  /** Wanneer deze persoon het document voor het eerst opende. */
+  openedAt?: Date | null
   otpVerifiedAt?: Date | null
   signedAt?: Date | null
+  /** Hoe de identiteit is gecontroleerd; bepaalt de tekst op het certificaat. */
+  verification?: 'EMAIL' | 'SMS' | 'KANTOOR' | null
   /** Hash per document van de bytes die déze ondertekenaar te zien kreeg. */
   presentedHashes?: Record<string, string> | null
   /** Letterlijke instemmingstekst zoals die op het scherm stond. */
@@ -26,6 +42,10 @@ export interface SealInput {
   sealed?: boolean
   /** Nodig om per ondertekenaar de juiste getoonde hash te kunnen tonen. */
   documentId?: string
+  /** Aantal velden in dít document, zodat het certificaat het stuk beschrijft
+   *  waar het aan vastzit. Een certificaat dat "3 pagina's, 2 handtekeningvelden"
+   *  zegt terwijl er iets anders onder ligt, valt op. */
+  fieldCounts?: { signature: number; initials: number; date: number }
   signers: SealSigner[]
 }
 
@@ -40,11 +60,75 @@ const NL = new Intl.DateTimeFormat('nl-NL', {
   year: 'numeric',
   hour: '2-digit',
   minute: '2-digit',
-  second: '2-digit'
+  second: '2-digit',
+  timeZone: TIJDZONE
 })
 
 function fmt(d?: Date | null): string {
-  return d ? NL.format(d) : '-'
+  // nl-NL zet er een komma tussen datum en tijd; als tijdstempel leest het
+  // prettiger zonder.
+  return d ? NL.format(d).replace(', ', ' ') : '-'
+}
+
+/**
+ * Korte, leesbare samenvatting van het apparaat. De volledige user-agent staat
+ * er daarnaast voluit bij: die is het forensische gegeven, dit is de regel waar
+ * een mens iets aan heeft.
+ */
+function deviceSummary(ua?: string | null): string {
+  if (!ua) return 'onbekend'
+  const mobiel = /Mobile|Android|iPhone|iPad|iPod/i.test(ua)
+  const os = /iPhone|iPad|iPod/i.test(ua)
+    ? 'iOS'
+    : /Android/i.test(ua)
+      ? 'Android'
+      : /Mac OS X|Macintosh/i.test(ua)
+        ? 'macOS'
+        : /Windows/i.test(ua)
+          ? 'Windows'
+          : /Linux/i.test(ua)
+            ? 'Linux'
+            : 'onbekend besturingssysteem'
+  const browser = /Edg\//i.test(ua)
+    ? 'Edge'
+    : /OPR\//i.test(ua)
+      ? 'Opera'
+      : /Chrome\//i.test(ua)
+        ? 'Chrome'
+        : /Firefox\//i.test(ua)
+          ? 'Firefox'
+          : /Safari\//i.test(ua)
+            ? 'Safari'
+            : 'onbekende browser'
+  return `${mobiel ? 'mobiel apparaat' : 'computer'}, ${os}, ${browser}`
+}
+
+/**
+ * De UTC-afwijking die op dát moment gold, bijv. "UTC+02:00". Nederland kent
+ * zomer- en wintertijd, dus de afwijking hoort bij een tijdstip en niet bij het
+ * document. Zonder deze regel is "12:24:59" onbruikbaar zodra iemand het naast
+ * een logregel uit een ander systeem legt.
+ */
+function utcOffset(d: Date): string {
+  const parts = new Intl.DateTimeFormat('en-US', {
+    timeZone: TIJDZONE,
+    timeZoneName: 'longOffset'
+  }).formatToParts(d)
+  const zone = parts.find((p) => p.type === 'timeZoneName')?.value ?? 'GMT+00:00'
+  return zone.replace('GMT', 'UTC')
+}
+
+/** Beschrijft in gewone taal welke identiteitscontrole is uitgevoerd. */
+function verificationText(v: SealSigner['verification']): string {
+  switch (v) {
+    case 'SMS':
+      return 'e-mailadres bevestigd door het kantoor; verificatiecode per sms naar het opgegeven nummer'
+    case 'KANTOOR':
+      return 'medewerker van het kantoor, ingelogd met wachtwoord en tweefactorauthenticatie'
+    case 'EMAIL':
+    default:
+      return 'e-mailadres bevestigd door het kantoor; verificatiecode per e-mail naar dat adres'
+  }
 }
 
 export async function sealDocument(input: SealInput): Promise<SealResult> {
@@ -53,6 +137,9 @@ export async function sealDocument(input: SealInput): Promise<SealResult> {
   // toegevoegd. Zo is de vingerafdruk reproduceerbaar te verifiëren.
   const sha256 = createHash('sha256').update(Buffer.from(input.pdfBytes)).digest('hex')
   const doc = await PDFDocument.load(Uint8Array.from(input.pdfBytes), { ignoreEncryption: true })
+  // Tellen vóórdat het certificaat erbij komt: dit is de omvang van het stuk
+  // zelf, niet van het stuk plus zijn eigen bijlage.
+  const inhoudPaginas = doc.getPageCount()
   const font = await doc.embedFont(StandardFonts.Helvetica)
   const bold = await doc.embedFont(StandardFonts.HelveticaBold)
 
@@ -110,17 +197,47 @@ export async function sealDocument(input: SealInput): Promise<SealResult> {
 
   line('Document', { size: 12, f: bold, gap: 18 })
   line(`Titel: ${input.dossierTitle}`)
-  line(`Dossierkenmerk: ${input.dossierId}`, { gap: 22 })
+  line(`Dossierkenmerk: ${input.dossierId}`)
+  // Beschrijft het stuk waar dit certificaat aan vastzit.
+  const fc = input.fieldCounts
+  const velden: string[] = []
+  if (fc?.signature) velden.push(`${fc.signature} handtekeningveld${fc.signature === 1 ? '' : 'en'}`)
+  if (fc?.initials) velden.push(`${fc.initials} paraafveld${fc.initials === 1 ? '' : 'en'}`)
+  if (fc?.date) velden.push(`${fc.date} datumveld${fc.date === 1 ? '' : 'en'}`)
+  line(
+    `Omvang: ${inhoudPaginas} pagina${inhoudPaginas === 1 ? '' : "'s"}` +
+      (velden.length ? `, ${velden.join(', ')}` : '') +
+      ` (exclusief dit certificaat)`
+  )
+  line(`Ondertekenaars: ${input.signers.length}`, { gap: 14 })
+  paragraph(
+    `Alle tijdstippen staan in Nederlandse tijd (${TIJDZONE}), met de zomer- of wintertijd ` +
+      `zoals die op dat moment gold.`
+  )
+  y -= 12
 
   line('Ondertekenaars', { size: 12, f: bold, gap: 18 })
   input.signers.forEach((s, i) => {
-    ensure(90)
+    ensure(120)
     line(`${i + 1}. ${s.name}  <${s.email}>`, { f: bold, size: 11 })
-    line(`    Ondertekend op: ${fmt(s.signedAt)} (serverklok)`, { size: 9, color: grey })
-    line(`    Code uit de e-mail geverifieerd op: ${fmt(s.otpVerifiedAt)}`, { size: 9, color: grey })
-    line(`    IP-adres: ${s.ip ?? '-'}`, { size: 9, color: grey })
-    const ua = (s.userAgent ?? '-').slice(0, 90)
-    line(`    Apparaat: ${ua}`, { size: 9, color: grey })
+    // De volgorde van de gebeurtenissen, zodat de doorlooptijd tussen ontvangen
+    // en tekenen op het blad zelf te zien is. Dat is precies wat je nodig hebt
+    // als iemand later zegt dat hij het nooit heeft gekregen.
+    line(`    Uitnodiging verstuurd: ${fmt(s.sentAt)}`, { size: 9, color: grey })
+    line(`    Voor het eerst geopend: ${fmt(s.openedAt)}`, { size: 9, color: grey })
+    if (s.verification !== 'KANTOOR') {
+      line(`    Verificatiecode ingevoerd: ${fmt(s.otpVerifiedAt)}`, { size: 9, color: grey })
+    }
+    line(`    Ondertekend: ${fmt(s.signedAt)}`, { size: 9, color: grey })
+    line(`    Identiteitscontrole: ${verificationText(s.verification)}`, { size: 8, color: grey })
+    line(`    IP-adres bij ondertekenen: ${s.ip ?? '-'}`, { size: 9, color: grey })
+    line(`    Apparaat: ${deviceSummary(s.userAgent)}`, { size: 9, color: grey })
+    // Voluit en afgebroken op woordgrenzen. Een harde afkap op tekenlengte sneed
+    // juist het informatieve deel eraf ("... Chrome/139.0 S").
+    if (s.userAgent) {
+      line('    Browserkenmerk:', { size: 8, color: grey, gap: 11 })
+      paragraph(s.userAgent, { size: 8, indent: 16 })
+    }
     // Welke bytes deze ondertekenaar te zien kreeg (kan per persoon verschillen
     // wanneer er één voor één wordt ondertekend).
     const shown = input.documentId ? s.presentedHashes?.[input.documentId] : undefined
@@ -154,15 +271,29 @@ export async function sealDocument(input: SealInput): Promise<SealResult> {
 
   const hashLine1 = sha256.slice(0, 32)
   const hashLine2 = sha256.slice(32)
-  ensure(50)
+  // De vingerafdruk, het moment van opmaak en de eventuele waarschuwing horen
+  // bij elkaar. Zonder deze reservering belandde "Dit document is niet
+  // verzegeld." alleen op een volgende pagina, losgekoppeld van de hash waar
+  // hij over gaat — juist die regel mag niet verweesd raken.
+  ensure(input.sealed === false ? 140 : 60)
   page.drawText(hashLine1, { x: margin, y, size: 10, font: bold, color: accent })
   y -= 14
   page.drawText(hashLine2, { x: margin, y, size: 10, font: bold, color: accent })
   y -= 26
-  page.drawText(`Certificaat opgemaakt op ${fmt(new Date())} (serverklok)`, { x: margin, y, size: 9, font, color: grey })
+  const opgemaakt = new Date()
+  ensure(20)
+  page.drawText(`Certificaat opgemaakt op ${fmt(opgemaakt)} (${utcOffset(opgemaakt)}, serverklok)`, {
+    x: margin,
+    y,
+    size: 9,
+    font,
+    color: grey
+  })
+  y -= 13
   // Niet onderdrukbaar: staat de verzegeling uit, dan hoort dat op het certificaat.
   if (input.sealed === false) {
-    y -= 20
+    y -= 7
+    ensure(20)
     page.drawText('Dit document is niet verzegeld.', {
       x: margin,
       y,

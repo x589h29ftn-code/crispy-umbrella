@@ -109,7 +109,7 @@ model Accountant {
   // provider staat NOOIT hier - alleen de verwijzing (credential-id).
   professionalTitle   String? // 'AA' of 'RA' (leeg = geen)
   nbaNumber           String? // inschrijvingsnummer accountantsregister
-  signingCertProvider String? // bv. 'digidentity' of 'cleverbase'
+  signingCertProvider String? // bv. 'cleverbase'
   // Het certificaat is persoonsgebonden: één credential hoort bij precies één
   // accountant en mag nooit worden gedeeld. Daarom uniek.
   signingCredentialId String? @unique
