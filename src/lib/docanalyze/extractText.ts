@@ -3,6 +3,7 @@ import { existsSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { runTool } from '@/lib/sandbox'
+import { withDocPrepLock } from '@/lib/docprep-lock'
 
 // Haalt tekst uit een geüpload document voor automatische herkenning.
 // Strategie: eerst de tekstlaag (snel, foutloos voor digitale PDF's zoals uit
@@ -63,6 +64,11 @@ function findBin(candidates: string[]): string | null {
 /// OCR-terugval: PDF -> afbeeldingen (poppler pdftoppm) -> tekst (Tesseract nld).
 /// Vereist beide binaries in de container; ontbreken ze, dan wordt '' teruggegeven.
 async function pdfOcr(bytes: Uint8Array): Promise<string> {
+  // OCR is de tweede geheugenvreter; die mag nooit naast LibreOffice draaien.
+  return withDocPrepLock(() => pdfOcrUnlocked(bytes))
+}
+
+async function pdfOcrUnlocked(bytes: Uint8Array): Promise<string> {
   const pdftoppm = findBin([process.env.PDFTOPPM_PATH || '', '/usr/bin/pdftoppm', '/usr/local/bin/pdftoppm'].filter(Boolean))
   const tesseract = findBin([process.env.TESSERACT_PATH || '', '/usr/bin/tesseract', '/usr/local/bin/tesseract'].filter(Boolean))
   if (!pdftoppm || !tesseract) return ''

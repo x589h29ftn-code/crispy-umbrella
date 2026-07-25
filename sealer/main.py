@@ -440,6 +440,7 @@ async def inject(
     reserved_region_end: int = Form(...),
     signature_value: str = Form(...),  # base64, van de provider
     cert_chain: str = Form(...),  # JSON-array van base64-DER
+    field_name: str = Form("ProfessionalSignature"),
     x_sealer_secret: Optional[str] = Header(None),
 ):
     """Fase 2: bouwt de CMS met de handtekening van de provider en zet die in de
@@ -448,6 +449,22 @@ async def inject(
     _refuse_in_validator_mode()
     if len(prepared_pdf) > MAX_PDF_BYTES:
         raise HTTPException(413, "PDF te groot.")
+
+    # Dezelfde regel als bij /seal en /prepare: de PDF bepaalt of er al ondertekend
+    # is, nooit de database. Sinds er geen organisatiezegel meer is, is dit het ENIGE
+    # pad waarlangs een handtekening in een document komt; zou de idempotentie hier
+    # alleen op een databaseveld rusten, dan is de dual write terug.
+    #
+    # Een placeholder uit /prepare telt hier NIET als handtekening — nagemeten: de
+    # gereserveerde ruimte is nog leeg en levert geen leesbaar certificaat op. Alleen
+    # een echt geïnjecteerde handtekening geeft hier een treffer, en dat is precies
+    # het geval dat we willen tegenhouden.
+    existing = _existing_signature(prepared_pdf, field_name)
+    if existing is not None:
+        return JSONResponse(
+            {"alreadySigned": True, "fieldName": field_name, **existing},
+            status_code=409,
+        )
 
     try:
         from asn1crypto import cms as acms
@@ -488,7 +505,39 @@ async def inject(
         log.exception("injecteren mislukt")
         return JSONResponse({"error": f"injecteren mislukt: {exc}"}, status_code=400)
 
-    return Response(content=out.getvalue(), media_type="application/pdf")
+    injected = out.getvalue()
+
+    # Sinds v1.4 is dit de verzegeling: geen organisatiezegel meer erbovenop. De
+    # aanroeper heeft dus dezelfde gegevens nodig die /seal in headers teruggaf, want
+    # daarmee vult hij sealCertSerial en timestampedAt.
+    signing_time = None
+    cert_serial = None
+    try:
+        from pyhanko.pdf_utils.reader import PdfFileReader
+
+        reader = PdfFileReader(io.BytesIO(injected))
+        for emb in reader.embedded_signatures:
+            if emb.field_name != field_name:
+                continue
+            if emb.signer_cert is not None:
+                cert_serial = str(emb.signer_cert.serial_number)
+            dt = getattr(emb, "self_reported_timestamp", None)
+            if dt is not None:
+                signing_time = dt.isoformat()
+            break
+    except Exception:  # noqa: BLE001 - alleen aanvullende gegevens; nooit fataal
+        log.warning("kon de handtekeninggegevens na injectie niet uitlezen", exc_info=True)
+
+    headers = {}
+    if cert_serial:
+        headers["X-Seal-Cert-Serial"] = cert_serial
+    if signing_time:
+        headers["X-Seal-Signing-Time"] = signing_time
+    tsa = os.environ.get("TSA_URL", "").strip()
+    if tsa:
+        headers["X-Seal-Tsa-Url"] = tsa
+
+    return Response(content=injected, media_type="application/pdf", headers=headers)
 
 
 @app.post("/validate")

@@ -222,7 +222,7 @@ async function testBewaartermijn(accId: string) {
 
   const droog = await purgeExpiredDossiers({ dryRun: true })
   const staatErNog = await prisma.dossier.findUnique({ where: { id: d.id }, select: { id: true } })
-  check('dry-run rapporteert werk maar verwijdert niets', droog.dossiers >= 1 && !!staatErNog, droog)
+  check('dry-run rapporteert werk maar verwijdert niets', droog.dossiersVerwijderd >= 1 && !!staatErNog, droog)
 
   const echt = await purgeExpiredDossiers()
   const weg = await prisma.dossier.findUnique({ where: { id: d.id }, select: { id: true } })

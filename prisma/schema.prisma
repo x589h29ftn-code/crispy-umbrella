@@ -124,6 +124,7 @@ model Accountant {
 
   sessions        Session[]
   dossiers        Dossier[]
+  gearchiveerde   Dossier[]  @relation("DossierArchivedBy")
   auditEvents     AuditEvent[]
   signerFor       Recipient[] // dossiers waarin deze medewerker een ondertekenaar is
   cscSessions     CscSigningSession[]
@@ -207,8 +208,25 @@ model Dossier {
   // waarmerk wacht. Zonder dit blijft zo'n dossier stil liggen.
   lastWaarmerkNudgeAt DateTime?
   completedAt    DateTime?
-  // Bewaartermijn: gevuld bij afronding (completedAt + 7 jaar). Document én
-  // bewijsdossier worden altijd samen opgeruimd, nooit los van elkaar.
+  // Handmatig gearchiveerd in SharePoint: wie zette het vinkje en wanneer.
+  //
+  // Dit is de sleutel van het hele bewaarmodel. Het portaal is een doorvoerstation,
+  // niet het archief: het ondertekende stuk gaat naar SharePoint en daar ligt de
+  // bewaarplicht. Documenten in het portaal verdwijnen 90 dagen NA dit vinkje.
+  //
+  // Nooit op de klok verwijderen, altijd op de vlag. Automatisch verwijderen naast
+  // handmatig archiveren is de enige echt gevaarlijke combinatie in dit ontwerp:
+  // zonder vinkje blijft een ondertekend dossier staan, voor altijd als het moet.
+  // Vollopen is een acceptabel probleem, verlies niet.
+  archivedAt     DateTime?
+  archivedById   String?
+  archivedBy     Accountant? @relation("DossierArchivedBy", fields: [archivedById], references: [id], onDelete: SetNull)
+  // Waar het naartoe is gegaan, zoals de medewerker het opgaf. Vrije tekst, want
+  // het archief zit buiten de app.
+  archivedNote   String?
+  // Bewaartermijn van het BEWIJS (auditspoor en metadata): zeven jaar na afronding.
+  // De documentbestanden zelf hebben een eigen, veel kortere termijn; zie
+  // archivedAt hierboven en lib/retention.ts.
   retentionUntil DateTime?
   createdAt      DateTime      @default(now())
   updatedAt      DateTime      @updatedAt

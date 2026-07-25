@@ -4,11 +4,13 @@ import { prisma } from '@/lib/db'
 import { env } from '@/env'
 import { storage } from '@/lib/storage'
 import { writeAudit } from '@/lib/audit'
+import { signatureReason } from '@/lib/signing-labels'
 import {
   preparePdfForExternalSigning,
   injectExternalSignature,
   sha256Hex,
-  AlreadySealedError
+  AlreadySealedError,
+  type InjectResult
 } from '@/lib/seal/sealer'
 import {
   buildAuthorizeUrl,
@@ -114,7 +116,7 @@ export async function initiateQualifiedSigning(input: {
       sealedKey: null,
       dossier: { ownerId: input.accountantId, status: 'WACHT_OP_WAARMERK' }
     },
-    select: { id: true, title: true, preSealKey: true, dossierId: true }
+    select: { id: true, title: true, preSealKey: true, dossierId: true, detectedKind: true }
   })
   if (documents.length !== input.documentIds.length) {
     return { ok: false, error: 'Een of meer documenten wachten niet (meer) op uw handtekening.' }
@@ -156,7 +158,14 @@ export async function initiateQualifiedSigning(input: {
         p = await preparePdfForExternalSigning({
           pdfBytes: preSeal,
           certChainBase64: usable.certificates,
-          reason: `Ondertekend door ${accountant.name}${accountant.professionalTitle ? `, ${accountant.professionalTitle}` : ''}`
+          // Per documentsoort: op een jaarrekening zet de accountant zijn naam
+          // eronder, op een akkoordbrief van de cliënt is het alleen het slot op het
+          // document. Zie lib/signing-labels.ts.
+          reason: signatureReason({
+            kind: doc.detectedKind,
+            accountantName: accountant.name,
+            professionalTitle: accountant.professionalTitle
+          })
         })
       } catch (e) {
         // De PDF bepaalt of er al ondertekend is, niet de database. Zit er al een
@@ -345,25 +354,32 @@ export async function completeQualifiedSigning(input: {
 
     // Eerst alles injecteren in het geheugen; pas daarna wegschrijven. Zo blijft
     // de batch atomair: gaat er iets mis, dan is er nog niets veranderd.
-    const results: { documentId: string; bytes: Buffer }[] = []
+    const results: { documentId: string; injected: InjectResult }[] = []
     for (let i = 0; i < session.documentIds.length; i++) {
       const documentId = session.documentIds[i]
       const meta = preparedMeta[documentId]
       const key = (session.preparedKeys as Record<string, string>)[documentId]
       if (!meta || !key) throw new CscError(`voorbereide gegevens ontbreken voor document ${documentId}`, 0, false)
       const preparedPdf = await store.get(key)
-      const bytes = await injectExternalSignature({
+      const injected = await injectExternalSignature({
         preparedPdfBase64: Buffer.from(preparedPdf).toString('base64'),
         prepared: meta,
         signatureValueBase64: signatures[i],
         certChainBase64: info.certificates
       })
-      results.push({ documentId, bytes })
+      results.push({ documentId, injected })
     }
 
-    // Vanaf hier vastleggen. Het gewaarmerkte artefact apart bewaren als
-    // herstartpunt: faalt straks alleen het organisatiezegel, dan hoeft de
-    // accountant niet opnieuw met zijn pincode te bevestigen.
+    // Vanaf hier vastleggen.
+    //
+    // Deze handtekening IS de verzegeling (v1.4): er komt geen organisatiezegel
+    // bovenop. Daarom zetten we hier meteen sealStage = SEALED en vullen we sealedAt,
+    // timestampedAt, sealCertSerial en sealTsaUrl. Alles wat in de rest van de app
+    // vraagt "is dit verzegeld?" blijft daarmee ongewijzigd werken — dat is één plek
+    // aanpassen in plaats van tien.
+    //
+    // postQualifiedKey blijft gevuld als herstartpunt. Het heeft zijn oorspronkelijke
+    // doel verloren, maar het kost niets.
     //
     // Eerst ALLE blobs wegschrijven (nieuwe sleutels), daarna in ÉÉN transactie de
     // verwijzingen zetten, de sessie afsluiten en de handtekeningwaarden wissen.
@@ -371,22 +387,26 @@ export async function completeQualifiedSigning(input: {
     // handtekeningen weg terwijl de stage nog op PRESEAL staat — en dan is de
     // pincode alsnog verspild, precies wat het bewaren moest voorkomen.
     const sealedAt = new Date()
-    const nieuweSleutels = new Map<string, { key: string; sha: string }>()
+    const nieuweSleutels = new Map<string, { key: string; injected: InjectResult }>()
     for (const r of results) {
-      nieuweSleutels.set(r.documentId, { key: await store.put(r.bytes, 'pdf'), sha: sha256Hex(r.bytes) })
+      nieuweSleutels.set(r.documentId, { key: await store.put(r.injected.bytes, 'pdf'), injected: r.injected })
     }
     const dossierIds = new Set<string>()
     await prisma.$transaction(async (tx) => {
-      for (const [documentId, { key, sha }] of nieuweSleutels) {
+      for (const [documentId, { key, injected }] of nieuweSleutels) {
         const doc = await tx.document.update({
           where: { id: documentId },
           data: {
             postQualifiedKey: key,
-            postQualifiedSha256: sha,
+            postQualifiedSha256: injected.sha256,
             sealedKey: key,
-            sealedSha256: sha,
+            sealedSha256: injected.sha256,
             sealedAt,
-            sealStage: 'QUALIFIED'
+            // De bewijstijd komt uit de handtekening zelf, niet van de serverklok.
+            timestampedAt: injected.timestampedAt ?? null,
+            sealCertSerial: injected.certSerial ?? info.credentialId,
+            sealTsaUrl: injected.tsaUrl ?? null,
+            sealStage: 'SEALED'
           },
           select: { dossierId: true }
         })

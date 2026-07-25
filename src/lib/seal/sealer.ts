@@ -57,9 +57,14 @@ export class AlreadySealedError extends Error {
   }
 }
 
-/** Staat de cryptografische verzegeling aan? */
+/**
+ * Staat de cryptografische verzegeling aan?
+ *
+ * Sinds v1.4 betekent dat: de gekwalificeerde handtekening van de accountant is de
+ * verzegeling (`SEAL_MODE=qualified`). Er is geen organisatiezegel meer.
+ */
 export function sealEnabled(): boolean {
-  return env.SEAL_MODE === 'sealer'
+  return env.SEAL_MODE === 'qualified'
 }
 
 export function sha256Hex(bytes: Uint8Array): string {
@@ -185,13 +190,27 @@ export async function preparePdfForExternalSigning(input: {
   return (await res.json()) as PreparedSignature
 }
 
+/**
+ * Uitkomst van het injecteren. Sinds v1.4 is dit DE verzegeling, dus de aanroeper
+ * heeft dezelfde gegevens nodig die /seal teruggaf.
+ */
+export interface InjectResult {
+  bytes: Buffer
+  sha256: string
+  /** Tijd uit de handtekening (met TSA: de bewijstijd). */
+  timestampedAt: Date | null
+  certSerial: string | null
+  tsaUrl: string | null
+}
+
 /** Fase 2: zet de handtekening van de provider in de voorbereide PDF. */
 export async function injectExternalSignature(input: {
   preparedPdfBase64: string
   prepared: Pick<PreparedSignature, 'signedAttrs' | 'documentDigest' | 'reservedRegionStart' | 'reservedRegionEnd'>
   signatureValueBase64: string
   certChainBase64: string[]
-}): Promise<Buffer> {
+  fieldName?: string
+}): Promise<InjectResult> {
   const form = new FormData()
   const pdf = Buffer.from(input.preparedPdfBase64, 'base64')
   form.append('prepared_pdf', new Blob([pdf], { type: 'application/pdf' }), 'prepared.pdf')
@@ -201,15 +220,33 @@ export async function injectExternalSignature(input: {
   form.append('reserved_region_end', String(input.prepared.reservedRegionEnd))
   form.append('signature_value', input.signatureValueBase64)
   form.append('cert_chain', JSON.stringify(input.certChainBase64))
+  form.append('field_name', input.fieldName ?? 'ProfessionalSignature')
 
   const res = await postToSealer('/inject', form, env.SEALER_TIMEOUT_MS)
+  // De PDF bepaalt of er al ondertekend is, nooit de database. Dit is het enige pad
+  // waarlangs een handtekening in een document komt, dus de 409 hoort hier net zo
+  // hard als bij /seal.
+  if (res.status === 409) {
+    const body = (await res.json().catch(() => ({}))) as { certSerial?: string; signingTime?: string }
+    const t = body.signingTime ? new Date(body.signingTime) : null
+    throw new AlreadySealedError(body.certSerial ?? null, t && !Number.isNaN(t.getTime()) ? t : null)
+  }
   if (!res.ok) {
     const detail = await res.text().catch(() => '')
     const msg = `injecteren mislukt (${res.status}): ${detail.slice(0, 300)}`
     if (res.status >= 500) throw new SealRetryableError(msg)
     throw new SealPermanentError(msg)
   }
-  return Buffer.from(await res.arrayBuffer())
+  const bytes = Buffer.from(await res.arrayBuffer())
+  const tsHeader = res.headers.get('X-Seal-Signing-Time')
+  const parsedTs = tsHeader ? new Date(tsHeader) : null
+  return {
+    bytes,
+    sha256: sha256Hex(bytes),
+    timestampedAt: parsedTs && !Number.isNaN(parsedTs.getTime()) ? parsedTs : null,
+    certSerial: res.headers.get('X-Seal-Cert-Serial'),
+    tsaUrl: res.headers.get('X-Seal-Tsa-Url')
+  }
 }
 
 export interface ValidationSignature {

@@ -120,10 +120,11 @@ async function handleRetentionCleanup(): Promise<void> {
   try {
     const { purgeExpiredDossiers } = await import('@/lib/retention')
     const res = await purgeExpiredDossiers()
-    if (res.dossiers > 0) {
+    if (res.blobsGewist > 0 || res.dossiersVerwijderd > 0) {
       console.log(
-        `[jobs] bewaartermijn: ${res.dossiers} dossier(s), ${res.documents} document(en) en ` +
-          `${res.auditEvents} auditregel(s) opgeruimd`
+        `[jobs] bewaartermijn: van ${res.blobsGewist} dossier(s) de bestanden gewist, ` +
+          `${res.dossiersVerwijderd} dossier(s) volledig verwijderd ` +
+          `(${res.documents} document(en), ${res.auditEvents} auditregel(s))`
       )
     }
     if (res.skipped.length > 0) {
@@ -170,6 +171,22 @@ async function handleExpire(): Promise<void> {
       runAt: new Date(Date.now() + LIFECYCLE_INTERVAL_MS),
       maxAttempts: 1_000_000
     }).catch((e) => console.error('[jobs] kon verlooptaak niet inplannen', e))
+  }
+}
+
+/** Eigenaar porren over afgeronde stukken die nog niet zijn gearchiveerd. */
+async function handleArchiveNudge(): Promise<void> {
+  try {
+    const { nudgeArchiving } = await import('@/lib/lifecycle')
+    const res = await nudgeArchiving()
+    if (res.dossiers > 0) {
+      console.log(`[jobs] archiveer-nudge: ${res.dossiers} dossier(s), ${res.gemaild} bericht(en)`)
+    }
+  } finally {
+    await enqueueOnce('ARCHIVE_NUDGE', 'periodiek', {}, {
+      runAt: new Date(Date.now() + LIFECYCLE_INTERVAL_MS),
+      maxAttempts: 1_000_000
+    }).catch((e) => console.error('[jobs] kon archiveer-nudge niet inplannen', e))
   }
 }
 
@@ -284,6 +301,8 @@ export async function runJob(job: JobRow): Promise<void> {
       return handleExpire()
     case 'WAARMERK_NUDGE':
       return handleWaarmerkNudge()
+    case 'ARCHIVE_NUDGE':
+      return handleArchiveNudge()
     case 'ORPHAN_CLEANUP':
       return handleOrphanCleanup()
     case 'AUDIT_ANCHOR':

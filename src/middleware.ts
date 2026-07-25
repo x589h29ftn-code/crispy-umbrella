@@ -5,7 +5,12 @@ import { NextResponse, type NextRequest } from 'next/server'
 //  2) een grove toegangspoort (redirect naar /login als de sessiecookie
 //     ontbreekt). De echte sessievalidatie gebeurt server-side in de pagina's.
 
-const PROTECTED = ['/dashboard', '/dossiers', '/klanten', '/instellingen']
+// /valideren staat hier bewust bij: de controlepagina haalt een geüploade PDF door
+// een parser, en dat hoort geen onbeauthenticeerde ingang te zijn. Sinds v1.4 is dat
+// ook geen verlies: met een gekwalificeerd certificaat van een QTSP op de
+// EU-vertrouwenslijst toont Acrobat Reader zelf een geldige handtekening met de naam
+// van de ondertekenaar. Een bank of cliënt heeft onze pagina dus niet nodig.
+const PROTECTED = ['/dashboard', '/dossiers', '/klanten', '/instellingen', '/valideren', '/te-ondertekenen']
 const SESSION_COOKIE = 'ovp_session'
 
 export function middleware(req: NextRequest) {

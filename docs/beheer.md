@@ -8,7 +8,38 @@ zie `verzegeling.md`.
 Dit is het grootste enkelvoudige risico. Een auditspoor dat je kwijt bent,
 bestond nooit.
 
-### Dagelijks
+**De prioriteiten zijn met v1.4 verschoven.** Nu de documentbestanden er maar 90
+dagen staan en het archief SharePoint is, is de **database** het kroonjuweel: daar
+staat zeven jaar auditspoor met alle hashes en metadata.
+
+| Wat | Hoe | Waarom |
+|---|---|---|
+| Postgres | **dagelijks** volledig, versleuteld | zeven jaar auditspoor |
+| Documentenvolume | **wekelijks** incrementeel | staat er maar 90 dagen; het archief is SharePoint |
+| `.env` en sleutels | apart, **buiten** dezelfde back-up | anders back-up je het slot met de sleutel erin |
+
+### Naar buiten de server: restic
+
+Een back-up die op dezelfde machine staat is geen back-up. `scripts/backup-restic.sh`
+doet dedupliceerde, incrementele, versleutelde back-ups naar bijvoorbeeld een Hetzner
+Storage Box (1 TB voor ongeveer €3,20 per maand, onbeperkt verkeer). Versleutelen
+gebeurt vóór het uploaden, dus de jurisdictie van de opslagpartij doet praktisch niet
+mee — die ziet alleen onleesbare blokken.
+
+```bash
+# eenmalig
+export RESTIC_REPOSITORY="sftp:u123456@u123456.your-storagebox.de:/ovp-portaal"
+export RESTIC_PASSWORD_FILE=/root/.restic-pass    # bewaar dit óók in de sleutelkluis
+restic init
+
+# dagelijks in cron op de host
+0 2 * * *  RESTIC_REPOSITORY=... RESTIC_PASSWORD_FILE=... /opt/signaturing/scripts/backup-restic.sh >> /var/log/ovp-backup.log 2>&1
+```
+
+Het script bewaart 14 dagelijkse, 8 wekelijkse, 24 maandelijkse en 7 jaarlijkse
+momentopnamen, en controleert elke keer de structuur plus 5% van de blokken.
+
+### Lokaal alternatief (of daarnaast)
 
 ```bash
 export AGE_RECIPIENT="age1..."        # of GPG_RECIPIENT
@@ -51,10 +82,49 @@ De productieomgeving wordt niet aangeraakt en alles wordt aan het eind opgeruimd
 **Leg de uitkomst vast** in het kwaliteitshandboek: datum, wie het deed, en of het
 slaagde.
 
-## Bewaartermijn
+## Bewaartermijn: twee termijnen, en het vinkje
 
-Afgeronde dossiers krijgen automatisch `retentionUntil` op **zeven jaar** na
-afronding. De worker loopt dat dagelijks na.
+**Dit portaal is een doorvoerstation, geen archief.** Het ondertekende stuk gaat naar
+SharePoint en daar ligt de bewaarplicht. Het primaire bewijs is die PDF: een
+gekwalificeerde handtekening met tijdstempel en ingebedde revocatiegegevens, plus de
+certificaatpagina. Dat is self-contained — iemand kan het over vijf jaar in Acrobat
+openen en valideren zonder deze server, deze database of onze medewerking.
+
+Daaruit volgen twee termijnen:
+
+| Wat | Termijn |
+|---|---|
+| Documentbestanden (`originalKey` … `sealedKey`) | **90 dagen na het archiveervinkje** |
+| Auditspoor, hashketen, metadata, bewijsvelden van ontvangers | **7 jaar na afronding** |
+
+### Nooit op de klok verwijderen, altijd op de vlag
+
+Automatisch verwijderen naast handmatig archiveren is de enige echt gevaarlijke
+combinatie in dit ontwerp. Vergeet iemand af te vinken en verwijdert de klok toch,
+dan is het stuk nergens meer.
+
+Daarom: **van een afgerond dossier verdwijnt er niets zolang het archiveervinkje uit
+staat.** Desnoods voor altijd. Vollopen is een acceptabel probleem, verlies niet.
+
+De werkwijze per stuk:
+
+1. Download het ondertekende PDF op de dossierpagina.
+2. Zet het in de klantmap in SharePoint.
+3. Vink op de dossierpagina **"Afvinken als gearchiveerd"** aan, met de map erbij.
+   Dat komt in het auditspoor te staan (wie, wanneer, waar).
+4. Negentig dagen later verdwijnen de bestanden uit het portaal. Het bewijsspoor
+   blijft.
+
+Zonder nudge zou dit een geheugenspel zijn. Daarom:
+
+- op het dashboard staat een teller **"wacht op archivering"**, oudste bovenaan;
+- 60 dagen na afronding gaat er een bericht naar de eigenaar;
+- 80 dagen: naar de eigenaar én de beheerders, met de eerlijke tekst dat er niets
+  automatisch gebeurt maar dat het daarna handmatig moet worden opgeschoond.
+
+**Nooit afgeronde dossiers** (verlopen, geweigerd, of een concept dat nooit is
+verstuurd) gaan na 90 dagen wél zonder vinkje weg. Er is geen ondertekend stuk om te
+bewaren. Het auditspoor blijft ook daar zeven jaar.
 
 Handmatig bekijken of uitvoeren:
 
@@ -63,9 +133,23 @@ npm run retention:purge            # laat zien wat er zou gebeuren
 npm run retention:purge -- --apply # voert het uit (niet terug te draaien)
 ```
 
-Het document en het bewijsdossier verdwijnen **altijd samen**, in één transactie.
-Een ondertekend document zonder auditspoor is waardeloos, en een auditspoor zonder
-document ook.
+> **Dit keert de eerdere regel om.** Tot v1.3 verdwenen document en bewijsspoor
+> altijd samen, in één transactie. Die koppeling zit nu bij de **gearchiveerde**
+> kopie in SharePoint: daar horen document en bewijs bij elkaar te blijven. In het
+> portaal blijven na 90 dagen alleen de metadata en het auditspoor achter — genoeg om
+> aan te tonen wat er is gebeurd, niet genoeg om het document te reconstrueren.
+
+### Twee afspraken buiten de app
+
+- **Bewerk het PDF niet in SharePoint.** Uploaden laat de bytes intact, maar wie in
+  de ingebouwde PDF-editor een aantekening maakt en opslaat, breekt de handtekening.
+  Richt de bibliotheek zo in dat bewerken niet de gewone route is.
+- **Vraag na of er back-up op SharePoint zit.** De prullenbak is 93 dagen en
+  versiebeheer is geen back-up. Ligt hier zeven jaar aan ondertekende jaarrekeningen
+  als enige kopie, dan hoort daar M365 Backup of iets vergelijkbaars bij.
+
+Steekproef: haal af en toe een gearchiveerd stuk uit SharePoint en gooi het door
+**Document controleren** in het portaal. Blijft dat groen, dan klopt de keten.
 
 ## Auditspoor controleren
 
@@ -148,6 +232,31 @@ Hetzelfde geldt voor `TOTP_ENCRYPTION_KEY`.
 > versienummer dat ontbreekt, in plaats van een cryptische fout.
 
 ## Schaal
+
+### Zware documentbewerkingen: één tegelijk
+
+LibreOffice (Word→PDF) en tesseract (OCR) vragen elk honderden megabytes. Op een
+machine van 4 GB is twee van die twee tegelijk de manier waarop de server omvalt.
+Daarom draaien ze onder één advisory lock in Postgres: **nooit meer dan één tegelijk,
+over alle containers heen** (`DOCPREP_SERIALIZE=true`, standaard aan).
+
+Een semafoor in het geheugen zou hier niet volstaan: web en worker zijn aparte
+processen. De tweede medewerker wacht dus even; bij deze volumes gaat dat om seconden,
+en na twee minuten krijgt hij een leesbare melding in plaats van een omgevallen server.
+
+**Virusscan staat uit**, en dat is een afweging: een residente `clamd` vraagt 1,5 tot
+2 GB voor de virusdefinities, de helft van deze machine. Uploads komen alleen van
+ingelogde medewerkers vanaf kantoormachines met eigen endpointbescherming. Wil je hem
+toch, zet dan `VIRUS_SCAN=clamav`, haal het commentaar bij de `clamav`-service in
+`docker-compose.yml` weg, en reken op een grotere VPS.
+
+### Schijfruimte en uitrollen
+
+Bij 40 GB is het enige dat de schijf realistisch laat vollopen: oude container-images.
+`scripts/deploy.sh` ruimt die op en bewaart twee generaties. Datzelfde script pullt bij
+voorkeur images die in de CI zijn gebouwd (`REGISTRY=...`), want een Next.js-build
+vraagt 2 tot 4 GB náást de draaiende containers — bouwen op deze server kan de app die
+er al staat het geheugen uit duwen.
 
 De rate-limiting staat sinds v1.3 in **Postgres** (tabel `RateLimit`), niet meer in
 het geheugen van de webcontainer. De eerdere onderbouwing ("we draaien één

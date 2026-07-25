@@ -1,5 +1,5 @@
 import Link from 'next/link'
-import { Plus, FileText, Search, AlertTriangle, MailWarning } from 'lucide-react'
+import { Plus, FileText, Search, AlertTriangle, MailWarning, Archive } from 'lucide-react'
 import type { DossierStatus, Prisma } from '@prisma/client'
 import { prisma } from '@/lib/db'
 import { requireOnboarded } from '@/lib/auth/session'
@@ -81,6 +81,16 @@ export default async function DashboardPage({
       select: { id: true, title: true, updatedAt: true }
     })
   ])
+  // Afgeronde stukken die nog niet in SharePoint staan. Zonder deze teller is het
+  // bewaarmodel een geheugenspel: er verdwijnt niets zolang het vinkje uit staat, dus
+  // een vergeten dossier blijft eeuwig staan zonder dat iemand het merkt.
+  const teArchiveren = await prisma.dossier.findMany({
+    where: { ...ownerScope, status: 'ONDERTEKEND', archivedAt: null },
+    orderBy: { completedAt: 'asc' },
+    take: 10,
+    select: { id: true, title: true, completedAt: true }
+  })
+
   // Ontvangers waarvan de mail niet aankomt: zonder signaal bloedt zo'n dossier
   // stil dood.
   const mailProblems = deliveryFeedbackAvailable() ? await recipientsWithMailProblem(acc.id, isBeheerder) : []
@@ -115,6 +125,39 @@ export default async function DashboardPage({
       </header>
 
       <UnsealedBanner scope="dashboard" />
+
+      {teArchiveren.length > 0 && (
+        <div className="rounded-lg border border-amber-200 bg-amber-50 p-4 text-sm text-amber-900">
+          <p className="flex items-center gap-2 font-medium">
+            <Archive className="h-4 w-4" />
+            {teArchiveren.length === 1
+              ? '1 ondertekend stuk wacht op archivering'
+              : `${teArchiveren.length} ondertekende stukken wachten op archivering`}
+          </p>
+          <p className="mt-1 text-amber-800">
+            Dit portaal is geen archief. Zet het stuk in de klantmap in SharePoint en vink het daarna af op de
+            dossierpagina. Er wordt niets verwijderd zolang het vinkje uit staat.
+          </p>
+          <ul className="mt-3 space-y-1">
+            {teArchiveren.map((d) => {
+              const dagen = d.completedAt ? Math.floor((now - d.completedAt.getTime()) / 86_400_000) : null
+              return (
+                <li key={d.id}>
+                  <Link href={`/dossiers/${d.id}`} className="font-medium underline">
+                    {d.title}
+                  </Link>
+                  {dagen !== null && (
+                    <span className={dagen >= 60 ? 'font-medium text-amber-900' : 'text-amber-800'}>
+                      {' '}
+                      — {dagen} {dagen === 1 ? 'dag' : 'dagen'} klaar
+                    </span>
+                  )}
+                </li>
+              )
+            })}
+          </ul>
+        </div>
+      )}
 
       {sealingFailed.length > 0 && (
         <div className="rounded-lg border border-orange-200 bg-orange-50 p-4 text-sm text-orange-900">

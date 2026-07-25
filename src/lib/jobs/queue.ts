@@ -17,6 +17,7 @@ export type JobKind =
   | 'MAIL_RESEND'
   | 'ORPHAN_CLEANUP'
   | 'WAARMERK_NUDGE'
+  | 'ARCHIVE_NUDGE'
   | 'AUDIT_ANCHOR'
 
 export interface JobRow {

@@ -223,61 +223,53 @@ e-mail. Voor Microsoft 365:
 
 ---
 
-## G2. Afvinklijst voor het moment dat er een echt certificaat is
+## G2. Afvinklijst voor het moment dat er een certificaat is
 
-Zolang `SEAL_MODE=none` staat, verzegelt het portaal niet en gelden deze punten
-niet. Zodra je een organisatiecertificaat hebt en `SEAL_MODE=sealer` zet, **weigert
-het portaal te starten** tot deze drie dingen geregeld zijn. Dat is bewust: het zijn
-precies de maatregelen die pas zin hebben als er echt cryptografisch materiaal in
-het spel is, en een notitie in een document wordt vergeten.
-
-De foutmelding bij het opstarten noemt welke ontbreekt en wat je moet doen. Vooraf,
-zodat het geen verrassing is:
-
-**1. De publieke controlepagina in een eigen service.**
-`/validate` is het enige eindpunt dat zonder inloggen bij de component met de
-ondertekengegevens uitkomt. Draai dat als aparte service uit dezelfde image, met:
-
-De service **staat al in `docker-compose.yml`** (`validator`, dezelfde image als de
-sealer, met `mem_limit` en `cpus` omdat PDF-bommen hier de goedkoopste aanval zijn).
-Wat je zelf zet:
+Zolang `SEAL_MODE=none` staat, verzegelt het portaal niet. Zodra het kantoor een
+beroepscertificaat heeft:
 
 ```
-# in .env
-VALIDATOR_ISOLATED=true
-SEALER_VALIDATE_URL=http://validator:8000
+SEAL_MODE="qualified"
+PROFESSIONAL_SIGNING_DRIVER="cleverbase"
+CLEVERBASE_CSC_BASE_URL="..."
+CLEVERBASE_CSC_CLIENT_ID="..."
+CLEVERBASE_CSC_CLIENT_SECRET="..."
+CLEVERBASE_CSC_ENV="production"
+CLEVERBASE_REDIRECT_URI="https://<jouw domein>/api/csc/callback"
+TSA_URL="https://<tijdstempeldienst>/tsr"
+SEALER_SHARED_SECRET="<openssl rand -base64 48>"
 ```
 
-De grendel controleert ook dat `SEALER_VALIDATE_URL` níet gelijk is aan `SEALER_URL`.
-Anders is de scheiding alleen een vlag: de validatie zou nog steeds naar de container
-met de ondertekengegevens gaan.
+Zet daarna per accountant het certificaat aan onder **Instellingen → Gebruikers**.
 
-De validator-container zelf heeft `VALIDATOR_ONLY=true` (dat staat vast in compose).
-Dat proces weigert te starten als er tóch ondertekengegevens in zijn omgeving staan,
-en `/seal`, `/prepare` en `/inject` geven daar 403. Zet dus geen `SEAL_*`- of
-`TSA_PASSWORD`-variabelen bij die service, ook niet "voor de zekerheid".
+**De app weigert te starten** met `SEAL_MODE=qualified` terwijl
+`PROFESSIONAL_SIGNING_DRIVER=none` staat. Dat is bewust: er zou dan niets worden
+verzegeld terwijl de configuratie zegt van wel, en niets in de status zou het
+verraden. De foutmelding vertelt wat je moet doen.
 
-**2. Minstens één bestemming voor de auditankers.**
+Er is **geen** organisatiecertificaat nodig. Het beroepscertificaat is de
+handtekening; één mechanisme in plaats van twee.
 
+### Als /valideren ooit publiek moet worden
+
+Nu staat de controlepagina achter de login, en daarmee is er geen onbeauthenticeerde
+ingang naar de PDF-parser. Wil het kantoor die pagina toch openbaar maken, dan hoort
+daar een aparte container bij — een publieke upload die door een parser gaat, hoort
+niet in dezelfde container te staan als de ondertekengegevens:
+
+```yaml
+  validator:
+    build: { context: ./sealer }
+    environment:
+      SEALER_SHARED_SECRET: ${SEALER_SHARED_SECRET}
+      VALIDATOR_ONLY: 'true'    # weigert te starten met ondertekengegevens in de env
+    mem_limit: 768m
+    cpus: 1.0
+    expose: ['8000']
 ```
-AUDIT_ANCHOR_TARGETS=archief,mail
-AUDIT_ANCHOR_MAIL_TO=administratie@ottovisseraccountants.nl
-```
 
-Twee bestemmingen is beter dan één: het archief is best-effort en mail kan stil
-falen. Komt er drie dagen achter elkaar niets aan, dan mailt het portaal de
-beheerders — zonder die melding heb je geen anker maar de illusie ervan.
-
-**3. Een sleutel voor de HMAC over de auditketen.**
-
-```
-AUDIT_HMAC_KEY_V1=<minstens 32 tekens, uit de sleutelkluis>
-```
-
-Zonder sleutel kan iemand met alléén databasetoegang (een gelekte `DATABASE_URL`,
-een gestolen dump) de hele hashketen consistent herschrijven. **Bewaar deze sleutel
-niet in dezelfde back-up als de database** — dan back-up je het slot met de sleutel
-erin.
+en in `.env`: `SEALER_VALIDATE_URL="http://validator:8000"`. Zet in die service géén
+`SEAL_*`- of `TSA_PASSWORD`-variabelen; het proces start dan niet.
 
 ## H. Beheer (onthouden voor later)
 

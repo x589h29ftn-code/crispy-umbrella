@@ -72,9 +72,26 @@ const schema = z.object({
   TWILIO_FROM: z.string().optional(),
 
   SIGN_LINK_TTL_DAYS: z.coerce.number().int().positive().default(10),
+  // Hoeveel dagen het portaal de DOCUMENTBESTANDEN bewaart na het archiveervinkje.
+  // Het auditspoor blijft zeven jaar; zie lib/retention.ts.
+  BLOB_RETENTION_DAYS: z.coerce.number().int().positive().max(3650).default(90),
   OTP_TTL_MINUTES: z.coerce.number().int().positive().default(10),
 
+  // Zware documentbewerkingen (LibreOffice, OCR) één tegelijk over alle containers
+  // heen. Standaard aan: op een machine van 4 GB is twee keer LibreOffice of
+  // LibreOffice naast tesseract de manier waarop de server omvalt. Uitzetten is
+  // alleen voor tests zonder database.
+  DOCPREP_SERIALIZE: z
+    .string()
+    .default('true')
+    .transform((v) => v !== 'false'),
+
   // Virusscan op uploads (optioneel). none = uit; clamav = via een ClamAV-daemon.
+  //
+  // Blijft standaard UIT, en dat is een afweging en geen vergetelheid: een residente
+  // clamd vraagt 1,5 tot 2 GB voor de virusdefinities, en dat is de helft van deze
+  // machine. Uploads komen alleen van ingelogde medewerkers vanaf kantoormachines
+  // met eigen endpointbescherming. Zie docs/beheer.md.
   VIRUS_SCAN: z.enum(['none', 'clamav']).default('none'),
   CLAMD_HOST: z.string().default('clamav'),
   CLAMD_PORT: z.coerce.number().default(3310),
@@ -121,11 +138,31 @@ const schema = z.object({
   // Hoe lang een ondertekensessie mag lopen. De SAD zelf leeft 300 s; daarna
   // faalt de hele batch en moet de accountant opnieuw beginnen.
   CLEVERBASE_SIGN_TIMEOUT_MS: z.coerce.number().int().positive().default(300000),
+  // Op welke documentsoorten de accountant als AUTEUR ondertekent ("Ondertekend
+  // door <naam>, RA") in plaats van als zegel ("Verzegeld door Otto Visser &
+  // Partners Accountants"). Komma-gescheiden DocumentKind-namen. Leeg = de
+  // standaard uit lib/signing-labels.ts (alleen JAARREKENING).
+  //
+  // Instelling en geen code, zodat de vraag "teken je op de aangifte zelf of alleen
+  // op de akkoordbrief?" later beantwoord kan worden zonder nieuwe versie.
+  SIGN_AS_AUTHOR_KINDS: z.string().default(''),
 
   // === Cryptografische verzegeling (PAdES) via de sealer-sidecar ===
-  // none = uit (geen zegel; alleen de zichtbare stempels en het auditcertificaat).
-  // sealer = verzegelen via de interne Python-sidecar (pyHanko).
-  SEAL_MODE: z.enum(['none', 'sealer']).default('none'),
+  //
+  // none         = geen cryptografische handtekening; alleen de zichtbare stempels
+  //                en het auditcertificaat. Vereist ALLOW_UNSEALED in productie.
+  // qualified    = de standaard. De GEKWALIFICEERDE handtekening van de accountant
+  //                (beroepscertificaat) is de verzegeling. Eén mechanisme: geen
+  //                organisatiezegel eroverheen.
+  // organisation = gereserveerd voor een apart organisatiecertificaat. Niet
+  //                gebouwd; de app weigert te starten met deze waarde.
+  //
+  // 'sealer' is de oude naam van 'qualified' en wordt nog geaccepteerd zodat een
+  // bestaand .env-bestand niet stilvalt.
+  SEAL_MODE: z
+    .enum(['none', 'qualified', 'organisation', 'sealer'])
+    .default('none')
+    .transform((v) => (v === 'sealer' ? 'qualified' : v)),
   // Zonder verzegeling gaan er stukken de deur uit zonder cryptografische
   // bescherming. Dat mag tijdens een pilot, maar niet per ongeluk: in productie
   // moet die keuze expliciet met een tweede vlag worden bevestigd.
@@ -135,19 +172,14 @@ const schema = z.object({
     .transform((v) => v === 'true'),
   // Interne URL van de sidecar; niet publiek bereikbaar (geen Caddy-route).
   SEALER_URL: z.string().default('http://sealer:8000'),
-  // Aparte sidecar voor de publieke controlepagina, zonder ondertekengegevens.
-  // Leeg = validatie gaat naar SEALER_URL (alleen acceptabel zolang er niet echt
-  // wordt verzegeld; de grendel hieronder eist het zodra dat wel zo is).
+  // Optioneel: een aparte sidecar voor het valideren, zonder ondertekengegevens in
+  // zijn omgeving. Niet nodig zolang /valideren achter de login zit — er is dan geen
+  // onbeauthenticeerde uploadingang. Wordt hij ooit weer publiek, dan is dit de weg
+  // terug; zie docs/hosting-handleiding.md.
   SEALER_VALIDATE_URL: z.string().optional(),
   // Shared secret in een header tussen web en sealer.
   SEALER_SHARED_SECRET: z.string().optional(),
   SEALER_TIMEOUT_MS: z.coerce.number().int().positive().default(60000),
-  // Ook verzegelen wanneer er al een gekwalificeerde handtekening in staat?
-  SEAL_WHEN_QUALIFIED_PRESENT: z
-    .string()
-    .default('false')
-    .transform((v) => v === 'true'),
-
   // Waar de rate-limitertellers staan. 'postgres' is de standaard: bij meerdere
   // webcontainers gelden in-memory limieten per container en is de bescherming
   // feitelijk verzwakt. 'memory' is er voor tests zonder database.
@@ -158,22 +190,6 @@ const schema = z.object({
   AUDIT_ANCHOR_TARGETS: z.string().default(''),
   AUDIT_ANCHOR_MAIL_TO: z.string().email().optional(),
   AUDIT_ANCHOR_ARCHIVE_FOLDER: z.string().default('_Auditankers'),
-  // Bevestigt dat de publieke validator een eigen service is (zie punt 5.2 van
-  // changeset v1.2). Vereist zodra er echt verzegeld wordt.
-  VALIDATOR_ISOLATED: z
-    .string()
-    .default('false')
-    .transform((v) => v === 'true'),
-  // Zet in de validator-container. Die weigert te starten met ondertekengegevens
-  // in zijn omgeving: de omgekeerde grendel, zodat de scheiding niet stil verdwijnt
-  // als er ooit één gedeeld env-bestand komt.
-  VALIDATOR_ONLY: z
-    .string()
-    .default('false')
-    .transform((v) => v === 'true'),
-  // Sleutel voor de HMAC over de auditketen. Vereist zodra er echt verzegeld wordt;
-  // vóór die tijd staat de keten op een kale hash (zie docs/beheer.md).
-  AUDIT_HMAC_KEY_V1: z.string().min(32).optional(),
 
   // === Tijdstempel (TSA) — gelezen door de sidecar, hier gevalideerd zodat een
   // typefout bij het opstarten zichtbaar wordt in plaats van pas bij ondertekenen.
@@ -262,94 +278,38 @@ export function assertSealingChoiceIsDeliberate(cfg: {
 /**
  * De ingebruiknamegrendel.
  *
- * Drie dingen waren "genoteerd als voorwaarde voor ingebruikname". Notities worden
- * vergeten, grendels niet. Zodra er écht verzegeld wordt (`SEAL_MODE` niet meer
- * `none`) staat er een echt certificaat in de sealer, en dan moeten deze drie er
- * zijn. Vóór dat moment blokkeren ze niets, want er valt dan ook niets te
- * beschermen.
+ * Bij `SEAL_MODE=qualified` is de gekwalificeerde handtekening van de accountant DE
+ * verzegeling. Er is dan geen organisatiezegel, dus als de provider niet is
+ * ingesteld, wordt er niets verzegeld terwijl de configuratie zegt van wel. Dat is
+ * de gevaarlijkste stille toestand die er is: stukken gaan de deur uit die niemand
+ * later kan valideren, en niets in de status verraadt het.
  *
- * Zie docs/hosting-handleiding.md: daar staat dezelfde lijst als afvinklijst, zodat
- * dit geen verrassing is op het moment dat het kantoor live wil.
+ * `organisation` is gereserveerd en niet gebouwd. Beter een leesbare weigering dan
+ * een halve implementatie.
+ *
+ * Zie docs/hosting-handleiding.md voor de afvinklijst.
  */
 export function assertReadyForRealSealing(cfg: {
   SEAL_MODE: string
-  VALIDATOR_ISOLATED: boolean
-  SEALER_URL: string
-  SEALER_VALIDATE_URL?: string
-  AUDIT_ANCHOR_TARGETS: string
-  AUDIT_HMAC_KEY_V1?: string
+  PROFESSIONAL_SIGNING_DRIVER: string
 }): void {
   if (cfg.SEAL_MODE === 'none') return
-  const ontbreekt: string[] = []
-  if (!cfg.VALIDATOR_ISOLATED) {
-    ontbreekt.push(
-      'VALIDATOR_ISOLATED=true — draai de publieke controlepagina (/validate) als eigen service, ' +
-        'met VALIDATOR_ONLY=true in die container zodat die weigert te starten met ondertekengegevens ' +
-        'in zijn omgeving'
-    )
-  } else if (!cfg.SEALER_VALIDATE_URL || cfg.SEALER_VALIDATE_URL.trim() === cfg.SEALER_URL.trim()) {
-    // Anders is de scheiding alleen een vlag: de validatie gaat dan nog steeds naar
-    // de container met de ondertekengegevens.
-    ontbreekt.push(
-      'SEALER_VALIDATE_URL — die moet naar de validator-service wijzen en niet naar SEALER_URL. ' +
-        'Met VALIDATOR_ISOLATED=true maar dezelfde URL gaat de validatie nog steeds naar de ' +
-        'container met de ondertekengegevens, en is de scheiding alleen een vlag'
+  if (cfg.SEAL_MODE === 'organisation') {
+    throw new Error(
+      'SEAL_MODE=organisation is gereserveerd en niet gebouwd. Het beroepscertificaat van de ' +
+        'accountant is de handtekening; zet SEAL_MODE=qualified. Een apart organisatiecertificaat ' +
+        'is bewust van de lijst gehaald (één ondertekenmechanisme).'
     )
   }
-  const targets = cfg.AUDIT_ANCHOR_TARGETS.split(',')
-    .map((s) => s.trim().toLowerCase())
-    .filter((s) => s === 'archief' || s === 'mail')
-  if (targets.length === 0) {
-    ontbreekt.push(
-      'AUDIT_ANCHOR_TARGETS — zet minstens één bestemming ("archief", "mail" of beide) waar de kop ' +
-        'van het auditspoor buiten de database wordt vastgelegd'
+  if (cfg.SEAL_MODE === 'qualified' && cfg.PROFESSIONAL_SIGNING_DRIVER === 'none') {
+    throw new Error(
+      'SEAL_MODE=qualified betekent dat de gekwalificeerde handtekening van de accountant de ' +
+        'verzegeling is, maar PROFESSIONAL_SIGNING_DRIVER staat op "none". Er zou dan niets worden ' +
+        'verzegeld terwijl de configuratie zegt van wel.\n\n' +
+        'Zet PROFESSIONAL_SIGNING_DRIVER=cleverbase (of digidentity) met de bijbehorende gegevens, ' +
+        'of zet SEAL_MODE=none met ALLOW_UNSEALED=true zolang er nog geen certificaat is.'
     )
   }
-  if (!cfg.AUDIT_HMAC_KEY_V1) {
-    ontbreekt.push(
-      'AUDIT_HMAC_KEY_V1 — sleutel voor de HMAC over de auditketen (minstens 32 tekens), zodat ' +
-        'iemand met alléén databasetoegang de keten niet consistent kan herschrijven. Bewaar deze ' +
-        'sleutel NIET in dezelfde back-up als de database'
-    )
-  }
-  if (ontbreekt.length === 0) return
-  throw new Error(
-    `SEAL_MODE=${cfg.SEAL_MODE} betekent dat er met een echt certificaat wordt verzegeld. ` +
-      `Dan moeten deze ${ontbreekt.length === 1 ? 'voorwaarde' : `${ontbreekt.length} voorwaarden`} ` +
-      `geregeld zijn (zie docs/hosting-handleiding.md):\n\n` +
-      ontbreekt.map((r) => `  - ${r}`).join('\n\n')
-  )
-}
-
-/**
- * De omgekeerde grendel voor de validator-container: die mag geen
- * ondertekengegevens in zijn omgeving hebben. Zonder deze controle belandt er over
- * een half jaar één gedeeld env-bestand in beide services en is de scheiding weg
- * zonder dat iemand het merkt.
- */
-export function assertValidatorHasNoCredentials(cfg: {
-  VALIDATOR_ONLY: boolean
-  SEALER_SHARED_SECRET?: string
-  CLEVERBASE_CSC_CLIENT_SECRET?: string
-  SEAL_CSC_OAUTH_TOKEN?: string
-  SEAL_DSS_API_SECRET?: string
-}): void {
-  if (!cfg.VALIDATOR_ONLY) return
-  const gevonden = (
-    [
-      ['CLEVERBASE_CSC_CLIENT_SECRET', cfg.CLEVERBASE_CSC_CLIENT_SECRET],
-      ['SEAL_CSC_OAUTH_TOKEN', cfg.SEAL_CSC_OAUTH_TOKEN],
-      ['SEAL_DSS_API_SECRET', cfg.SEAL_DSS_API_SECRET]
-    ] as const
-  )
-    .filter(([, v]) => !!v && String(v).trim() !== '')
-    .map(([k]) => k)
-  if (gevonden.length === 0) return
-  throw new Error(
-    'VALIDATOR_ONLY=true, maar er staan ondertekengegevens in de omgeving van deze container: ' +
-      `${gevonden.join(', ')}. De validator verwerkt bestanden van buiten en mag daar niet bij kunnen. ` +
-      'Haal ze uit het env-bestand van deze service.'
-  )
 }
 
 let cached: z.infer<typeof schema> | null = null
@@ -364,7 +324,6 @@ export function getEnv(): z.infer<typeof schema> {
   assertNoStubInProduction(parsed.data)
   assertSealingChoiceIsDeliberate(parsed.data)
   assertReadyForRealSealing(parsed.data)
-  assertValidatorHasNoCredentials(parsed.data)
   cached = parsed.data
   return cached
 }

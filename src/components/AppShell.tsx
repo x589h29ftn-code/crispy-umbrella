@@ -10,6 +10,7 @@ import {
   Settings,
   LogOut,
   ShieldAlert,
+  ShieldCheck,
   PenLine,
   UserCog,
   Menu,
@@ -40,6 +41,7 @@ export function AppShell({
     { href: '/dossiers/nieuw', label: 'Nieuw dossier', icon: FileSignature },
     { href: '/te-ondertekenen', label: 'Te ondertekenen', icon: PenLine },
     { href: '/klanten', label: 'Cliënten', icon: Users },
+    { href: '/valideren', label: 'Document controleren', icon: ShieldCheck },
     ...(role === 'BEHEERDER' ? [{ href: '/instellingen/gebruikers', label: 'Gebruikers', icon: UserCog }] : []),
     { href: '/instellingen', label: 'Instellingen', icon: Settings }
   ]

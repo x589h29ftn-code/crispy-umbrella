@@ -374,6 +374,30 @@ export async function resendExpiredDossierAction(
   return { ok: true, ontvangers: res.ontvangers }
 }
 
+/**
+ * Zet (of verwijdert) het vinkje "gearchiveerd in SharePoint".
+ *
+ * Dit vinkje is de enige trigger waarmee documentbestanden ooit uit het portaal
+ * verdwijnen. Nooit op de klok, altijd op de vlag: zonder vinkje blijft een
+ * ondertekend dossier staan, desnoods voor altijd.
+ */
+export async function setArchivedAction(
+  dossierId: string,
+  input: { archived: boolean; note?: string }
+): Promise<{ ok: boolean; error?: string }> {
+  const owned = await ownedDossier(dossierId)
+  if (!owned) return { ok: false, error: 'Dossier niet gevonden.' }
+  const { acc } = owned
+  const { markArchived, unmarkArchived } = await import('@/lib/retention')
+  const res = input.archived
+    ? await markArchived({ dossierId, accountantId: acc.id, note: input.note })
+    : await unmarkArchived({ dossierId, accountantId: acc.id })
+  if (!res.ok) return { ok: false, error: 'error' in res ? res.error : 'Er ging iets mis.' }
+  revalidatePath(`/dossiers/${dossierId}`)
+  revalidatePath('/dashboard')
+  return { ok: true }
+}
+
 export async function withdrawDossierAction(dossierId: string): Promise<{ ok: boolean; error?: string }> {
   const owned = await ownedDossier(dossierId)
   if (!owned) return { ok: false, error: 'Dossier niet gevonden.' }

@@ -468,76 +468,22 @@ export async function completeAfterQualifiedSigning(dossierId: string): Promise<
   const open = await prisma.document.count({ where: { dossierId, preSealKey: { not: null }, sealedKey: null } })
   if (open > 0) return { ok: true }
 
-  // Een tweede handtekening (het organisatiezegel) is niet verkeerd, maar wel
-  // meer techniek en meer uitleg. Standaard slaan we hem over als er al een
-  // gekwalificeerde handtekening staat; SEAL_WHEN_QUALIFIED_PRESENT zet hem aan.
-  if (sealEnabled() && env.SEAL_WHEN_QUALIFIED_PRESENT) {
-    const outcome = await applySealsOnTop(dossierId)
-    if (!outcome.ok) {
-      await prisma.dossier.update({ where: { id: dossierId }, data: { status: 'SEALING_FAILED' } })
-      await writeAudit({
-        type: 'VERZEGELING_MISLUKT',
-        dossierId,
-        message: outcome.error?.slice(0, 500),
-        metadata: { retryable: outcome.retryable ?? false, naWaarmerk: true }
-      })
-      if (outcome.retryable) await enqueueOnce('SEAL_RETRY', dossierId, { dossierId }, { maxAttempts: 12 })
-      return outcome
-    }
-  }
-
+  // Eén ondertekenmechanisme: de gekwalificeerde handtekening van de accountant IS
+  // de verzegeling. Er komt geen organisatiezegel bovenop. Dat scheelt een tweede
+  // certificaat, een tweede storingsbron en een uitleg die niemand wil geven.
   await completeDossier(dossierId)
   return { ok: true }
 }
 
-/**
- * Zet het organisatiezegel als incrementele update bovenop een document dat al
- * gekwalificeerd is ondertekend. Beide handtekeningen blijven geldig omdat de
- * tweede de ByteRange van de eerste niet aantast.
- */
-async function applySealsOnTop(dossierId: string): Promise<SealOutcome> {
-  const documents = await prisma.document.findMany({ where: { dossierId }, orderBy: { order: 'asc' } })
-  const store = storage()
-  for (const doc of documents) {
-    if (doc.sealStage === 'SEALED') continue
-    // Altijd vanaf het gewaarmerkte artefact beginnen, niet vanaf sealedKey: die
-    // kan bij een eerdere poging al deels zijn vervangen.
-    const bron = doc.postQualifiedKey ?? doc.sealedKey
-    if (!bron) continue
-    const current = await store.get(bron)
-    try {
-      const result = await sealPdf({
-        pdfBytes: current,
-        appearanceText: 'Verzegeld door Otto Visser & Partners Accountants'
-      })
-      const newKey = await store.put(result.sealedBytes, 'pdf')
-      await prisma.document.update({
-        where: { id: doc.id },
-        data: {
-          sealedKey: newKey,
-          sealedSha256: result.sealedSha256,
-          sealedAt: new Date(),
-          timestampedAt: result.timestampedAt,
-          sealCertSerial: result.certSerial,
-          sealTsaUrl: result.tsaUrl,
-          sealStage: 'SEALED'
-        }
-      })
-      if (doc.sealedKey && doc.sealedKey !== newKey) await store.remove(doc.sealedKey).catch(() => {})
-    } catch (e) {
-      if (e instanceof AlreadySealedError) {
-        // Het zegel stond er al; alleen de administratie liep achter.
-        await prisma.document.update({
-          where: { id: doc.id },
-          data: { sealStage: 'SEALED', sealCertSerial: e.certSerial, timestampedAt: e.signingTime }
-        })
-        continue
-      }
-      return { ok: false, error: (e as Error).message, retryable: e instanceof SealRetryableError }
-    }
-  }
-  return { ok: true }
+/** Naam van de dossiereigenaar, voor een leesbare foutmelding. */
+async function ownerNaam(dossierId: string): Promise<string> {
+  const d = await prisma.dossier.findUnique({
+    where: { id: dossierId },
+    select: { owner: { select: { name: true } } }
+  })
+  return d?.owner.name ?? 'de eigenaar'
 }
+
 
 /**
  * Stap 6+7: verzegelt elk document één keer cryptografisch en legt de
@@ -656,10 +602,41 @@ export async function sealAndComplete(dossierId: string): Promise<SealOutcome> {
       await prisma.dossier.update({ where: { id: dossierId }, data: { status: 'WACHT_OP_WAARMERK' } })
       return { ok: true }
     }
-    // Alles al gewaarmerkt: verder met het zegel en afronden.
+    // Alles al gewaarmerkt: afronden.
     return completeAfterQualifiedSigning(dossierId)
   }
 
+  // Eén ondertekenmechanisme: bij SEAL_MODE=qualified is de gekwalificeerde
+  // handtekening van de accountant DE verzegeling. Kan de eigenaar van dit dossier
+  // niet gekwalificeerd ondertekenen, dan is er niets om mee te verzegelen — en dan
+  // mag het stuk niet als afgerond de deur uit. Fail-closed, met een melding die
+  // zegt wat er moet gebeuren.
+  if (sealEnabled()) {
+    const reden =
+      env.PROFESSIONAL_SIGNING_DRIVER === 'none'
+        ? 'PROFESSIONAL_SIGNING_DRIVER staat op "none"'
+        : `voor ${await ownerNaam(dossierId)} staat gekwalificeerd ondertekenen niet aan, of er is geen credential gekoppeld`
+    const outcome: SealOutcome = {
+      ok: false,
+      error:
+        `SEAL_MODE=qualified, maar dit dossier kan niet gekwalificeerd worden ondertekend: ${reden}. ` +
+        `Zet het beroepscertificaat aan voor de eigenaar (Instellingen > Gebruikers), of zet ` +
+        `SEAL_MODE=none met ALLOW_UNSEALED=true zolang er nog geen certificaat is.`,
+      // Dit is een configuratiefout, geen storing. Opnieuw proberen lost niets op.
+      retryable: false
+    }
+    await prisma.dossier.update({ where: { id: dossierId }, data: { status: 'SEALING_FAILED' } })
+    await writeAudit({
+      type: 'VERZEGELING_MISLUKT',
+      dossierId,
+      message: outcome.error?.slice(0, 500),
+      metadata: { retryable: false, oorzaak: 'geen ondertekenmechanisme' }
+    })
+    return outcome
+  }
+
+  // SEAL_MODE=none: geen cryptografische handtekening. Dat is vastgelegd op het
+  // ondertekencertificaat en in het auditspoor (zie applySeals).
   const outcome = await applySeals(dossierId)
 
   if (!outcome.ok) {
