@@ -69,13 +69,32 @@ const schema = z.object({
   // (accountant AA/RA) via een gemachtigde TSP. none = uit (standaard, geen
   // certificaat nodig); digidentity = PKIoverheid-beroepscertificaat in de
   // cloud via de CSC-API. Per accountant zet je het aan onder Gebruikers.
-  PROFESSIONAL_SIGNING_DRIVER: z.enum(['none', 'digidentity']).default('none'),
+  PROFESSIONAL_SIGNING_DRIVER: z.enum(['none', 'digidentity', 'cleverbase']).default('none'),
   // Digidentity CSC/AutoSign (OAuth2 client-credentials). Alleen nodig als de
   // driver op 'digidentity' staat. Testtoegang via hun Sales/Implementation-team.
   DIGIDENTITY_BASE_URL: z.string().optional(),
   DIGIDENTITY_CLIENT_ID: z.string().optional(),
   DIGIDENTITY_CLIENT_SECRET: z.string().optional(),
   DIGIDENTITY_SCOPE: z.string().optional(),
+
+  // Cleverbase (CSC v1). Anders dan Digidentity autoriseert hier de ACCOUNTANT
+  // zelf: het portaal stuurt hem via een browserredirect naar Cleverbase, waar
+  // hij in de app met pincode bevestigt. Eén bevestiging dekt tot 50 hashes.
+  CLEVERBASE_CSC_BASE_URL: z.string().optional(),
+  CLEVERBASE_CSC_CLIENT_ID: z.string().optional(),
+  CLEVERBASE_CSC_CLIENT_SECRET: z.string().optional(),
+  // Leeg = geen omgeving gekozen (dan faalt de driver bij gebruik). 'stub' mag
+  // uitsluitend buiten productie; zie de guard onder het schema.
+  CLEVERBASE_CSC_ENV: z.enum(['', 'stub', 'production']).default(''),
+  // Absolute HTTPS-URL, vooraf bij Cleverbase geregistreerd. Wijzigen betekent
+  // opnieuw registreren, dus houd hem stabiel.
+  CLEVERBASE_REDIRECT_URI: z.string().optional(),
+  CLEVERBASE_MAX_BATCH: z.coerce.number().int().min(1).max(50).default(50),
+  // Revocatie-eindpunt voor de LT-laag (wordt door pyHanko opgehaald/ingebed).
+  CLEVERBASE_CRL_URL: z.string().default('https://pki.cleverbase.com/cleverbase3c.crl'),
+  // Hoe lang een ondertekensessie mag lopen. De SAD zelf leeft 300 s; daarna
+  // faalt de hele batch en moet de accountant opnieuw beginnen.
+  CLEVERBASE_SIGN_TIMEOUT_MS: z.coerce.number().int().positive().default(300000),
 
   // === Cryptografische verzegeling (PAdES) via de sealer-sidecar ===
   // none = uit (geen zegel; alleen de zichtbare stempels en het auditcertificaat).
@@ -128,6 +147,34 @@ function withDevDefaults(raw: NodeJS.ProcessEnv): NodeJS.ProcessEnv {
   }
 }
 
+// Openbare stub-credentials van Cleverbase, bedoeld voor ontwikkelen en testen.
+// Ze staan in hun documentatie en zijn dus wereldwijd bekend: nooit in productie.
+export const CLEVERBASE_STUB_CLIENT_ID = '6dd5f48d-bcd9-4a98-8a4c-5c82182f5be4'
+
+/**
+ * Weigert een productiestart met de openbare teststub. Bewust een harde fout en
+ * geen waarschuwing: met deze credentials kan iedereen ondertekenverzoeken doen.
+ */
+export function assertNoStubInProduction(cfg: {
+  NODE_ENV: string
+  CLEVERBASE_CSC_ENV: string
+  CLEVERBASE_CSC_CLIENT_ID?: string
+}): void {
+  if (cfg.NODE_ENV !== 'production') return
+  if (cfg.CLEVERBASE_CSC_ENV === 'stub') {
+    throw new Error(
+      'CLEVERBASE_CSC_ENV=stub mag niet in productie. Zet hem op "production" met eigen, ' +
+        'bij Cleverbase geregistreerde clientgegevens.'
+    )
+  }
+  if (cfg.CLEVERBASE_CSC_CLIENT_ID && cfg.CLEVERBASE_CSC_CLIENT_ID.trim() === CLEVERBASE_STUB_CLIENT_ID) {
+    throw new Error(
+      'CLEVERBASE_CSC_CLIENT_ID is de openbare teststub van Cleverbase; die mag niet in productie. ' +
+        'Vraag eigen clientgegevens aan en registreer je redirect-URI.'
+    )
+  }
+}
+
 let cached: z.infer<typeof schema> | null = null
 
 export function getEnv(): z.infer<typeof schema> {
@@ -137,6 +184,7 @@ export function getEnv(): z.infer<typeof schema> {
     const issues = parsed.error.issues.map((i) => `  - ${i.path.join('.')}: ${i.message}`).join('\n')
     throw new Error(`Ongeldige of ontbrekende omgevingsvariabelen:\n${issues}`)
   }
+  assertNoStubInProduction(parsed.data)
   cached = parsed.data
   return cached
 }

@@ -1,6 +1,6 @@
 import 'server-only'
 import { env } from '@/env'
-import { claim, complete, fail, newWorkerId } from './queue'
+import { claim, complete, enqueueOnce, fail, newWorkerId } from './queue'
 import { runJob } from './handlers'
 
 // Achtergrondwerker. Draait als aparte container (zie docker-compose.yml) zodat
@@ -33,6 +33,10 @@ export async function runOnce(workerId: string, batch = env.WORKER_BATCH): Promi
 export async function runForever(): Promise<void> {
   const workerId = newWorkerId()
   console.log(`[worker] gestart (${workerId}), interval ${env.WORKER_POLL_MS} ms`)
+  // Zorg dat de terugkerende opruimtaak loopt; daarna plant hij zichzelf.
+  await enqueueOnce('CSC_SESSION_CLEANUP', 'periodiek', {}, { maxAttempts: 1_000_000 }).catch((e) =>
+    console.error('[worker] kon opruimtaak niet inplannen', e)
+  )
   const shutdown = (signal: string) => {
     console.log(`[worker] ${signal} ontvangen, afronden…`)
     stopping = true

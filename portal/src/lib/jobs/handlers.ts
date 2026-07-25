@@ -3,7 +3,7 @@ import { prisma } from '@/lib/db'
 import { sendMail } from '@/lib/email/transport'
 import { writeAudit } from '@/lib/audit'
 import { sealAndComplete } from '@/lib/signflow'
-import type { JobRow } from './queue'
+import { enqueueOnce, type JobRow } from './queue'
 
 // Eén plek waar alle jobsoorten worden uitgevoerd. Een handler die gooit, laat de
 // job opnieuw inplannen met backoff (zie queue.fail).
@@ -57,10 +57,33 @@ async function handleSealRetry(job: JobRow): Promise<void> {
   throw new Error(outcome.error ?? 'verzegeling mislukt')
 }
 
+/** Hoe vaak de opruimtaak zichzelf opnieuw inplant. */
+export const CSC_CLEANUP_INTERVAL_MS = 5 * 60_000
+
+/**
+ * Verlopen ondertekensessies opruimen (voorbereide PDF's weg, sessie op EXPIRED).
+ * Plant zichzelf daarna opnieuw in, zodat er geen aparte cron nodig is.
+ */
+async function handleCscSessionCleanup(): Promise<void> {
+  const { cleanupExpiredSessions } = await import('@/lib/csc/session')
+  try {
+    const n = await cleanupExpiredSessions()
+    if (n > 0) console.log(`[jobs] ${n} verlopen ondertekensessie(s) opgeruimd`)
+  } finally {
+    // Ook na een fout doorgaan: de reeks mag niet stilvallen.
+    await enqueueOnce('CSC_SESSION_CLEANUP', 'periodiek', {}, {
+      runAt: new Date(Date.now() + CSC_CLEANUP_INTERVAL_MS),
+      maxAttempts: 1_000_000
+    }).catch((e) => console.error('[jobs] kon opruimtaak niet opnieuw inplannen', e))
+  }
+}
+
 export async function runJob(job: JobRow): Promise<void> {
   switch (job.kind) {
     case 'SEAL_RETRY':
       return handleSealRetry(job)
+    case 'CSC_SESSION_CLEANUP':
+      return handleCscSessionCleanup()
     // REMINDER, EXPIRE, ARCHIVE en RETENTION_CLEANUP volgen in een later
     // werkpakket; de queue en de worker staan er al klaar voor.
     default:

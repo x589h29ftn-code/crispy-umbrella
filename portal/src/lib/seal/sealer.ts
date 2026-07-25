@@ -108,6 +108,76 @@ export async function sealPdf(req: SealRequest): Promise<SealResult> {
   }
 }
 
+// --- Tweefasig ondertekenen (provider waarbij de gebruiker autoriseert) ---
+
+export interface PreparedSignature {
+  /** SHA-256 over de signedAttrs — dit is wat de provider ondertekent. */
+  hashToSign: string
+  documentDigest: string
+  signedAttrs: string
+  /** Waar de handtekening in het bestand komt; nodig bij het injecteren. */
+  reservedRegionStart: number
+  reservedRegionEnd: number
+  /** De PDF met placeholder, base64. Moet de redirect overleven. */
+  preparedPdf: string
+}
+
+/**
+ * Fase 1: zet een handtekening-placeholder in de PDF en geeft de te ondertekenen
+ * hash terug. Voor ALLE documenten in een batch te doen vóór de autorisatie: de
+ * SAD leeft maar 300 seconden en dekt de hele batch in één keer.
+ */
+export async function preparePdfForExternalSigning(input: {
+  pdfBytes: Uint8Array
+  certChainBase64: string[]
+  reason?: string
+  location?: string
+  fieldName?: string
+}): Promise<PreparedSignature> {
+  const form = new FormData()
+  form.append('pdf', new Blob([Buffer.from(input.pdfBytes)], { type: 'application/pdf' }), 'document.pdf')
+  form.append('cert_chain', JSON.stringify(input.certChainBase64))
+  form.append('reason', input.reason ?? 'Ondertekend door de accountant')
+  form.append('location', input.location ?? 'Sneek')
+  form.append('field_name', input.fieldName ?? 'ProfessionalSignature')
+
+  const res = await postToSealer('/prepare', form, env.SEALER_TIMEOUT_MS)
+  if (!res.ok) {
+    const detail = await res.text().catch(() => '')
+    const msg = `voorbereiden mislukt (${res.status}): ${detail.slice(0, 300)}`
+    if (res.status >= 500) throw new SealRetryableError(msg)
+    throw new SealPermanentError(msg)
+  }
+  return (await res.json()) as PreparedSignature
+}
+
+/** Fase 2: zet de handtekening van de provider in de voorbereide PDF. */
+export async function injectExternalSignature(input: {
+  preparedPdfBase64: string
+  prepared: Pick<PreparedSignature, 'signedAttrs' | 'documentDigest' | 'reservedRegionStart' | 'reservedRegionEnd'>
+  signatureValueBase64: string
+  certChainBase64: string[]
+}): Promise<Buffer> {
+  const form = new FormData()
+  const pdf = Buffer.from(input.preparedPdfBase64, 'base64')
+  form.append('prepared_pdf', new Blob([pdf], { type: 'application/pdf' }), 'prepared.pdf')
+  form.append('signed_attrs', input.prepared.signedAttrs)
+  form.append('document_digest', input.prepared.documentDigest)
+  form.append('reserved_region_start', String(input.prepared.reservedRegionStart))
+  form.append('reserved_region_end', String(input.prepared.reservedRegionEnd))
+  form.append('signature_value', input.signatureValueBase64)
+  form.append('cert_chain', JSON.stringify(input.certChainBase64))
+
+  const res = await postToSealer('/inject', form, env.SEALER_TIMEOUT_MS)
+  if (!res.ok) {
+    const detail = await res.text().catch(() => '')
+    const msg = `injecteren mislukt (${res.status}): ${detail.slice(0, 300)}`
+    if (res.status >= 500) throw new SealRetryableError(msg)
+    throw new SealPermanentError(msg)
+  }
+  return Buffer.from(await res.arrayBuffer())
+}
+
 export interface ValidationSignature {
   fieldName?: string
   intact?: boolean
