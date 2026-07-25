@@ -30,6 +30,11 @@ services:
       # Overschrijft DATABASE_URL zodat hij naar de db-service wijst.
       DATABASE_URL: postgresql://${POSTGRES_USER:-ovp}:${POSTGRES_PASSWORD}@db:5432/${POSTGRES_DB:-ovp_portaal}?schema=public
       STORAGE_DIR: /data/documents
+      # Ondertekenen gaat naar de sealer, valideren naar de validator. Zonder deze
+      # scheiding zou de publieke controlepagina de container met de
+      # ondertekengegevens aanspreken.
+      SEALER_URL: ${SEALER_URL:-http://sealer:8000}
+      SEALER_VALIDATE_URL: ${SEALER_VALIDATE_URL:-http://validator:8000}
     depends_on:
       db:
         condition: service_healthy
@@ -96,6 +101,43 @@ services:
       timeout: 15s
       retries: 3
       start_period: 30s
+    expose:
+      - '8000'
+
+  # Dezelfde image, andere rol: alleen valideren, géén ondertekengegevens.
+  #
+  # Waarom apart. /validate is het enige eindpunt dat via de publieke controlepagina
+  # bereikbaar is en dat bestanden van buiten door een PDF-parser haalt. Die parser
+  # hoort niet in dezelfde container te staan als de sleutelgegevens van het zegel.
+  #
+  # VALIDATOR_ONLY=true doet twee dingen: het proces weigert te starten als er tóch
+  # ondertekengegevens in zijn omgeving staan (de omgekeerde grendel — anders belandt
+  # er over een half jaar één gedeeld env-bestand in beide services), en /seal,
+  # /prepare en /inject geven 403.
+  #
+  # Let op: hieronder staan bewust GEEN SEAL_*- of TSA_PASSWORD-variabelen. Zet ze
+  # hier ook niet "voor de zekerheid" bij; de container start dan niet.
+  validator:
+    build:
+      context: ./sealer
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    environment:
+      SEALER_SHARED_SECRET: ${SEALER_SHARED_SECRET:?zet SEALER_SHARED_SECRET in .env}
+      VALIDATOR_ONLY: 'true'
+    # PDF-bommen zijn hier de goedkoopste aanval; begrens wat één container kan opeten.
+    mem_limit: 768m
+    cpus: 1.0
+    healthcheck:
+      test:
+        - CMD-SHELL
+        - >-
+          curl -fsS -H "X-Sealer-Secret: $${SEALER_SHARED_SECRET}"
+          http://localhost:8000/health || exit 1
+      interval: 60s
+      timeout: 15s
+      retries: 3
+      start_period: 20s
     expose:
       - '8000'
 

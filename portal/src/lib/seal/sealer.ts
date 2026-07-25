@@ -72,11 +72,17 @@ function secret(): string {
   return s
 }
 
-async function postToSealer(path: string, form: FormData, timeoutMs: number): Promise<Response> {
+async function postToSealer(
+  path: string,
+  form: FormData,
+  timeoutMs: number,
+  /** Basis-URL; standaard de ondertekenende sidecar. */
+  baseUrl: string = env.SEALER_URL
+): Promise<Response> {
   const controller = new AbortController()
   const timer = setTimeout(() => controller.abort(), timeoutMs)
   try {
-    return await fetch(`${env.SEALER_URL.replace(/\/+$/, '')}${path}`, {
+    return await fetch(`${baseUrl.replace(/\/+$/, '')}${path}`, {
       method: 'POST',
       headers: { 'X-Sealer-Secret': secret() },
       body: form,
@@ -233,7 +239,10 @@ export interface ValidationSignature {
 export async function validatePdf(pdfBytes: Uint8Array): Promise<{ signed: boolean; signatures: ValidationSignature[] }> {
   const form = new FormData()
   form.append('pdf', new Blob([Buffer.from(pdfBytes)], { type: 'application/pdf' }), 'document.pdf')
-  const res = await postToSealer('/validate', form, env.SEALER_TIMEOUT_MS)
+  // Naar de validator-service als die er is. Die container heeft geen
+  // ondertekengegevens in zijn omgeving, en dat is het hele punt: /validate is het
+  // enige eindpunt dat bestanden van buiten verwerkt.
+  const res = await postToSealer('/validate', form, env.SEALER_TIMEOUT_MS, env.SEALER_VALIDATE_URL || env.SEALER_URL)
   if (!res.ok) {
     const detail = await res.text().catch(() => '')
     throw new SealPermanentError(`validatie mislukt (${res.status}): ${detail.slice(0, 300)}`)

@@ -135,6 +135,10 @@ const schema = z.object({
     .transform((v) => v === 'true'),
   // Interne URL van de sidecar; niet publiek bereikbaar (geen Caddy-route).
   SEALER_URL: z.string().default('http://sealer:8000'),
+  // Aparte sidecar voor de publieke controlepagina, zonder ondertekengegevens.
+  // Leeg = validatie gaat naar SEALER_URL (alleen acceptabel zolang er niet echt
+  // wordt verzegeld; de grendel hieronder eist het zodra dat wel zo is).
+  SEALER_VALIDATE_URL: z.string().optional(),
   // Shared secret in een header tussen web en sealer.
   SEALER_SHARED_SECRET: z.string().optional(),
   SEALER_TIMEOUT_MS: z.coerce.number().int().positive().default(60000),
@@ -270,6 +274,8 @@ export function assertSealingChoiceIsDeliberate(cfg: {
 export function assertReadyForRealSealing(cfg: {
   SEAL_MODE: string
   VALIDATOR_ISOLATED: boolean
+  SEALER_URL: string
+  SEALER_VALIDATE_URL?: string
   AUDIT_ANCHOR_TARGETS: string
   AUDIT_HMAC_KEY_V1?: string
 }): void {
@@ -280,6 +286,14 @@ export function assertReadyForRealSealing(cfg: {
       'VALIDATOR_ISOLATED=true — draai de publieke controlepagina (/validate) als eigen service, ' +
         'met VALIDATOR_ONLY=true in die container zodat die weigert te starten met ondertekengegevens ' +
         'in zijn omgeving'
+    )
+  } else if (!cfg.SEALER_VALIDATE_URL || cfg.SEALER_VALIDATE_URL.trim() === cfg.SEALER_URL.trim()) {
+    // Anders is de scheiding alleen een vlag: de validatie gaat dan nog steeds naar
+    // de container met de ondertekengegevens.
+    ontbreekt.push(
+      'SEALER_VALIDATE_URL — die moet naar de validator-service wijzen en niet naar SEALER_URL. ' +
+        'Met VALIDATOR_ISOLATED=true maar dezelfde URL gaat de validatie nog steeds naar de ' +
+        'container met de ondertekengegevens, en is de scheiding alleen een vlag'
     )
   }
   const targets = cfg.AUDIT_ANCHOR_TARGETS.split(',')

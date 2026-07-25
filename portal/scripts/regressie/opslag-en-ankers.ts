@@ -215,6 +215,8 @@ function testGrendel() {
   const compleet = {
     SEAL_MODE: 'sealer',
     VALIDATOR_ISOLATED: true,
+    SEALER_URL: 'http://sealer:8000',
+    SEALER_VALIDATE_URL: 'http://validator:8000',
     AUDIT_ANCHOR_TARGETS: 'archief,mail',
     AUDIT_HMAC_KEY_V1: 'x'.repeat(40)
   }
@@ -228,6 +230,16 @@ function testGrendel() {
   check(
     'zonder gescheiden validator weigert hij',
     throws(() => assertReadyForRealSealing({ ...compleet, VALIDATOR_ISOLATED: false }))
+  )
+  // De vlag alléén is niet genoeg: wijst de validatie nog naar dezelfde container,
+  // dan is de scheiding een bewering en geen scheiding.
+  check(
+    'de vlag zonder eigen URL is niet genoeg',
+    throws(() => assertReadyForRealSealing({ ...compleet, SEALER_VALIDATE_URL: undefined }))
+  )
+  check(
+    'en dezelfde URL als de sealer ook niet',
+    throws(() => assertReadyForRealSealing({ ...compleet, SEALER_VALIDATE_URL: 'http://sealer:8000' }))
   )
   check(
     'zonder ankerbestemming weigert hij',

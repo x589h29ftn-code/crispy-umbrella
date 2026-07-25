@@ -101,3 +101,5 @@ jobs:
       # publieke controle niets van internet ophaalt.
       - name: Sealertests
         run: .venv-sealer/bin/python scripts/regressie/sealer.py
+      - name: Validatormodus
+        run: .venv-sealer/bin/python scripts/regressie/validatormodus.py
