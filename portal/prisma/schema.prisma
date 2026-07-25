@@ -37,6 +37,10 @@ enum DossierStatus {
   VERZONDEN
   GEDEELTELIJK
   ONDERTEKEND
+  // Alle partijen hebben getekend; het stuk wacht op de gekwalificeerde
+  // handtekening van de accountant, die daarvoor zelf moet autoriseren (pincode
+  // in de app van de provider). Geen fout: een normale wachtstand.
+  WACHT_OP_WAARMERK
   // Alle partijen hebben getekend, maar het cryptografische zegel ontbreekt nog
   // (signing-API of TSA onbereikbaar). Fail-closed: er gaat geen voltooiingsmail
   // uit zolang dit de status is; een job probeert het opnieuw.

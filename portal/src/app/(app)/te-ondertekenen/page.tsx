@@ -1,8 +1,9 @@
 import Link from 'next/link'
-import { PenLine, CheckCircle2 } from 'lucide-react'
+import { PenLine, CheckCircle2, ShieldCheck } from 'lucide-react'
 import { prisma } from '@/lib/db'
 import { requireOnboarded } from '@/lib/auth/session'
 import { currentSigners } from '@/lib/signflow'
+import { documentsAwaitingSignature } from '@/lib/csc/flow'
 import { formatDateTime } from '@/lib/utils'
 
 export const dynamic = 'force-dynamic'
@@ -16,12 +17,36 @@ export default async function TeOndertekenenPage() {
   // Alleen tonen waar ik nú aan de beurt ben.
   const waiting = mine.filter((r) => currentSigners(r.dossier, r.dossier.recipients).some((a) => a.id === r.id))
 
+  // Stukken die op de gekwalificeerde handtekening met beroepscertificaat wachten.
+  const waarmerken = await documentsAwaitingSignature(me.id)
+
   return (
     <div className="space-y-6">
       <header>
         <h1 className="text-2xl font-semibold">Te ondertekenen</h1>
         <p className="text-slate-500">Documenten die op uw handtekening wachten.</p>
       </header>
+
+      {waarmerken.length > 0 && (
+        <Link
+          href="/te-ondertekenen/waarmerken"
+          className="flex items-center justify-between gap-3 rounded-lg border border-indigo-200 bg-indigo-50 p-4 text-sm text-indigo-900 transition hover:shadow-pop"
+        >
+          <span>
+            <span className="block font-medium">
+              {waarmerken.length === 1
+                ? '1 stuk wacht op uw handtekening als accountant'
+                : `${waarmerken.length} stukken wachten op uw handtekening als accountant`}
+            </span>
+            <span className="block text-indigo-800">
+              Alle partijen hebben getekend. U bevestigt in één keer met uw pincode.
+            </span>
+          </span>
+          <span className="btn-primary shrink-0 text-sm">
+            <ShieldCheck className="h-4 w-4" /> Ondertekenen
+          </span>
+        </Link>
+      )}
 
       {waiting.length === 0 ? (
         <div className="card flex flex-col items-center gap-2 p-12 text-center text-slate-500">

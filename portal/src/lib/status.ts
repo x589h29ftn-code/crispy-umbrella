@@ -5,6 +5,7 @@ export const STATUS_LABEL: Record<DossierStatus, string> = {
   VERZONDEN: 'Verzonden',
   GEDEELTELIJK: 'Gedeeltelijk',
   ONDERTEKEND: 'Ondertekend',
+  WACHT_OP_WAARMERK: 'Wacht op uw handtekening',
   SEALING_FAILED: 'Wacht op verzegeling',
   GEWEIGERD: 'Geweigerd',
   VERLOPEN: 'Verlopen'
@@ -22,6 +23,7 @@ export const STATUS_STYLE: Record<DossierStatus, string> = {
   VERZONDEN: 'bg-amber-50 text-amber-700 ring-amber-200',
   GEDEELTELIJK: 'bg-blue-50 text-blue-700 ring-blue-200',
   ONDERTEKEND: 'bg-emerald-50 text-emerald-700 ring-emerald-200',
+  WACHT_OP_WAARMERK: 'bg-indigo-50 text-indigo-700 ring-indigo-200',
   SEALING_FAILED: 'bg-orange-50 text-orange-700 ring-orange-200',
   GEWEIGERD: 'bg-rose-50 text-rose-700 ring-rose-200',
   VERLOPEN: 'bg-slate-100 text-slate-500 ring-slate-200'

@@ -160,6 +160,84 @@ WORKER_POLL_MS="15000"   # hoe vaak kijken of er werk is
 WORKER_BATCH="5"         # hoeveel taken per ronde
 ```
 
+## Beroepscertificaat: ondertekenen op persoonlijke titel
+
+Naast het organisatiezegel kan een accountant (AA/RA) zelf gekwalificeerd
+ondertekenen met een PKIoverheid-beroepscertificaat. Dat is optioneel en staat
+per medewerker aan onder **Instellingen → Gebruikers**.
+
+Twee soorten providers, met een wezenlijk verschil:
+
+| Provider | Wie autoriseert | Gevolg |
+|---|---|---|
+| `digidentity` | de server (OAuth client-credentials) | gaat automatisch, geen handeling |
+| `cleverbase` | de **accountant zelf**, met pincode in de app | expliciete stap in het portaal |
+
+### Waarom het bij Cleverbase een aparte stap is
+
+Zodra er een handtekening in een PDF zit, mag het bestand niet meer worden
+bewerkt. Het ondertekencertificaat en het plat slaan moeten er dus vóór gebeuren,
+en die zijn pas klaar als alle partijen hebben getekend. Op dat moment is de
+accountant er niet noodzakelijk bij om een pincode in te voeren.
+
+Daarom komt een dossier dan op **"Wacht op uw handtekening"**. De accountant ziet
+dat als taak op `/te-ondertekenen`, selecteert wat hij wil ondertekenen en
+bevestigt **één keer** met zijn pincode — ook als het om meerdere stukken gaat
+(de provider staat tot 50 hashes onder één bevestiging toe). Dat is een stuk
+prettiger dan vijftien keer een pincode.
+
+Zolang dit wacht gaat er **geen voltooiingsmail** uit.
+
+### Instellen
+
+```
+PROFESSIONAL_SIGNING_DRIVER="cleverbase"
+CLEVERBASE_CSC_BASE_URL=""
+CLEVERBASE_CSC_CLIENT_ID=""
+CLEVERBASE_CSC_CLIENT_SECRET=""
+CLEVERBASE_CSC_ENV="production"
+CLEVERBASE_REDIRECT_URI="https://portaal.ottovisseraccountants.nl/api/csc/callback"
+```
+
+De **redirect-URI moet vooraf bij Cleverbase geregistreerd zijn** en stabiel
+blijven; wijzigen betekent opnieuw registreren. Vraag bij de aanvraag meteen twee
+URI's aan (productie én acceptatie), anders moet je later terug. Er is ook een
+clientnaam nodig die de gebruiker te zien krijgt.
+
+Zorg dat Caddy `/api/csc/callback` gewoon doorlaat — dat is een normale route van
+de webapp, geen aparte service.
+
+### Testen zonder contract
+
+Cleverbase publiceert openbare stub-credentials (zie `.env.example`). Daarmee kun
+je de hele flow uitproberen, inclusief de foutpaden. Twee punten waarover de
+documentatie niet eenduidig is, zoekt dit script voor je uit:
+
+```bash
+npm run csc:check
+```
+
+> **Belangrijk:** die stub-gegevens zijn wereldwijd bekend. Het portaal
+> **weigert te starten** als `NODE_ENV=production` met `CLEVERBASE_CSC_ENV=stub`
+> of met het bekende stub-client-id. Dat is bewust een harde fout.
+
+### Wat het portaal afdwingt
+
+- **Persoonsgebonden.** Eén credential hoort bij precies één accountant; de
+  database staat niet toe dat twee gebruikers hetzelfde credential krijgen.
+- **Doelbinding.** Het certificaat wordt alleen gebruikt om te ondertekenen,
+  nooit om in te loggen. Inloggen blijft wachtwoord + TOTP.
+- **Intrekking.** Meldt de provider dat het certificaat niet meer bruikbaar is
+  (bijvoorbeeld omdat de inschrijving in het NBA-register is geëindigd of
+  geschorst), dan zet het portaal gekwalificeerd ondertekenen voor die gebruiker
+  automatisch uit, legt dat vast in het auditspoor en mailt de beheerders. Dit
+  wordt bij **elke** ondertekensessie gecontroleerd, niet alleen bij het inrichten.
+- **Atomaire batch.** Mislukt er één document, dan wordt er niets ondertekend.
+  Een half ondertekende verzameling is erger dan geen.
+- **Geen dubbele handtekening zonder reden.** Staat er al een gekwalificeerde
+  handtekening, dan wordt het organisatiezegel standaard overgeslagen. Zet
+  `SEAL_WHEN_QUALIFIED_PRESENT=true` als je beide wilt.
+
 ## Nog te doen bij ingebruikname
 
 - **Back-up.** Dagelijks `pg_dump` én het documentvolume, versleuteld, buiten de

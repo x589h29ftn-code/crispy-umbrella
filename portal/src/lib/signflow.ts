@@ -351,6 +351,87 @@ export interface SealOutcome {
 }
 
 /**
+ * Wacht dit dossier op een gekwalificeerde handtekening waarvoor de accountant
+ * zelf moet autoriseren? Alleen bij providers met een gebruikersronde; bij
+ * 'digidentity' tekent de server zelf en is er niets om op te wachten.
+ */
+function awaitsQualifiedSignature(owner: { signingCertEnabled: boolean; signingCredentialId: string | null }): boolean {
+  return env.PROFESSIONAL_SIGNING_DRIVER === 'cleverbase' && owner.signingCertEnabled && !!owner.signingCredentialId
+}
+
+/**
+ * Rondt af nadat de accountant zijn gekwalificeerde handtekening heeft gezet.
+ * De documenten hebben dan al een sealedKey; afhankelijk van de instelling komt
+ * er nog een organisatiezegel bij.
+ */
+export async function completeAfterQualifiedSigning(dossierId: string): Promise<SealOutcome> {
+  const dossier = await prisma.dossier.findUnique({ where: { id: dossierId }, select: { status: true } })
+  if (!dossier) return { ok: false, error: 'dossier niet gevonden', retryable: false }
+  if (dossier.status === 'ONDERTEKEND') return { ok: true }
+
+  // Nog niet alles ondertekend? Dan blijft het dossier wachten.
+  const open = await prisma.document.count({ where: { dossierId, preSealKey: { not: null }, sealedKey: null } })
+  if (open > 0) return { ok: true }
+
+  // Een tweede handtekening (het organisatiezegel) is niet verkeerd, maar wel
+  // meer techniek en meer uitleg. Standaard slaan we hem over als er al een
+  // gekwalificeerde handtekening staat; SEAL_WHEN_QUALIFIED_PRESENT zet hem aan.
+  if (sealEnabled() && env.SEAL_WHEN_QUALIFIED_PRESENT) {
+    const outcome = await applySealsOnTop(dossierId)
+    if (!outcome.ok) {
+      await prisma.dossier.update({ where: { id: dossierId }, data: { status: 'SEALING_FAILED' } })
+      await writeAudit({
+        type: 'VERZEGELING_MISLUKT',
+        dossierId,
+        message: outcome.error?.slice(0, 500),
+        metadata: { retryable: outcome.retryable ?? false, naWaarmerk: true }
+      })
+      if (outcome.retryable) await enqueueOnce('SEAL_RETRY', dossierId, { dossierId }, { maxAttempts: 12 })
+      return outcome
+    }
+  }
+
+  await completeDossier(dossierId)
+  return { ok: true }
+}
+
+/**
+ * Zet het organisatiezegel als incrementele update bovenop een document dat al
+ * gekwalificeerd is ondertekend. Beide handtekeningen blijven geldig omdat de
+ * tweede de ByteRange van de eerste niet aantast.
+ */
+async function applySealsOnTop(dossierId: string): Promise<SealOutcome> {
+  const documents = await prisma.document.findMany({ where: { dossierId }, orderBy: { order: 'asc' } })
+  const store = storage()
+  for (const doc of documents) {
+    if (!doc.sealedKey) continue
+    const current = await store.get(doc.sealedKey)
+    try {
+      const result = await sealPdf({
+        pdfBytes: current,
+        appearanceText: 'Verzegeld door Otto Visser & Partners Accountants'
+      })
+      const newKey = await store.put(result.sealedBytes, 'pdf')
+      await store.remove(doc.sealedKey).catch(() => {})
+      await prisma.document.update({
+        where: { id: doc.id },
+        data: {
+          sealedKey: newKey,
+          sealedSha256: result.sealedSha256,
+          sealedAt: new Date(),
+          timestampedAt: result.timestampedAt,
+          sealCertSerial: result.certSerial,
+          sealTsaUrl: result.tsaUrl
+        }
+      })
+    } catch (e) {
+      return { ok: false, error: (e as Error).message, retryable: e instanceof SealRetryableError }
+    }
+  }
+  return { ok: true }
+}
+
+/**
  * Stap 6+7: verzegelt elk document één keer cryptografisch en legt de
  * zegelgegevens vast. Fail-closed: lukt het niet, dan is de uitkomst niet ok en
  * wordt er niets afgerond.
@@ -411,11 +492,24 @@ async function applySeals(dossierId: string): Promise<SealOutcome> {
  * door de SEAL_RETRY-job. Idempotent: een al afgerond dossier doet niets.
  */
 export async function sealAndComplete(dossierId: string): Promise<SealOutcome> {
-  const current = await prisma.dossier.findUnique({ where: { id: dossierId }, select: { status: true } })
+  const current = await prisma.dossier.findUnique({
+    where: { id: dossierId },
+    select: { status: true, owner: { select: { signingCertEnabled: true, signingCredentialId: true } } }
+  })
   if (!current) return { ok: false, error: 'dossier niet gevonden', retryable: false }
   if (current.status === 'ONDERTEKEND') return { ok: true }
 
   await buildPreSealArtifacts(dossierId)
+
+  // Moet de accountant er nog een gekwalificeerde handtekening op zetten? Dan
+  // stopt het hier: hij autoriseert dat zelf (pincode in de app van de provider).
+  // De handtekening komt ná het auditcertificaat, want daarna mag het bestand
+  // niet meer worden bewerkt.
+  if (awaitsQualifiedSignature(current.owner)) {
+    await prisma.dossier.update({ where: { id: dossierId }, data: { status: 'WACHT_OP_WAARMERK' } })
+    return { ok: true }
+  }
+
   const outcome = await applySeals(dossierId)
 
   if (!outcome.ok) {
