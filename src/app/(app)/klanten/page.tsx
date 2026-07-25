@@ -13,14 +13,19 @@ export default async function KlantenPage({ searchParams }: { searchParams: { q?
       ...(q
         ? {
             OR: [
+              // Klantnummer eerst: daar zoeken we in de praktijk het meest op.
+              { clientNumber: { contains: q, mode: 'insensitive' } },
               { displayName: { contains: q, mode: 'insensitive' } },
               { companyName: { contains: q, mode: 'insensitive' } },
+              { contactName: { contains: q, mode: 'insensitive' } },
               { email: { contains: q, mode: 'insensitive' } }
             ]
           }
         : {})
     },
-    orderBy: { displayName: 'asc' },
+    // Op klantnummer sorteren zodat de lijst dezelfde orde houdt als het dossier;
+    // cliënten zonder nummer komen achteraan.
+    orderBy: [{ clientNumber: { sort: 'asc', nulls: 'last' } }, { displayName: 'asc' }],
     take: 200
   })
 
@@ -43,7 +48,7 @@ export default async function KlantenPage({ searchParams }: { searchParams: { q?
 
       <form className="relative max-w-sm">
         <Search className="pointer-events-none absolute left-3 top-2.5 h-4 w-4 text-slate-400" />
-        <input name="q" defaultValue={q} placeholder="Zoeken op naam of e-mail…" className="input pl-9" />
+        <input name="q" defaultValue={q} placeholder="Zoeken op klantnummer, naam of e-mail…" className="input pl-9" />
       </form>
 
       <div className="card overflow-hidden">
@@ -57,6 +62,7 @@ export default async function KlantenPage({ searchParams }: { searchParams: { q?
           <table className="hidden w-full text-sm md:table">
             <thead className="border-b border-slate-200 bg-slate-50 text-left text-xs uppercase tracking-wide text-slate-500">
               <tr>
+                <th className="px-4 py-3">Klantnr.</th>
                 <th className="px-4 py-3">Naam</th>
                 <th className="px-4 py-3">Contact / e-mail</th>
                 <th className="px-4 py-3">Plaats</th>
@@ -66,6 +72,7 @@ export default async function KlantenPage({ searchParams }: { searchParams: { q?
             <tbody className="divide-y divide-slate-100">
               {clients.map((c) => (
                 <tr key={c.id} className="hover:bg-slate-50">
+                  <td className="whitespace-nowrap px-4 py-3 font-mono text-slate-600">{c.clientNumber ?? '-'}</td>
                   <td className="px-4 py-3">
                     <Link href={`/klanten/${c.id}`} className="font-medium text-brand-700 hover:underline">
                       {c.displayName}
@@ -92,6 +99,9 @@ export default async function KlantenPage({ searchParams }: { searchParams: { q?
             {clients.map((c) => (
               <li key={c.id} className="flex items-start justify-between gap-3 p-4">
                 <div className="min-w-0">
+                  {c.clientNumber && (
+                    <div className="font-mono text-xs text-slate-500">{c.clientNumber}</div>
+                  )}
                   <Link href={`/klanten/${c.id}`} className="font-medium text-brand-700 hover:underline">
                     {c.displayName}
                   </Link>
