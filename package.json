@@ -17,7 +17,10 @@
     "db:studio": "prisma studio",
     "worker": "tsx --conditions react-server scripts/worker.ts",
     "audit:verify": "tsx --conditions react-server scripts/verify-audit-chain.ts",
-    "csc:check": "tsx --conditions react-server scripts/csc-stub-check.ts"
+    "csc:check": "tsx --conditions react-server scripts/csc-stub-check.ts",
+    "keys:rotate": "tsx --conditions react-server scripts/rotate-keys.ts",
+    "restore:verify": "tsx --conditions react-server scripts/verify-restore.ts",
+    "retention:purge": "tsx --conditions react-server scripts/purge-retention.ts"
   },
   "prisma": {
     "seed": "tsx prisma/seed.ts"

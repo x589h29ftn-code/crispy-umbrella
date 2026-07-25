@@ -3,6 +3,7 @@ import { randomBytes } from 'node:crypto'
 import { prisma } from '@/lib/db'
 import { env } from '@/env'
 import { encryptString, decryptString } from '@/lib/storage/crypto'
+import { currentStorageKey, storageKeyResolver } from '@/lib/storage/keys'
 import { writeAudit } from '@/lib/audit'
 import { sendMail } from '@/lib/email/transport'
 import { credentialInfo, type CscConfig } from './client'
@@ -42,7 +43,7 @@ export async function createSession(input: CreateSessionInput): Promise<{ id: st
       hashes: input.hashesBase64,
       // Nooit in leesbare vorm: hetzelfde envelope-schema als de documentopslag.
       serviceToken: input.serviceToken
-        ? encryptString(env.STORAGE_ENCRYPTION_KEY, input.serviceToken)
+        ? encryptString(currentStorageKey().secret, input.serviceToken, currentStorageKey().version)
         : null,
       status: 'PREPARED',
       expiresAt: new Date(Date.now() + env.CLEVERBASE_SIGN_TIMEOUT_MS)
@@ -97,7 +98,7 @@ export async function resolveSession(state: string, currentAccountantId: string)
       documentIds: row.documentIds,
       preparedKeys: (row.preparedKeys ?? {}) as Record<string, string>,
       hashesBase64: (row.hashes ?? {}) as Record<string, string>,
-      serviceToken: row.serviceToken ? decryptString(env.STORAGE_ENCRYPTION_KEY, row.serviceToken) : null,
+      serviceToken: row.serviceToken ? decryptString(storageKeyResolver(), row.serviceToken) : null,
       status: row.status as CscSessionStatus
     }
   }

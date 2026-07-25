@@ -347,6 +347,10 @@ model AuditEvent {
   // (prevHash + type + dossierId + recipientId + message + metadata + createdAt).
   prevHash     String?
   hash         String?
+  // Doorlopend volgnummer. De hashketen alleen laat het verwijderen van de
+  // OUDSTE regels ongemerkt (er is dan geen volgende regel die niet meer
+  // aansluit); een gat in de nummering wel.
+  seq          BigInt   @default(autoincrement())
 
   @@index([dossierId])
   @@index([createdAt])

@@ -108,12 +108,42 @@ async function handleMailResend(job: JobRow): Promise<void> {
   })
 }
 
+/** Hoe vaak de bewaartermijn wordt nagelopen. Eén keer per etmaal is genoeg. */
+export const RETENTION_INTERVAL_MS = 24 * 60 * 60_000
+
+/**
+ * Ruimt dossiers op waarvan de bewaartermijn is verstreken en plant zichzelf
+ * daarna opnieuw in.
+ */
+async function handleRetentionCleanup(): Promise<void> {
+  try {
+    const { purgeExpiredDossiers } = await import('@/lib/retention')
+    const res = await purgeExpiredDossiers()
+    if (res.dossiers > 0) {
+      console.log(
+        `[jobs] bewaartermijn: ${res.dossiers} dossier(s), ${res.documents} document(en) en ` +
+          `${res.auditEvents} auditregel(s) opgeruimd`
+      )
+    }
+    if (res.skipped.length > 0) {
+      console.error('[jobs] bewaartermijn: overgeslagen', res.skipped)
+    }
+  } finally {
+    await enqueueOnce('RETENTION_CLEANUP', 'periodiek', {}, {
+      runAt: new Date(Date.now() + RETENTION_INTERVAL_MS),
+      maxAttempts: 1_000_000
+    }).catch((e) => console.error('[jobs] kon opruimtaak bewaartermijn niet inplannen', e))
+  }
+}
+
 export async function runJob(job: JobRow): Promise<void> {
   switch (job.kind) {
     case 'SEAL_RETRY':
       return handleSealRetry(job)
     case 'CSC_SESSION_CLEANUP':
       return handleCscSessionCleanup()
+    case 'RETENTION_CLEANUP':
+      return handleRetentionCleanup()
     case 'MAIL_RESEND':
       return handleMailResend(job)
     // REMINDER, EXPIRE, ARCHIVE en RETENTION_CLEANUP volgen in een later
