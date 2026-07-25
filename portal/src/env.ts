@@ -15,6 +15,17 @@ const schema = z.object({
   SIGNING_TOKEN_SECRET: secret,
   STORAGE_ENCRYPTION_KEY: z.string().min(32),
   TOTP_ENCRYPTION_KEY: z.string().min(32),
+  // Sleutelrotatie. De variabele hierboven is altijd versie 1; extra versies
+  // komen uit ..._V2, ..._V3 enzovoort en ..._CURRENT bepaalt waarmee nieuwe
+  // data wordt versleuteld. Oude data blijft leesbaar zolang die sleutel er is.
+  // Hier alleen de eerste paar versies verklaard zodat een typefout opvalt; de
+  // sleutelring valideert de rest bij gebruik.
+  STORAGE_ENCRYPTION_KEY_V2: z.string().min(32).optional(),
+  STORAGE_ENCRYPTION_KEY_V3: z.string().min(32).optional(),
+  STORAGE_ENCRYPTION_KEY_CURRENT: z.coerce.number().int().min(1).max(20).optional(),
+  TOTP_ENCRYPTION_KEY_V2: z.string().min(32).optional(),
+  TOTP_ENCRYPTION_KEY_V3: z.string().min(32).optional(),
+  TOTP_ENCRYPTION_KEY_CURRENT: z.coerce.number().int().min(1).max(20).optional(),
 
   STORAGE_DRIVER: z.enum(['local', 's3']).default('local'),
   STORAGE_DIR: z.string().default('/data/documents'),

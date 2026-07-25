@@ -2,6 +2,7 @@ import * as OTPAuth from 'otpauth'
 import QRCode from 'qrcode'
 import { env } from '@/env'
 import { encryptString, decryptString } from '@/lib/storage/crypto'
+import { currentTotpKey, totpKeyResolver } from '@/lib/storage/keys'
 
 // TOTP (RFC 6238) voor de tweede factor van medewerkers. Het secret wordt
 // versleuteld in de database bewaard (nooit leesbaar op schijf).
@@ -41,9 +42,10 @@ export function verifyTotp(secretBase32: string, code: string): boolean {
 
 // Versleutel/ontsleutel het secret voor opslag met het aparte TOTP-geheim.
 export function encryptTotpSecret(secretBase32: string): string {
-  return encryptString(env.TOTP_ENCRYPTION_KEY, secretBase32)
+  const { secret, version } = currentTotpKey()
+  return encryptString(secret, secretBase32, version)
 }
 
 export function decryptTotpSecret(stored: string): string {
-  return decryptString(env.TOTP_ENCRYPTION_KEY, stored)
+  return decryptString(totpKeyResolver(), stored)
 }

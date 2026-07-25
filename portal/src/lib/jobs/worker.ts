@@ -33,10 +33,12 @@ export async function runOnce(workerId: string, batch = env.WORKER_BATCH): Promi
 export async function runForever(): Promise<void> {
   const workerId = newWorkerId()
   console.log(`[worker] gestart (${workerId}), interval ${env.WORKER_POLL_MS} ms`)
-  // Zorg dat de terugkerende opruimtaak loopt; daarna plant hij zichzelf.
-  await enqueueOnce('CSC_SESSION_CLEANUP', 'periodiek', {}, { maxAttempts: 1_000_000 }).catch((e) =>
-    console.error('[worker] kon opruimtaak niet inplannen', e)
-  )
+  // Zorg dat de terugkerende taken lopen; daarna plannen ze zichzelf.
+  for (const kind of ['CSC_SESSION_CLEANUP', 'RETENTION_CLEANUP'] as const) {
+    await enqueueOnce(kind, 'periodiek', {}, { maxAttempts: 1_000_000 }).catch((e) =>
+      console.error(`[worker] kon ${kind} niet inplannen`, e)
+    )
+  }
   const shutdown = (signal: string) => {
     console.log(`[worker] ${signal} ontvangen, afronden…`)
     stopping = true

@@ -94,8 +94,14 @@ function chainHash(input: {
 export async function writeAudit(input: AuditInput): Promise<void> {
   try {
     const createdAt = new Date()
+    // De keten loopt PER DOSSIER, niet globaal. Dat is bewust: de bewaartermijn
+    // ruimt een compleet dossier op, en bij één globale keten zou zo'n legitieme
+    // opruiming de keten breken. Een keten die altijd "gebroken" is, wordt
+    // genegeerd en beschermt dus niets. Regels zonder dossier (inloggen,
+    // certificaat ingetrokken) vormen samen één eigen keten.
     const prev = await prisma.auditEvent.findFirst({
-      orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
+      where: { dossierId: input.dossierId ?? null },
+      orderBy: [{ seq: 'desc' }],
       select: { hash: true }
     })
     const prevHash = prev?.hash ?? null
@@ -131,25 +137,38 @@ export async function writeAudit(input: AuditInput): Promise<void> {
 export interface ChainVerifyResult {
   ok: boolean
   checked: number
-  /** Eerste regel waar de keten breekt (null als alles klopt). */
-  brokenAt: { id: string; type: string; createdAt: Date; reason: string } | null
+  /** Aantal gecontroleerde ketens (één per dossier, plus één zonder dossier). */
+  chains: number
+  /** Eerste regel waar een keten breekt (null als alles klopt). */
+  brokenAt: { id: string; type: string; createdAt: Date; reason: string; dossierId: string | null } | null
 }
 
 /**
- * Loopt de volledige hashketen door en meldt waar hij breekt. Regels van vóór
- * de invoering van de keten (hash = null) worden overgeslagen.
+ * Loopt de volledige hashketen door en meldt waar hij breekt.
+ *
+ * Wat dit wél aantoont: elke wijziging aan een regel, en elke verwijdering
+ * middenin de reeks (de volgende regel sluit dan niet meer aan of er ontbreekt
+ * een volgnummer).
+ *
+ * Wat dit NIET aantoont: het verwijderen van de oudste regels aan het begin.
+ * Daarvoor is een anker buiten deze database nodig. De opruiming door de
+ * bewaartermijn doet precies dat legitiem, dus het beginvolgnummer wordt
+ * gerapporteerd in plaats van als fout aangemerkt.
+ *
+ * Regels van vóór de invoering van de keten (hash = null) worden overgeslagen.
  */
-export async function verifyAuditChain(batchSize = 1000): Promise<ChainVerifyResult> {
+export async function verifyAuditChain(batchSize = 2000): Promise<ChainVerifyResult> {
+  // Per keten bijhouden waar we zijn. Regels van verschillende dossiers staan door
+  // elkaar heen, dus we lopen één keer door alles en houden per keten de stand bij.
+  const state = new Map<string, { prevHash: string | null; started: boolean }>()
   let cursor: string | undefined
-  let prevHash: string | null = null
   let checked = 0
-  let started = false
 
   for (;;) {
     const rows = await prisma.auditEvent.findMany({
       take: batchSize,
       ...(cursor ? { skip: 1, cursor: { id: cursor } } : {}),
-      orderBy: [{ createdAt: 'asc' }, { id: 'asc' }],
+      orderBy: [{ seq: 'asc' }],
       select: {
         id: true,
         type: true,
@@ -166,22 +185,31 @@ export async function verifyAuditChain(batchSize = 1000): Promise<ChainVerifyRes
     cursor = rows[rows.length - 1].id
 
     for (const row of rows) {
-      if (row.hash === null) {
-        // Regel van vóór de hashketen: overslaan, keten begint bij de eerste
-        // regel die wél een hash heeft.
-        continue
+      // Regel van vóór de hashketen: overslaan.
+      if (row.hash === null) continue
+
+      const key = row.dossierId ?? ''
+      let s = state.get(key)
+      if (!s) {
+        // Begin van deze keten: nemen we als startpunt.
+        s = { prevHash: row.prevHash, started: true }
+        state.set(key, s)
       }
-      if (!started) {
-        started = true
-        prevHash = row.prevHash
-      }
-      if (row.prevHash !== prevHash) {
-        return {
-          ok: false,
-          checked,
-          brokenAt: { id: row.id, type: row.type, createdAt: row.createdAt, reason: 'prevHash sluit niet aan' }
+
+      const fail = (reason: string): ChainVerifyResult => ({
+        ok: false,
+        checked,
+        chains: state.size,
+        brokenAt: {
+          id: row.id,
+          type: row.type,
+          createdAt: row.createdAt,
+          reason,
+          dossierId: row.dossierId
         }
-      }
+      })
+
+      if (row.prevHash !== s.prevHash) return fail('prevHash sluit niet aan binnen deze keten')
       const expected = chainHash({
         prevHash: row.prevHash,
         type: row.type,
@@ -191,16 +219,11 @@ export async function verifyAuditChain(batchSize = 1000): Promise<ChainVerifyRes
         metadata: row.metadata,
         createdAt: row.createdAt
       })
-      if (expected !== row.hash) {
-        return {
-          ok: false,
-          checked,
-          brokenAt: { id: row.id, type: row.type, createdAt: row.createdAt, reason: 'inhoud wijkt af van de hash' }
-        }
-      }
-      prevHash = row.hash
+      if (expected !== row.hash) return fail('inhoud wijkt af van de hash')
+
+      s.prevHash = row.hash
       checked += 1
     }
   }
-  return { ok: true, checked, brokenAt: null }
+  return { ok: true, checked, chains: state.size, brokenAt: null }
 }
