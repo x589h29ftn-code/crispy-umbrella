@@ -45,7 +45,7 @@
   <div class="bar"></div>
   <p class="title">Gebruikershandleiding</p>
   <p class="sub">Ondertekenportaal &middot; documenten veilig online laten ondertekenen</p>
-  <p class="meta">Otto Visser &amp; Partners accountants &middot; versie 2.0</p>
+  <p class="meta">Otto Visser &amp; Partners accountants &middot; versie 3.0</p>
 </section>
 
 <section class="toc">
@@ -60,8 +60,11 @@
     <li><span>Versturen en opvolgen</span></li>
     <li><span>Zelf ondertekenen vanuit kantoor</span></li>
     <li><span>Zo tekent de cli&euml;nt</span></li>
+    <li><span>Ondertekenen met uw beroepscertificaat</span></li>
+    <li><span>Als een e-mail niet aankomt</span></li>
+    <li><span>Een document controleren op echtheid</span></li>
     <li><span>Berichtsjablonen</span></li>
-    <li><span>Gebruikers beheren</span></li>
+    <li><span>Gebruikers beheren en het beroepscertificaat</span></li>
     <li><span>Beveiliging in het kort</span></li>
   </ol>
 </section>
@@ -77,6 +80,7 @@
     <li>Het portaal herkent automatisch wat voor stuk het is en vult titel en begeleidende tekst voor.</li>
     <li>U geeft aan waar getekend moet worden en in welke volgorde.</li>
     <li>De cli&euml;nt krijgt een uitnodiging per e-mail, bevestigt zijn identiteit met een verificatiecode en tekent in de browser.</li>
+    <li>Werkt u met een beroepscertificaat? Dan zet u daarna uw eigen handtekening op persoonlijke titel (hoofdstuk 10).</li>
     <li>Iedere partij ontvangt de definitieve, verzegelde PDF met een auditspoor.</li>
   </ol>
   <div class="tip"><strong>Twee soorten ondertekenaars.</strong> Een <em>kantoorondertekenaar</em> (u of een collega) tekent ingelogd in het portaal. Een <em>cli&euml;nt</em> tekent via een beveiligde link in de e-mail.</div>
@@ -93,7 +97,7 @@
   <h3>Wachtwoord vergeten</h3>
   <p>Klik op <strong>Wachtwoord vergeten?</strong> op het inlogscherm en vul uw e-mailadres in. U ontvangt een e-mail met een eenmalige link waarmee u een nieuw wachtwoord instelt. De link is 60 minuten geldig.</p>
   <figure><img src="schermafbeeldingen/15-wachtwoord-vergeten.png" alt="Wachtwoord vergeten" /><figcaption>Een nieuw wachtwoord aanvragen.</figcaption></figure>
-  <div class="tip">Uw beheerder kan uw wachtwoord of tweefactor ook resetten als u er helemaal niet meer in komt (zie hoofdstuk 11).</div>
+  <div class="tip">Uw beheerder kan uw wachtwoord of tweefactor ook resetten als u er helemaal niet meer in komt (zie hoofdstuk 14).</div>
 </section>
 
 <!-- 3 -->
@@ -111,6 +115,14 @@
   <h3>Aandacht nodig</h3>
   <p>De knop <strong>Aandacht nodig</strong> toont in &eacute;&eacute;n klik alle openstaande verzoeken die (bijna) verlopen, zodat u weet waar een herinnering op zijn plaats is.</p>
   <figure><img src="schermafbeeldingen/03-dashboard-aandacht.png" alt="Aandacht nodig" /><figcaption>Alleen de verzoeken die aandacht vragen.</figcaption></figure>
+
+  <h3>Meldingen bovenaan</h3>
+  <p>Boven de lijst verschijnen gekleurde balken zodra er iets uw aandacht vraagt. U hoeft er dus niet naar te zoeken:</p>
+  <ul>
+    <li><strong>Rood &ndash; "uitnodiging komt niet aan".</strong> De e-mail is niet bezorgd, meestal door een typefout in het adres. Zie hoofdstuk 11.</li>
+    <li><strong>Blauw &ndash; "Wacht op uw handtekening".</strong> Alle partijen hebben getekend; het stuk wacht nog op uw handtekening met beroepscertificaat. Zie hoofdstuk 10.</li>
+    <li><strong>Oranje &ndash; "wacht op verzegeling".</strong> Zeldzaam. Het stuk is ondertekend, maar de digitale verzegeling is nog niet gelukt (bijvoorbeeld door een storing bij de certificaatdienst). Het portaal probeert het automatisch opnieuw; er gaat pas een voltooiingsmail uit als het gelukt is. U hoeft niets te doen.</li>
+  </ul>
 </section>
 
 <!-- 4 -->
@@ -139,7 +151,7 @@
   <h3>Meerdere documenten samen</h3>
   <p>Jaarrekening, notulen en bevestiging gaan vrijwel altijd samen. Voeg ze met <strong>Nog een document toevoegen</strong> toe aan hetzelfde verzoek: het portaal voegt titel en bericht dan automatisch samen tot &eacute;&eacute;n verzoek dat alle stukken benoemt. Elk document houdt zijn eigen titel; de cli&euml;nt tekent ze na &eacute;&eacute;n keer inloggen achter elkaar.</p>
   <figure><img src="schermafbeeldingen/05-nieuw-samengevoegd.png" alt="Samengevoegd verzoek" /><figcaption>Drie documenten in &eacute;&eacute;n verzoek; titel en bericht zijn samengevoegd.</figcaption></figure>
-  <div class="tip">Invulvelden zoals <code>{voornaam_klant}</code> worden bij het verzenden per ontvanger ingevuld. De standaardteksten past u aan onder Berichtsjablonen (hoofdstuk 10).</div>
+  <div class="tip">Invulvelden zoals <code>{voornaam_klant}</code> worden bij het verzenden per ontvanger ingevuld. De standaardteksten past u aan onder Berichtsjablonen (hoofdstuk 13).</div>
 </section>
 
 <!-- 6 -->
@@ -201,6 +213,81 @@
 <!-- 10 -->
 <section class="chapter">
   <p class="kicker">Hoofdstuk 10</p>
+  <h2>Ondertekenen met uw beroepscertificaat</h2>
+  <p class="lead">Bent u accountant (AA of RA) met een beroepscertificaat, dan zet u uw handtekening op persoonlijke titel &mdash; met uw beroepstitel erbij. U bevestigt daarbij &eacute;&eacute;n keer met uw pincode, ook als het om een stapel stukken gaat.</p>
+
+  <h3>Wanneer komt dit langs?</h3>
+  <p>Zodra alle partijen hebben getekend, komt het dossier op <strong>&ldquo;Wacht op uw handtekening&rdquo;</strong>. U ziet dat op het dashboard en boven de lijst bij <strong>Te ondertekenen</strong>. Zolang dit wacht gaat er <em>geen</em> voltooiingsmail naar de cli&euml;nt.</p>
+  <figure><img src="schermafbeeldingen/19-te-ondertekenen.png" alt="Te ondertekenen met melding" /><figcaption>De blauwe balk laat zien hoeveel stukken op uw handtekening wachten.</figcaption></figure>
+
+  <h3>Waarom dit een aparte stap is</h3>
+  <p>Zodra er een digitale handtekening in een document zit, mag er niets meer aan veranderen. Het ondertekencertificaat achterin moet er dus eerst op, en dat kan pas als iedereen klaar is. Daarom tekent u niet tijdens het versturen, maar aan het eind.</p>
+
+  <h3>Zo werkt het</h3>
+  <ol>
+    <li>Klik op de blauwe balk of ga naar <strong>Te ondertekenen &rarr; Ondertekenen met beroepscertificaat</strong>.</li>
+    <li>Vink aan wat u wilt ondertekenen. Alles staat standaard aangevinkt; u kunt stukken uitzetten die u nog wilt nakijken.</li>
+    <li>Klik op <strong>Ondertekenen</strong>. U gaat naar uw certificaatprovider.</li>
+    <li>Bevestig daar <strong>&eacute;&eacute;n keer</strong> met uw pincode in de app.</li>
+    <li>U komt terug in het portaal. De stukken zijn ondertekend, afgerond en verstuurd.</li>
+  </ol>
+  <figure><img src="schermafbeeldingen/18-waarmerken.png" alt="Ondertekenen met beroepscertificaat" /><figcaption>Meerdere stukken selecteren en in &eacute;&eacute;n keer bevestigen.</figcaption></figure>
+
+  <div class="tip"><strong>Handig om te weten.</strong> U kunt tot 50 stukken onder &eacute;&eacute;n bevestiging meenemen. Werk dus liever &eacute;&eacute;n keer per dag een lijstje weg dan elk stuk apart &mdash; dat scheelt evenveel keer een pincode.</div>
+
+  <div class="warn"><strong>Gaat er iets mis?</strong> De bevestiging is maar een paar minuten geldig. Duurt het te lang of breekt u af, dan is er <em>niets</em> ondertekend en begint u gewoon opnieuw. Er blijft nooit een half ondertekende stapel achter.</div>
+
+  <p>Staat gekwalificeerd ondertekenen niet aan voor uw account, of gebruikt uw kantoor geen beroepscertificaat, dan slaat het portaal deze stap over en wordt een stuk direct afgerond.</p>
+</section>
+
+<!-- 11 -->
+<section class="chapter">
+  <p class="kicker">Hoofdstuk 11</p>
+  <h2>Als een e-mail niet aankomt</h2>
+  <p class="lead">Het portaal ziet of een uitnodiging daadwerkelijk is bezorgd. Een verzoek kan dus niet stil blijven liggen doordat het e-mailadres fout is.</p>
+
+  <h3>Wat u ziet</h3>
+  <p>Komt een uitnodiging niet aan, dan verschijnt bovenaan het dashboard een <strong>rode melding</strong> met de naam, het adres en de reden. U krijgt daarnaast een e-mail.</p>
+  <figure><img src="schermafbeeldingen/02-dashboard.png" alt="Dashboard met mailmelding" /><figcaption>Bovenaan: een uitnodiging die niet is bezorgd, met de reden erbij.</figcaption></figure>
+
+  <h3>Wat u doet</h3>
+  <ol>
+    <li>Open het dossier via de link in de melding.</li>
+    <li>Corrigeer het e-mailadres bij de cli&euml;nt.</li>
+    <li>Verstuur het verzoek opnieuw.</li>
+  </ol>
+
+  <div class="warn"><strong>Herinneren werkt hier niet.</strong> Naar een adres dat niet bestaat kunt u geen herinnering sturen; het portaal blokkeert dat bewust. Blijven mailen naar foute adressen schaadt namelijk de bezorging van al uw andere mail. Corrigeer eerst het adres.</div>
+
+  <h3>Tijdelijke problemen</h3>
+  <p>Is de mailbox van de cli&euml;nt bijvoorbeeld vol, dan probeert het portaal het na een uur automatisch nog &eacute;&eacute;n keer. Lukt het dan nog niet, dan krijgt u bericht.</p>
+
+  <p>In de tijdlijn van het dossier ziet u per stap wat er met de mail is gebeurd: verzonden, afgeleverd, of niet bezorgd. Of de cli&euml;nt de mail heeft <em>geopend</em> ziet u soms ook, maar dat is een indicatie en geen bewijs &mdash; daarom staat het niet op het ondertekencertificaat.</p>
+</section>
+
+<!-- 12 -->
+<section class="chapter">
+  <p class="kicker">Hoofdstuk 12</p>
+  <h2>Een document controleren op echtheid</h2>
+  <p class="lead">Wil een bank, notaris of cli&euml;nt weten of een document echt van u komt en onveranderd is? Dat kan iedereen zelf nagaan, zonder account.</p>
+
+  <h3>Via het portaal</h3>
+  <ol>
+    <li>Ga naar <strong>/valideren</strong> op het adres van het portaal.</li>
+    <li>Upload het document.</li>
+    <li>U ziet of het zegel geldig is, wie het heeft gezet, wanneer, en of er na ondertekening nog iets is gewijzigd.</li>
+  </ol>
+  <figure><img src="schermafbeeldingen/20-valideren.png" alt="Document controleren" /><figcaption>De controlepagina. Het bestand wordt alleen gecontroleerd en niet opgeslagen.</figcaption></figure>
+
+  <h3>Via Adobe Reader</h3>
+  <p>Wie het document in Adobe Acrobat Reader opent, ziet bovenaan een balk met de handtekeningstatus. Klik op het handtekeningpaneel voor de details: wie ondertekende, wanneer, en of het document sindsdien is gewijzigd.</p>
+
+  <div class="tip"><strong>Wat de ontvanger ziet.</strong> Op de laatste pagina van elk afgerond stuk staat een <strong>ondertekencertificaat</strong>: wie heeft getekend, wanneer, vanaf welk IP-adres, wanneer de verificatiecode is gebruikt, en een controlegetal van het document. Daarmee is het hele verloop na te lopen, ook op papier.</div>
+</section>
+
+<!-- 13 -->
+<section class="chapter">
+  <p class="kicker">Hoofdstuk 13</p>
   <h2>Berichtsjablonen</h2>
   <p class="lead">De standaardtitel en -tekst per documenttype bepalen wat er automatisch wordt voorgevuld. Beheerders passen ze aan onder <strong>Instellingen &rarr; Berichtsjablonen</strong>.</p>
   <ul>
@@ -211,10 +298,10 @@
   <figure><img src="schermafbeeldingen/12-sjablonen.png" alt="Berichtsjablonen" /><figcaption>De teksten per documenttype aanpassen.</figcaption></figure>
 </section>
 
-<!-- 11 -->
+<!-- 14 -->
 <section class="chapter">
-  <p class="kicker">Hoofdstuk 11</p>
-  <h2>Gebruikers beheren</h2>
+  <p class="kicker">Hoofdstuk 14</p>
+  <h2>Gebruikers beheren en het beroepscertificaat</h2>
   <p class="lead">Beheerders maken accounts aan voor collega's en kunnen hen helpen bij problemen.</p>
   <ul>
     <li>Ga naar <strong>Gebruikers</strong> (alleen zichtbaar voor beheerders).</li>
@@ -222,12 +309,23 @@
     <li>Kies de rol: <strong>Medewerker</strong> of <strong>Beheerder</strong>.</li>
     <li>Per gebruiker kunt u het <strong>wachtwoord resetten</strong> en de <strong>tweefactor resetten</strong> (bij verlies van de telefoon). De gebruiker stelt het dan opnieuw in bij het inloggen.</li>
   </ul>
-  <figure><img src="schermafbeeldingen/13-gebruikers.png" alt="Gebruikersbeheer" /><figcaption>Collega's toevoegen, rollen toekennen en wachtwoord/2FA resetten.</figcaption></figure>
+  <figure><img src="schermafbeeldingen/13-gebruikers.png" alt="Gebruikersbeheer" /><figcaption>Collega's toevoegen, rollen toekennen, en per accountant het beroepscertificaat instellen.</figcaption></figure>
+
+  <h3>Beroepscertificaat per accountant</h3>
+  <p>Onderaan dezelfde pagina zet u per medewerker het <strong>beroepscertificaat</strong> in. Daarmee kan die accountant op persoonlijke titel gekwalificeerd ondertekenen (hoofdstuk 10).</p>
+  <ul>
+    <li><strong>Titel:</strong> AA of RA. Deze titel komt bij de handtekening te staan.</li>
+    <li><strong>NBA-nummer:</strong> optioneel, voor uw eigen administratie.</li>
+    <li><strong>Credential-id:</strong> de verwijzing die u van de certificaatprovider krijgt.</li>
+    <li><strong>Inschakelen:</strong> zet het vinkje aan om gekwalificeerd ondertekenen voor deze accountant te activeren.</li>
+  </ul>
+  <div class="tip"><strong>Veilig opgezet.</strong> Het portaal bewaart alleen de verwijzing, nooit uw pincode of het certificaat zelf. Dat blijft bij de provider, en u bevestigt elke ondertekening zelf in hun app.</div>
+  <div class="warn"><strong>Persoonsgebonden.</strong> Een certificaat hoort bij precies &eacute;&eacute;n accountant en mag nooit worden gedeeld; het portaal staat dat ook niet toe. Eindigt de inschrijving in het NBA-register of wordt die geschorst, dan trekt de provider het certificaat in. Het portaal merkt dat, zet gekwalificeerd ondertekenen voor die medewerker automatisch uit en waarschuwt de beheerders.</div>
 </section>
 
-<!-- 12 -->
+<!-- 15 -->
 <section class="chapter">
-  <p class="kicker">Hoofdstuk 12</p>
+  <p class="kicker">Hoofdstuk 15</p>
   <h2>Beveiliging in het kort</h2>
   <p class="lead">Het portaal is ontworpen met beveiliging in meerdere lagen, zodat gevoelige cli&euml;ntgegevens beschermd blijven.</p>
   <figure><img src="schermafbeeldingen/11-instellingen.png" alt="Instellingen" /><figcaption>In Instellingen beheert u uw wachtwoord, tweefactor (met herstelcodes) en uw handtekening.</figcaption></figure>
@@ -237,10 +335,17 @@
     <li><strong>Tweefactor voor kantoor.</strong> Inloggen vereist wachtwoord &eacute;n een code uit uw app; met herstelcodes raakt u nooit buitengesloten.</li>
     <li><strong>Identiteitscheck voor cli&euml;nten.</strong> De cli&euml;nt tekent pas na een eenmalige verificatiecode per e-mail of sms.</li>
     <li><strong>Eenmalige links.</strong> Ondertekenlinks en herstellinks zijn persoonlijk, kortlevend en na gebruik ongeldig.</li>
-    <li><strong>Auditspoor en verzegeling.</strong> Elke stap wordt vastgelegd (met tijd en IP-adres); de definitieve PDF krijgt een controlegetal (SHA-256), zodat latere wijziging aantoonbaar is.</li>
+    <li><strong>Auditspoor.</strong> Elke stap wordt vastgelegd met tijd en IP-adres, in een spoor dat niet te wijzigen of te verwijderen is. Ook de tekst die de cli&euml;nt boven de ondertekenknop las, wordt woordelijk bewaard.</li>
+    <li><strong>Digitale verzegeling.</strong> Het afgeronde document krijgt een digitale handtekening met een tijdstempel van een onafhankelijke dienst. Daarmee kan <em>iedere ontvanger</em> zelf vaststellen dat het stuk onveranderd is &mdash; in Adobe Reader of via de controlepagina (hoofdstuk 12).</li>
+    <li><strong>Controle bij downloaden.</strong> Bij elke download controleert het portaal of het bestand nog overeenkomt met wat er is verzegeld. Wijkt het af, dan wordt de download geblokkeerd.</li>
+    <li><strong>Bezorging van e-mail.</strong> Het portaal ziet of een uitnodiging is afgeleverd en waarschuwt als dat niet zo is (hoofdstuk 11).</li>
+    <li><strong>Bewaartermijn.</strong> Afgeronde dossiers worden zeven jaar bewaard en daarna automatisch opgeruimd &mdash; document en bewijsspoor altijd samen.</li>
   </ul>
-  <div class="warn"><strong>Tips.</strong> Deel uw wachtwoord, tweefactor en herstelcodes nooit. Controleer altijd het e-mailadres van de cli&euml;nt voor u verstuurt; dat adres bepaalt wie kan tekenen. Trek een verzoek in zodra het niet meer nodig is.</div>
-  <p style="margin-top:26px; color:#7b8a99; font-size:10pt; text-align:center;">Otto Visser &amp; Partners accountants &middot; Gebruikershandleiding Ondertekenportaal &middot; versie 2.0</p>
+  <div class="warn"><strong>Tips.</strong> Deel uw wachtwoord, tweefactor, herstelcodes en pincode nooit. Controleer altijd het e-mailadres van de cli&euml;nt voor u verstuurt; dat adres bepaalt wie kan tekenen. Trek een verzoek in zodra het niet meer nodig is.</div>
+
+  <h3>Wat u tegen een cli&euml;nt kunt zeggen</h3>
+  <p>Krijgt u de vraag of online ondertekenen wel rechtsgeldig is: een elektronische handtekening heeft in Nederland dezelfde rechtsgevolgen als een handtekening op papier, mits de methode betrouwbaar genoeg is voor het doel. Het portaal legt daarvoor de identiteit van de ondertekenaar vast met een verificatiecode naar een door u bevestigd e-mailadres, bewaart het volledige verloop, en verzegelt het eindresultaat zodat wijziging achteraf aantoonbaar is.</p>
+  <p style="margin-top:26px; color:#7b8a99; font-size:10pt; text-align:center;">Otto Visser &amp; Partners accountants &middot; Gebruikershandleiding Ondertekenportaal &middot; versie 3.0</p>
 </section>
 
 </body>
