@@ -238,15 +238,24 @@ zodat het geen verrassing is:
 `/validate` is het enige eindpunt dat zonder inloggen bij de component met de
 ondertekengegevens uitkomt. Draai dat als aparte service uit dezelfde image, met:
 
+De service **staat al in `docker-compose.yml`** (`validator`, dezelfde image als de
+sealer, met `mem_limit` en `cpus` omdat PDF-bommen hier de goedkoopste aanval zijn).
+Wat je zelf zet:
+
 ```
-# in de service die alleen valideert
-VALIDATOR_ONLY=true          # weigert te starten met ondertekengegevens in de env
-# in de web-service
-VALIDATOR_ISOLATED=true      # bevestigt dat de splitsing er is
+# in .env
+VALIDATOR_ISOLATED=true
+SEALER_VALIDATE_URL=http://validator:8000
 ```
 
-Zet in die container ook `mem_limit` en `cpus`, want PDF-bommen zijn hier de
-goedkoopste aanval.
+De grendel controleert ook dat `SEALER_VALIDATE_URL` níet gelijk is aan `SEALER_URL`.
+Anders is de scheiding alleen een vlag: de validatie zou nog steeds naar de container
+met de ondertekengegevens gaan.
+
+De validator-container zelf heeft `VALIDATOR_ONLY=true` (dat staat vast in compose).
+Dat proces weigert te starten als er tóch ondertekengegevens in zijn omgeving staan,
+en `/seal`, `/prepare` en `/inject` geven daar 403. Zet dus geen `SEAL_*`- of
+`TSA_PASSWORD`-variabelen bij die service, ook niet "voor de zekerheid".
 
 **2. Minstens één bestemming voor de auditankers.**
 

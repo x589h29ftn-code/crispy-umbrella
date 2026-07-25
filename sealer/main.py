@@ -38,6 +38,62 @@ MAX_PDF_BYTES = int(os.environ.get("SEALER_MAX_PDF_BYTES", 60 * 1024 * 1024))
 SIGNATURE_RESERVE_BYTES = int(os.environ.get("SEALER_SIGNATURE_RESERVE", 16384))
 SHARED_SECRET = os.environ.get("SEALER_SHARED_SECRET", "")
 
+# --- Validatormodus: dezelfde image, andere rol ---
+#
+# /validate verwerkt bestanden die van buiten komen en is via de publieke
+# controlepagina bereikbaar. Die parser hoort niet in dezelfde container te staan als
+# de ondertekengegevens. Daarom kan deze image in twee rollen draaien.
+#
+# DEZE GRENDEL MOET HIER STAAN EN NIET IN DE WEBAPP. De validator-container draait
+# dit Python-proces; een controle in de omgeving van Next.js loopt daar nooit. Een
+# grendel in het verkeerde proces is geen grendel.
+VALIDATOR_ONLY = os.environ.get("VALIDATOR_ONLY", "").strip().lower() == "true"
+
+# Namen die alleen in de ondertekenende container mogen staan.
+_ONDERTEKENGEGEVENS = (
+    "SEAL_CSC_OAUTH_TOKEN",
+    "SEAL_CSC_SAD",
+    "SEAL_CSC_CREDENTIAL_ID",
+    "SEAL_DSS_API_KEY",
+    "SEAL_DSS_API_SECRET",
+    "CLEVERBASE_CSC_CLIENT_SECRET",
+    "DIGIDENTITY_CLIENT_SECRET",
+    "TSA_PASSWORD",
+)
+
+
+def _assert_validator_has_no_credentials() -> None:
+    """Weigert te starten als de validator ondertekengegevens in zijn omgeving heeft.
+
+    De omgekeerde grendel: zonder deze controle belandt er over een half jaar één
+    gedeeld env-bestand in beide services en is de scheiding weg zonder dat iemand
+    het merkt.
+    """
+    if not VALIDATOR_ONLY:
+        return
+    gevonden = [naam for naam in _ONDERTEKENGEGEVENS if os.environ.get(naam, "").strip()]
+    if gevonden:
+        raise RuntimeError(
+            "VALIDATOR_ONLY=true, maar er staan ondertekengegevens in de omgeving van deze "
+            f"container: {', '.join(gevonden)}. De validator verwerkt bestanden van buiten en "
+            "mag daar niet bij kunnen. Haal ze uit het env-bestand van deze service."
+        )
+
+
+_assert_validator_has_no_credentials()
+if VALIDATOR_ONLY:
+    log.info("sealer start in VALIDATOR-modus: alleen /validate en /health")
+
+
+def _refuse_in_validator_mode() -> None:
+    """Ondertekenen kan niet in de validator, ook niet met het juiste secret."""
+    if VALIDATOR_ONLY:
+        raise HTTPException(
+            403,
+            "Deze service draait als validator (VALIDATOR_ONLY=true) en ondertekent niet. "
+            "Stuur ondertekenverzoeken naar de sealer-service.",
+        )
+
 
 def _check_secret(provided: Optional[str]) -> None:
     if not SHARED_SECRET:
@@ -93,6 +149,9 @@ async def health(x_sealer_secret: Optional[str] = Header(None)):
     """Controleert of de driver te bouwen is en of de TSA bereikbaar is."""
     _check_secret(x_sealer_secret)
     status = {"ok": True, "driver": os.environ.get("SEAL_DRIVER", "csc")}
+    if VALIDATOR_ONLY:
+        # De validator heeft geen driver en geen TSA nodig; alleen kunnen lezen.
+        return JSONResponse({"ok": True, "role": "validator"}, status_code=200)
     try:
         from drivers import build_signer
 
@@ -128,6 +187,7 @@ async def seal(
 ):
     """Zet één PAdES-handtekening (approval, geen DocMDP) op een afgeronde PDF."""
     _check_secret(x_sealer_secret)
+    _refuse_in_validator_mode()
     if len(pdf) > MAX_PDF_BYTES:
         raise HTTPException(413, "PDF te groot.")
 
@@ -283,6 +343,7 @@ async def prepare(
     autorisatie: de SAD leeft maar 300 seconden en dekt de hele batch.
     """
     _check_secret(x_sealer_secret)
+    _refuse_in_validator_mode()
     if len(pdf) > MAX_PDF_BYTES:
         raise HTTPException(413, "PDF te groot.")
 
@@ -384,6 +445,7 @@ async def inject(
     """Fase 2: bouwt de CMS met de handtekening van de provider en zet die in de
     voorbereide PDF. Daarna is het document ondertekend en onaantastbaar."""
     _check_secret(x_sealer_secret)
+    _refuse_in_validator_mode()
     if len(prepared_pdf) > MAX_PDF_BYTES:
         raise HTTPException(413, "PDF te groot.")
 
