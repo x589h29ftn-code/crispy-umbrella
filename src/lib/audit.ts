@@ -1,6 +1,7 @@
 import { createHash } from 'node:crypto'
 import { prisma } from '@/lib/db'
 import type { Prisma } from '@prisma/client'
+import { AUDIT_LOCK_NAMESPACE, GEEN_DOSSIER } from '@/lib/locks'
 
 export type AuditType =
   | 'AANGEMAAKT'
@@ -21,6 +22,9 @@ export type AuditType =
   | 'CERTIFICAAT_INGETROKKEN'
   | 'GEWEIGERD'
   | 'HERINNERD'
+  // Verlopen verzoek opnieuw verstuurd. Alleen bij VERLOPEN; GEWEIGERD is
+  // onherroepelijk en levert een nieuw dossier op.
+  | 'HERVERZONDEN'
   | 'MAIL_AFGELEVERD'
   | 'MAIL_GEBOUNCED'
   | 'MAIL_KLACHT'
@@ -89,68 +93,131 @@ function chainHash(input: {
 }
 
 /**
- * Schrijft één append-only auditregel en hangt hem aan de hashketen. Faalt stil
- * (het auditspoor mag de flow nooit blokkeren), maar logt wel luid.
+ * Schrijft één append-only auditregel en hangt hem aan de hashketen.
+ *
+ * Twee standen. Voor de meeste soorten (`bestEffort`) mag het auditspoor de flow
+ * niet blokkeren: een mislukte GEDOWNLOAD-regel is hinderlijk, geen ramp. Voor de
+ * bewijskritieke soorten (`required`, zie VERPLICHTE_TYPEN) is stil falen wél een
+ * probleem: dan is er een handtekening zonder bewijsspoor, precies het scenario
+ * waarvoor het auditspoor bestaat. Die gooien door, zodat de aanroeper terugrolt.
  *
  * De keten maakt manipulatie in de database aantoonbaar: wie een regel wijzigt
  * of verwijdert, breekt de keten vanaf dat punt. In de database staat daarnaast
  * een trigger die UPDATE en DELETE hoe dan ook weigert.
  */
-/** Vaste namespace voor de advisory locks van het auditspoor. */
-const AUDIT_LOCK_NAMESPACE = 71_413
 
-export async function writeAudit(input: AuditInput): Promise<void> {
+/**
+ * Gebeurtenissen waarbij stil falen onacceptabel is. Bij deze soorten is de
+ * auditregel het bewijs zelf: een handtekening zonder spoor is precies het
+ * scenario waarvoor het auditspoor bestaat.
+ *
+ * De lijst blijft kort. Elke toevoeging maakt het ondertekenen afhankelijk van
+ * het auditpad, en dat is een beschikbaarheidsrisico.
+ */
+const VERPLICHTE_TYPEN: ReadonlySet<AuditType> = new Set<AuditType>([
+  'ONDERTEKEND',
+  'GEKWALIFICEERD_ONDERTEKEND',
+  'OTP_GEVERIFIEERD',
+  'VERZEGELD',
+  'GEWEIGERD'
+])
+
+/** Minimale vorm van een Prisma-client; werkt zowel met prisma als met een tx. */
+type AuditClient = Pick<Prisma.TransactionClient, 'auditEvent' | '$executeRaw'>
+
+export interface WriteAuditOptions {
+  /**
+   * `required` gooit door en laat de omliggende transactie terugrollen;
+   * `bestEffort` logt luid en gaat verder. Standaard wordt de soort bepaald door
+   * VERPLICHTE_TYPEN, zodat een aanroep zonder opties toch het juiste doet.
+   */
+  mode?: 'required' | 'bestEffort'
+  /** Schrijf binnen een bestaande transactie, zodat een throw die meeneemt. */
+  tx?: Prisma.TransactionClient
+}
+
+/** Het eigenlijke schrijven; verwacht een client waarin al een transactie loopt. */
+async function schrijfRegel(client: AuditClient, input: AuditInput): Promise<void> {
+  const createdAt = new Date()
+  // De keten loopt PER DOSSIER, niet globaal. Dat is bewust: de bewaartermijn
+  // ruimt een compleet dossier op, en bij één globale keten zou zo'n legitieme
+  // opruiming de keten breken. Een keten die altijd "gebroken" is, wordt
+  // genegeerd en beschermt dus niets. Regels zonder dossier (inloggen,
+  // certificaat ingetrokken) vormen samen één eigen keten.
+  const chainKey = input.dossierId ?? GEEN_DOSSIER
+  // Eén schrijver per keten. Zonder deze vergrendeling lezen twee gelijktijdige
+  // schrijvers (twee ondertekenaars die op hetzelfde moment indienen) dezelfde
+  // laatste regel, verwijzen beide nieuwe regels naar dezelfde prevHash, en vorkt
+  // de keten. De verificatie meldt dan voor altijd een breuk die niemand heeft
+  // veroorzaakt — precies het soort valse alarm waardoor een controle wordt
+  // genegeerd.
+  //
+  // `_xact_` en niet de sessievariant: een sessie-lock overleeft het einde van de
+  // transactie en gaat met de verbinding terug in de pool, waarna die keten voor
+  // altijd blokkeert. Transactie-locks vallen bij commit én rollback vrij.
+  //
+  // De casts zijn nodig: zonder ze stuurt de driver een bigint mee en bestaat er
+  // geen pg_advisory_xact_lock met die signatuur.
+  await client.$executeRaw`SELECT pg_advisory_xact_lock(${AUDIT_LOCK_NAMESPACE}::int, hashtext(${chainKey})::int)`
+  const prev = await client.auditEvent.findFirst({
+    where: { dossierId: input.dossierId ?? null },
+    orderBy: [{ seq: 'desc' }],
+    select: { hash: true }
+  })
+  const prevHash = prev?.hash ?? null
+  const hash = chainHash({
+    prevHash,
+    type: input.type,
+    dossierId: input.dossierId,
+    recipientId: input.recipientId,
+    message: input.message,
+    metadata: input.metadata,
+    createdAt
+  })
+  await client.auditEvent.create({
+    data: {
+      type: input.type,
+      dossierId: input.dossierId,
+      accountantId: input.accountantId,
+      recipientId: input.recipientId,
+      message: input.message,
+      ipAddress: input.ip,
+      userAgent: input.userAgent,
+      metadata: input.metadata,
+      createdAt,
+      prevHash,
+      hash
+    }
+  })
+}
+
+export async function writeAudit(input: AuditInput, opts?: WriteAuditOptions): Promise<void> {
+  const mode = opts?.mode ?? (VERPLICHTE_TYPEN.has(input.type) ? 'required' : 'bestEffort')
   try {
-    const createdAt = new Date()
-    // De keten loopt PER DOSSIER, niet globaal. Dat is bewust: de bewaartermijn
-    // ruimt een compleet dossier op, en bij één globale keten zou zo'n legitieme
-    // opruiming de keten breken. Een keten die altijd "gebroken" is, wordt
-    // genegeerd en beschermt dus niets. Regels zonder dossier (inloggen,
-    // certificaat ingetrokken) vormen samen één eigen keten.
-    const chainKey = input.dossierId ?? '(zonder dossier)'
-    await prisma.$transaction(async (tx) => {
-      // Eén schrijver per keten. Zonder deze vergrendeling lezen twee
-      // gelijktijdige schrijvers (twee ondertekenaars die op hetzelfde moment
-      // indienen) dezelfde laatste regel, verwijzen beide nieuwe regels naar
-      // dezelfde prevHash, en vorkt de keten. De verificatie meldt dan voor
-      // altijd een breuk die niemand heeft veroorzaakt — precies het soort
-      // valse alarm waardoor een controle wordt genegeerd.
-      // De casts zijn nodig: zonder ze stuurt de driver een bigint mee en bestaat
-      // er geen pg_advisory_xact_lock met die signatuur.
-      await tx.$executeRaw`SELECT pg_advisory_xact_lock(${AUDIT_LOCK_NAMESPACE}::int, hashtext(${chainKey})::int)`
-      const prev = await tx.auditEvent.findFirst({
-        where: { dossierId: input.dossierId ?? null },
-        orderBy: [{ seq: 'desc' }],
-        select: { hash: true }
-      })
-      const prevHash = prev?.hash ?? null
-      const hash = chainHash({
-        prevHash,
-        type: input.type,
-        dossierId: input.dossierId,
-        recipientId: input.recipientId,
-        message: input.message,
-        metadata: input.metadata,
-        createdAt
-      })
-      await tx.auditEvent.create({
-        data: {
-          type: input.type,
-          dossierId: input.dossierId,
-          accountantId: input.accountantId,
-          recipientId: input.recipientId,
-          message: input.message,
-          ipAddress: input.ip,
-          userAgent: input.userAgent,
-          metadata: input.metadata,
-          createdAt,
-          prevHash,
-          hash
-        }
-      })
-    })
+    if (opts?.tx) {
+      await schrijfRegel(opts.tx, input)
+    } else {
+      await prisma.$transaction((tx) => schrijfRegel(tx, input))
+    }
   } catch (e) {
+    if (mode === 'required') {
+      // Doorgooien: de aanroeper hoort hierop terug te rollen. Een handtekening
+      // zonder bewijsregel is erger dan een mislukte indiening die te herhalen is.
+      console.error(`[audit] VERPLICHTE auditregel ${input.type} mislukt`, e)
+      throw new AuditWriteError(input.type, e as Error)
+    }
     console.error('[audit] kon auditregel niet schrijven', e)
+  }
+}
+
+/** Fout bij een verplichte auditregel; de aanroeper moet hierop terugrollen. */
+export class AuditWriteError extends Error {
+  constructor(
+    readonly auditType: AuditType,
+    readonly cause: Error
+  ) {
+    super(`auditregel ${auditType} kon niet worden vastgelegd: ${cause.message}`)
+    this.name = 'AuditWriteError'
   }
 }
 

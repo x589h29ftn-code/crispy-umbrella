@@ -1,18 +1,25 @@
-import { execFile } from 'node:child_process'
 import { mkdtemp, readFile, rm, writeFile } from 'node:fs/promises'
 import { existsSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { basename, extname, join } from 'node:path'
 import { pathToFileURL } from 'node:url'
+import { runTool } from '@/lib/sandbox'
 
 // Word/Office → PDF, server-side. Geport uit de desktop-app; de Electron-
 // printToPDF-fallback is vervangen omdat er server-side geen Chromium is.
 // Hoofdroute is LibreOffice headless (aanwezig in de Docker-image), met een
 // eenvoudige tekst-fallback voor .docx als LibreOffice ontbreekt (bv. lokaal).
 //
-// Beveiliging: conversie draait in een eigen tempmap met een privé-profiel,
-// een harde timeout en opruiming in `finally`. Netwerktoegang wordt op
-// containerniveau geblokkeerd (de conversie heeft geen netwerk nodig).
+// Beveiliging, en preciezer dan het hier eerder stond: conversie draait in een
+// eigen tempmap met een privé-profiel, een uitgeklede omgeving (geen proxy, geen
+// geheimen), een harde timeout en opruiming in `finally`.
+//
+// Netwerktoegang wordt NIET afgedwongen. Deze processen draaien in de
+// webcontainer, en die heeft netwerk nodig voor de sealer, SMTP en de
+// provider-API's. Wat er wél is: het kindproces krijgt geen proxyvariabelen en
+// niets uit de omgeving mee. Wie het echt dicht wil, zet de conversie in een eigen
+// container met `network_mode: none`; dat staat als bekende beperking in
+// docs/beheer.md. Zie lib/sandbox.ts.
 
 export const OFFICE_EXTENSIONS = ['docx', 'doc', 'odt', 'rtf', 'xlsx', 'xls', 'ods', 'csv', 'pptx', 'ppt', 'odp']
 
@@ -36,12 +43,10 @@ function findSoffice(): string | null {
   return sofficePathCache
 }
 
-function run(cmd: string, args: string[], cwd: string, timeoutMs: number): Promise<void> {
-  return new Promise((resolve, reject) => {
-    execFile(cmd, args, { timeout: timeoutMs, cwd, env: { ...process.env, HOME: cwd } }, (error) =>
-      error ? reject(error) : resolve()
-    )
-  })
+async function run(cmd: string, args: string[], cwd: string, timeoutMs: number): Promise<void> {
+  // Eigen werkmap als HOME, uitgeklede omgeving (geen proxy, geen geheimen) en een
+  // harde tijdslimiet. Zie lib/sandbox.ts voor wat dit wél en niet is.
+  await runTool(cmd, args, { cwd, timeoutMs })
 }
 
 async function convertWithLibreOffice(soffice: string, name: string, data: Uint8Array): Promise<Uint8Array> {

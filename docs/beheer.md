@@ -149,10 +149,18 @@ Hetzelfde geldt voor `TOTP_ENCRYPTION_KEY`.
 
 ## Schaal
 
-De rate-limiting werkt in het geheugen van de webcontainer. Dat is prima bij één
-container. Draai je er ooit meer dan één, dan gelden de limieten per container en
-is de bescherming feitelijk verzwakt; zet dan `rate-limiter-flexible` om naar de
-Postgres-backend. Zolang er één webcontainer draait, is dit geen probleem.
+De rate-limiting staat sinds v1.3 in **Postgres** (tabel `RateLimit`), niet meer in
+het geheugen van de webcontainer. De eerdere onderbouwing ("we draaien één
+container") klopte, maar de manier waarop het stukgaat is te makkelijk: één
+`docker compose up --scale web=2` en de limieten gelden per container, dus feitelijk
+het dubbele. Het volume is triviaal — een handvol rijen per dag.
+
+Valt de database weg, dan gaan de limieten **niet** open: er staat een in-memory
+achtervang met dezelfde instellingen achter, zodat een databasestoring geen
+brute-force-venster opent.
+
+Met `RATE_LIMIT_STORE=memory` zet je het terug in het geheugen; dat is er voor tests
+zonder database, niet voor productie.
 
 ## Achtergrondtaken
 
@@ -161,12 +169,80 @@ taken zelf opnieuw in:
 
 | Taak | Wanneer |
 |---|---|
-| `SEAL_RETRY` | na een mislukte verzegeling, met oplopende tussentijd |
+| `SEAL_RETRY` | na een mislukte verzegeling, met oplopende tussentijd (max 12 pogingen) |
 | `MAIL_RESEND` | één uur na een tijdelijke bounce |
+| `REMINDER` | elk uur; verstuurt herinneringen op dag 5 en 12 na verzending |
+| `EXPIRE` | elk uur; zet verlopen verzoeken op VERLOPEN en meldt het de eigenaar |
+| `WAARMERK_NUDGE` | elk uur; port de eigenaar na 3 dagen wachten op zijn waarmerk |
 | `CSC_SESSION_CLEANUP` | elke 5 minuten |
+| `ORPHAN_CLEANUP` | elke 6 uur; losse blobs ouder dan 24 uur |
+| `AUDIT_ANCHOR` | dagelijks, plus één keer per afgerond dossier |
 | `RETENTION_CLEANUP` | elke 24 uur |
 
+Een herinnering wordt **niet** verstuurd als de tekenlink binnen 24 uur verloopt: een
+link die niet werkt is erger dan stilte. Bij `linkTtlDays = 7` valt de tweede
+herinnering dus weg. Mislukt het versturen (mailserver even weg), dan blijft de
+teller staan en probeert de volgende ronde het opnieuw.
+
 Houd het op **één** worker-instance.
+
+## Losse bestanden en een volle schijf
+
+Elke bewerking van een document schrijft een **nieuwe** versleutelde blob; de
+database verplaatst alleen de verwijzing. Dat is bewust: zou een bewerking hetzelfde
+bestand overschrijven, dan is bij een teruggerolde transactie de blob wél gewijzigd
+en de database niet, en stempelt de volgende ondertekenaar op een bestand dat volgens
+de administratie nog onbewerkt is.
+
+De keerzijde is dat er af en toe een blob achterblijft waar niets naar verwijst: een
+transactie die terugrolde, een verlopen ondertekensessie, een verwijdering die na de
+commit mislukte. De taak `ORPHAN_CLEANUP` ruimt die op, **alleen als ze ouder zijn
+dan 24 uur**. Die marge is niet optioneel: zonder marge haalt de opruiming een
+bestand weg waarvan de commit nog loopt. De taak logt eerst wat hij zou verwijderen
+en doet het daarna.
+
+Dat verschuift de faalmodus van "half geschreven bestand" naar "volume loopt vol".
+Dat is een betere faalmodus, maar het is er wel een:
+
+```bash
+df -h /var/lib/docker/volumes           # of waar het documents-volume staat
+docker compose exec web du -sh /data/documents
+docker compose logs worker | grep "losse bestanden"
+```
+
+Loopt het vol, kijk dan eerst of de opruimtaak draait (de regel hierboven in het
+logboek) en of hij fouten meldt. Handmatig opruimen kan met dezelfde functie via de
+worker; verwijder **nooit** met de hand bestanden uit `/data/documents`, want een
+sleutel die nog in de database staat en waarvan de blob weg is, is dataverlies.
+
+> Let op bij herverzegelen: verandert `sealedKey`, dan klopt een eerder
+> gearchiveerde kopie niet meer met de database. Het portaal logt dat expliciet
+> (`GEARCHIVEERD`) in plaats van stil te overschrijven.
+
+## Externe gereedschappen: wat de "sandbox" wél en niet is
+
+LibreOffice (Word→PDF), tesseract en pdftoppm werken op bestanden die van buiten
+komen. Ze worden aangeroepen met:
+
+- een eigen tijdelijke map als werkmap én als `HOME`, die daarna wordt verwijderd;
+- een **uitgeklede omgeving**: geen proxyvariabelen, geen tokens, geen
+  databasewachtwoord, geen sleutels;
+- een harde tijdslimiet en een limiet op de uitvoer.
+
+**Wat het níet is: netwerktoegang blokkeren.** Deze processen draaien in de
+webcontainer, en die heeft netwerk nodig voor de sealer, SMTP en de provider-API's.
+Eerdere documentatie beweerde dat de conversie "geen netwerk" had; dat was te sterk
+en is nu bijgesteld. Wie het echt dicht wil, zet de conversie in een eigen container
+met `network_mode: none`. Dat is een bewuste openstaande keuze, niet een vergissing.
+
+## Bekende grens: de dossierloze auditketen
+
+Regels zonder dossier (inloggen, certificaat ingetrokken, grafstenen) vormen samen
+één keten, en die keten heeft één schrijver tegelijk. Bij zeven medewerkers is dat
+volledig irrelevant. Zou het portaal ooit veel groter worden en gaan inloggen
+knellen, dan is de oplossing die keten te splitsen — bijvoorbeeld per maand of per
+accountant. Doe daar nu niets aan; het staat hier zodat het over drie jaar geen
+zoekplaatje is.
 
 ## Regressietests
 
@@ -180,6 +256,8 @@ npm run test:opstart        # de harde weigeringen bij opstarten
 npm run test:audit          # hashketen, append-only trigger, bewaartermijn, certificaat
 npm run test:gelijktijdig   # twee ondertekenaars op hetzelfde moment
 npm run test:sessie         # ondertekensessie: versleuteld bewaren en wissen
+npm run test:levensloop     # herinneren, verlopen, opnieuw verzenden, nudge
+npm run test:opslag         # opslagsleutels, losse bestanden, grendels
 ```
 
 De sealer heeft een eigen test met een zelfondertekend testcertificaat (idempotentie,

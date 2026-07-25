@@ -2,8 +2,13 @@
 
 import { useState, useTransition } from 'react'
 import { useRouter } from 'next/navigation'
-import { Send, Bell, XCircle } from 'lucide-react'
-import { sendDossierAction, remindDossierAction, withdrawDossierAction } from '../actions'
+import { Send, Bell, XCircle, RotateCcw } from 'lucide-react'
+import {
+  sendDossierAction,
+  remindDossierAction,
+  withdrawDossierAction,
+  resendExpiredDossierAction
+} from '../actions'
 
 export function DossierActions({ dossierId, status }: { dossierId: string; status: string }) {
   const router = useRouter()
@@ -58,6 +63,26 @@ export function DossierActions({ dossierId, status }: { dossierId: string; statu
               <XCircle className="h-4 w-4" /> Intrekken
             </button>
           </>
+        )}
+        {status === 'VERLOPEN' && (
+          <button
+            className="btn-primary"
+            disabled={pending}
+            onClick={() =>
+              run(
+                () => resendExpiredDossierAction(dossierId),
+                'Opnieuw verstuurd met een nieuwe tekenlink. Al geplaatste handtekeningen zijn bewaard.'
+              )
+            }
+          >
+            <RotateCcw className="h-4 w-4" /> Opnieuw versturen
+          </button>
+        )}
+        {status === 'GEWEIGERD' && (
+          <p className="text-sm text-slate-500">
+            Dit verzoek is geweigerd. Weigeren is een besluit; maak een nieuw dossier aan als u het opnieuw wilt
+            aanbieden.
+          </p>
         )}
       </div>
       {msg && <p className="text-sm text-emerald-600">{msg}</p>}

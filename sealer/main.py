@@ -297,6 +297,20 @@ async def prepare(
         log.exception("prepare niet gereed")
         return JSONResponse({"error": f"prepare niet gereed: {exc}"}, status_code=502)
 
+    # Dezelfde regel als bij /seal, consequent doorgetrokken: de PDF bepaalt of er
+    # al ondertekend is, nooit de database. Staat er al een handtekening in dit
+    # veld, dan is voorbereiden zinloos — het zou een tweede autorisatie (en dus
+    # een tweede pincode) kosten voor werk dat al klaar is.
+    #
+    # Bij /inject heeft deze controle geen zin: die krijgt per definitie een PDF
+    # met een lege placeholder, dus daar is het veld altijd nog ongevuld.
+    existing = _existing_signature(pdf, field_name)
+    if existing is not None:
+        return JSONResponse(
+            {"alreadySigned": True, "fieldName": field_name, **existing},
+            status_code=409,
+        )
+
     try:
         chain = [x509.Certificate.load(base64.b64decode(c)) for c in json.loads(cert_chain)]
         if not chain:
@@ -478,7 +492,16 @@ async def validate(
             "trusted": False,
             "coversWholeDocument": None,
             "modified": None,
+            # Subject EN issuer letterlijk. Zonder de issuer kan een lezer niet zien
+            # dat een certificaat zelfondertekend is: iedereen kan "Otto Visser &
+            # Partners" in het subject zetten.
             "signerName": emb.signer_cert.subject.human_friendly if emb.signer_cert else None,
+            "issuerName": emb.signer_cert.issuer.human_friendly if emb.signer_cert else None,
+            "selfIssued": (
+                emb.signer_cert.subject.native == emb.signer_cert.issuer.native
+                if emb.signer_cert
+                else None
+            ),
             "certSerial": str(emb.signer_cert.serial_number) if emb.signer_cert else None,
             "timestamp": None,
             "summary": None,

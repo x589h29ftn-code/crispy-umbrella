@@ -200,13 +200,23 @@ export async function applySignature(
   // wachten, zodat elke stempel op het resultaat van de vorige komt. Het PDF-werk
   // gebeurt binnen de vergrendeling; dat is bij deze documentgroottes goed te doen
   // en correctheid weegt hier zwaarder dan een korte transactie.
+  //
+  // Eén transactie voor ALLE documenten plus de ontvangerstatus. Zou elk document
+  // zijn eigen transactie hebben, dan kan het proces na document 1 omvallen: de
+  // eerste is dan gestempeld, de tweede niet, en de ontvanger staat nog op PENDING
+  // met een bruikbaar token. Opnieuw indienen zou document 1 een tweede keer
+  // stempelen.
   const documentIds = [...byDoc.keys()].sort()
-  for (const documentId of documentIds) {
-    const fields = byDoc.get(documentId)!
-    // De hele lees-bewerk-schrijf zit binnen de vergrendeling. Zou het
-    // wegschrijven erbuiten vallen, dan is de race terug.
-    await prisma.$transaction(
-      async (tx) => {
+  /** Oude blobs; pas ná de commit opruimen, want een rollback heeft ze nog nodig. */
+  const teVerwijderen: string[] = []
+  await prisma.$transaction(
+    async (tx) => {
+      // Vergrendelen mag niet onbeperkt wachten: de tweede ondertekenaar hangt
+      // anders tot de proxy de verbinding afkapt en weet dan niet of het gelukt is.
+      await tx.$executeRawUnsafe(`SET LOCAL lock_timeout = '10s'`)
+      await tx.$executeRawUnsafe(`SET LOCAL statement_timeout = '90s'`)
+      for (const documentId of documentIds) {
+        const fields = byDoc.get(documentId)!
         await tx.$queryRaw`SELECT id FROM "Document" WHERE id = ${documentId} FOR UPDATE`
         // Binnen de vergrendeling opnieuw lezen: een gelijktijdige indiening kan
         // de sleutel net hebben vervangen.
@@ -214,7 +224,7 @@ export async function applySignature(
           where: { id: documentId },
           select: { workingKey: true }
         })
-        if (!fresh?.workingKey) return
+        if (!fresh?.workingKey) continue
 
         let bytes = await store.get(fresh.workingKey)
         for (const f of fields) {
@@ -251,41 +261,61 @@ export async function applySignature(
           }
         }
 
-        // Bytes eerst, dan de rij. Een blob zonder rij is opruimbaar; een rij
-        // zonder blob is dataverlies.
+        // Nooit dezelfde sleutel overschrijven: bij een rollback zou de blob dan
+        // gewijzigd zijn en de database niet, en stempelt de volgende ondertekenaar
+        // op een bestand dat volgens de database nog onbewerkt is. Elke schrijfactie
+        // maakt een nieuwe sleutel (nanoid, dus nooit een botsing) en de transactie
+        // verplaatst alleen de verwijzing.
         const newKey = await store.put(bytes, 'pdf')
         await tx.document.update({ where: { id: documentId }, data: { workingKey: newKey } })
-        await store.remove(fresh.workingKey).catch(() => {})
-      },
-      { timeout: 120_000, maxWait: 30_000 }
-    )
-  }
-  if (qualified) {
-    await writeAudit({
-      type: 'GEKWALIFICEERD_ONDERTEKEND',
-      dossierId: dossier.id,
-      recipientId,
-      accountantId: recipient.accountantId ?? undefined,
-      message: qualifiedError ? `mislukt: ${qualifiedError}` : `${qualified.signer.id} (${qualified.title ?? 'accountant'})`,
-      ...ctx
-    })
-  }
+        // Opruimen pas ná de commit. Zou dat hier gebeuren, dan is bij een rollback
+        // de oude blob weg terwijl de database er nog naar wijst: dataverlies.
+        teVerwijderen.push(fresh.workingKey)
+      }
 
-  await prisma.$transaction([
-    prisma.signatureField.updateMany({ where: { recipientId }, data: { filled: true } }),
-    prisma.recipient.update({
-      where: { id: recipientId },
-      data: { status: 'SIGNED', signedAt, tokenUsedAt: signedAt }
-    })
-  ])
-  await writeAudit({
-    type: 'ONDERTEKEND',
-    dossierId: dossier.id,
-    recipientId,
-    message: recipient.email,
-    ip: ctx.ip,
-    userAgent: ctx.userAgent
-  })
+      // Status en token in DEZELFDE transactie als de stempels. Anders kan het
+      // proces ertussen omvallen: de stempels staan er, de ontvanger staat nog op
+      // PENDING met een bruikbaar token, en opnieuw indienen stempelt dubbel.
+      await tx.signatureField.updateMany({ where: { recipientId }, data: { filled: true } })
+      await tx.recipient.update({
+        where: { id: recipientId },
+        data: { status: 'SIGNED', signedAt, tokenUsedAt: signedAt }
+      })
+
+      // Bewijskritiek: zonder deze regel is er een handtekening zonder spoor.
+      // 'required' rolt de hele transactie terug, dus dan is er ook geen stempel.
+      await writeAudit(
+        {
+          type: 'ONDERTEKEND',
+          dossierId: dossier.id,
+          recipientId,
+          message: recipient.email,
+          ip: ctx.ip,
+          userAgent: ctx.userAgent
+        },
+        { mode: 'required', tx }
+      )
+      if (qualified) {
+        await writeAudit(
+          {
+            type: 'GEKWALIFICEERD_ONDERTEKEND',
+            dossierId: dossier.id,
+            recipientId,
+            accountantId: recipient.accountantId ?? undefined,
+            message: qualifiedError
+              ? `mislukt: ${qualifiedError}`
+              : `${qualified.signer.id} (${qualified.title ?? 'accountant'})`,
+            ...ctx
+          },
+          { mode: 'required', tx }
+        )
+      }
+    },
+    { timeout: 180_000, maxWait: 30_000 }
+  )
+
+  // Vanaf hier is de commit binnen: de oude versies mogen weg.
+  for (const key of teVerwijderen) await store.remove(key).catch(() => {})
 
   await advanceWorkflow(dossier.id)
 }
@@ -723,4 +753,12 @@ async function completeDossier(dossierId: string): Promise<void> {
     const mail = completedEmail({ recipientName: t.name, documentTitle: dossier.title })
     await sendMail({ to: t.email, ...mail, attachments }).catch((e) => console.error('[finalize mail]', e))
   }
+
+  // Anker: de kop van de keten van dít dossier buiten de database vastleggen. Nu is
+  // het bewijs definitief, dus dit is het moment waarop het anker het meeste waard
+  // is. Via de wachtrij, zodat een onbereikbaar archief of een trage mailserver het
+  // afronden niet ophoudt.
+  await enqueueOnce('AUDIT_ANCHOR', `dossier:${dossierId}`, { dossierId }, { maxAttempts: 5 }).catch((e) =>
+    console.error('[finalize anker]', e)
+  )
 }

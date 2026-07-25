@@ -196,6 +196,16 @@ model Dossier {
   expiresAt      DateTime?
   sentAt         DateTime?
   lastReminderAt DateTime?
+  // Welke herinneringen al zijn verstuurd (1 = eerste, 2 = tweede). Bewust een
+  // teller en geen booleans: bij het opnieuw verzenden van een verlopen dossier
+  // begint de reeks weer bij nul.
+  remindersSent  Int           @default(0)
+  // Hoe vaak dit dossier na verlopen opnieuw is verstuurd. Alleen bij VERLOPEN;
+  // GEWEIGERD blijft onherroepelijk.
+  resendCount    Int           @default(0)
+  // Wanneer de eigenaar voor het laatst is gepord over een dossier dat op zijn
+  // waarmerk wacht. Zonder dit blijft zo'n dossier stil liggen.
+  lastWaarmerkNudgeAt DateTime?
   completedAt    DateTime?
   // Bewaartermijn: gevuld bij afronding (completedAt + 7 jaar). Document én
   // bewijsdossier worden altijd samen opgeruimd, nooit los van elkaar.
@@ -432,6 +442,50 @@ model MailEvent {
 
   @@index([messageId])
   @@index([recipientId])
+}
+
+/// Tellers voor de rate-limiting. Wordt gelezen en geschreven door
+/// rate-limiter-flexible met eigen SQL, niet via Prisma. Staat hier alleen zodat
+/// Prisma de tabel kent en een volgende `migrate dev` hem niet wil weggooien.
+/// De veldnamen zijn kleine letters omdat de bibliotheek die zo verwacht.
+model RateLimit {
+  key    String  @id @db.VarChar(255)
+  points Int     @default(0)
+  expire BigInt?
+}
+
+/// Anker van de auditketen op een moment in de tijd, buiten de database gezet.
+///
+/// Waarom dit bestaat: de hashketen maakt elke wijziging zichtbaar, maar wie de
+/// hele database kan herschrijven kan ook de keten consistent opnieuw uitrekenen.
+/// Dat is het realistische scenario: een gelekte DATABASE_URL, een gestolen dump,
+/// een gecompromitteerde db-container. Een anker dat buiten de database is
+/// vastgelegd (in het archief én per mail) legt de kop van de keten op moment T
+/// vast, en dan valt een herschrijving op.
+///
+/// Wat een anker NIET dekt: een herschrijving van gebeurtenissen tussen twee
+/// ankers blijft onzichtbaar. Dat venster sluit alleen een HMAC-keten. Het anker
+/// bij afronding sluit het venster voor het bewijs dat telt, want op dat moment is
+/// het dossier definitief.
+model AuditAnchor {
+  id        String   @id @default(cuid())
+  /// 'dossier' bij afronding, 'dagelijks' voor de roll-up van lopende zaken.
+  kind      String
+  /// Gevuld bij kind = 'dossier'. Geen relatie: het anker moet het opruimen van
+  /// het dossier overleven, dat is het hele punt.
+  dossierId String?
+  /// Laatste seq en hash per keten op het moment van ankeren.
+  payload   Json
+  /// Hash over de payload, zodat het anker zelf ook te controleren is.
+  hash      String
+  /// Waar het naartoe is gegaan, en of dat lukte.
+  deliveries Json
+  /// Is minstens één bestemming gelukt?
+  delivered Boolean  @default(false)
+  createdAt DateTime @default(now())
+
+  @@index([kind, createdAt])
+  @@index([dossierId])
 }
 
 // Durable job queue op Postgres (geen extra broker nodig). Wordt gebruikt voor

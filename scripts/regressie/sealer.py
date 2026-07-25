@@ -17,6 +17,7 @@ Draaien met een venv waarin sealer/requirements.txt is geinstalleerd:
 from __future__ import annotations
 
 import asyncio
+import base64
 import datetime
 import io
 import os
@@ -247,6 +248,61 @@ async def main():
             sig2["intact"] is False or sig2["coversWholeDocument"] is False,
             sig2,
         )
+
+    # 5b. Punt 4 uit v1.3: een document dat door iemand ANDERS opnieuw is
+    # ondertekend met een zelfgemaakt certificaat moet als "ongewijzigd, uitgever
+    # niet te verifiëren" uitkomen — nooit als groen vinkje.
+    valsdir = tempfile.mkdtemp(prefix="sealer-vals-")
+    vals_cert, vals_key = maak_testcertificaat(valsdir)
+    vervalser = SimpleSigner.load(vals_key, vals_cert)
+    drivers.build_signer = lambda: (vervalser, "vals")
+    gewijzigd = bytearray(pdf)
+    pos2 = gewijzigd.find(b"Testdocument")
+    gewijzigd[pos2 : pos2 + len(b"Testdocument")] = b"Vervalsing!!"
+    opnieuw = await sealer.seal(
+        pdf=bytes(gewijzigd), field_name="OfficeSeal", x_sealer_secret="testsecret", **vaste
+    )
+    drivers.build_signer = lambda: (test_signer, "test")
+    check("een vervalser kan zelf een zegel zetten", getattr(opnieuw, "status_code", 200) == 200)
+    if getattr(opnieuw, "status_code", 200) == 200:
+        val3 = uitpakken(await sealer.validate(pdf=opnieuw.body, x_sealer_secret="testsecret"))
+        sig3 = val3["signatures"][0]
+        check("het opnieuw ondertekende bestand meldt zichzelf als intact", sig3["intact"] is True, sig3)
+        check("maar de uitgever is NIET vertrouwd", sig3["trusted"] is False, sig3)
+        check(
+            "en de validatie meldt dat het certificaat zelfondertekend is",
+            sig3["selfIssued"] is True,
+            {"issuer": sig3.get("issuerName"), "selfIssued": sig3.get("selfIssued")},
+        )
+        check("issuer wordt letterlijk teruggegeven", bool(sig3.get("issuerName")), sig3.get("issuerName"))
+
+    # 5c. /prepare geeft dezelfde 409 (punt 5 uit v1.3).
+    import json as _json
+
+    keten = _json.dumps([base64.b64encode(test_signer.signing_cert.dump()).decode()])
+    prep_ok = await sealer.prepare(
+        pdf=pdf,
+        cert_chain=keten,
+        reason="Ondertekend door de accountant",
+        location="Sneek",
+        field_name="ProfessionalSignature",
+        x_sealer_secret="testsecret",
+    )
+    check("voorbereiden op een onbeschreven veld lukt", getattr(prep_ok, "status_code", 200) == 200,
+          getattr(prep_ok, "body", b"")[:200])
+    prep_409 = await sealer.prepare(
+        pdf=sealed,
+        cert_chain=keten,
+        reason="Ondertekend door de accountant",
+        location="Sneek",
+        field_name="OfficeSeal",
+        x_sealer_secret="testsecret",
+    )
+    check(
+        "voorbereiden op een al ondertekend veld geeft 409 (kost geen pincode)",
+        getattr(prep_409, "status_code", 0) == 409,
+        getattr(prep_409, "body", b"")[:200],
+    )
 
     # 6. Een kapotte PDF geeft 400, geen onbehandelde 500.
     from fastapi import HTTPException

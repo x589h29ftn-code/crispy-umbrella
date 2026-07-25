@@ -1,9 +1,15 @@
 import 'server-only'
+import { Prisma } from '@prisma/client'
 import { prisma } from '@/lib/db'
 import { env } from '@/env'
 import { storage } from '@/lib/storage'
 import { writeAudit } from '@/lib/audit'
-import { preparePdfForExternalSigning, injectExternalSignature, sha256Hex } from '@/lib/seal/sealer'
+import {
+  preparePdfForExternalSigning,
+  injectExternalSignature,
+  sha256Hex,
+  AlreadySealedError
+} from '@/lib/seal/sealer'
 import {
   buildAuthorizeUrl,
   cleverbaseConfig,
@@ -141,13 +147,37 @@ export async function initiateQualifiedSigning(input: {
     const hashesBase64: Record<string, string> = {}
     const prepared: Record<string, unknown> = {}
 
+    /** Documenten die volgens de PDF zelf al gewaarmerkt zijn. */
+    const alGewaarmerkt: string[] = []
     for (const doc of documents) {
       const preSeal = await store.get(doc.preSealKey!)
-      const p = await preparePdfForExternalSigning({
-        pdfBytes: preSeal,
-        certChainBase64: usable.certificates,
-        reason: `Ondertekend door ${accountant.name}${accountant.professionalTitle ? `, ${accountant.professionalTitle}` : ''}`
-      })
+      let p
+      try {
+        p = await preparePdfForExternalSigning({
+          pdfBytes: preSeal,
+          certChainBase64: usable.certificates,
+          reason: `Ondertekend door ${accountant.name}${accountant.professionalTitle ? `, ${accountant.professionalTitle}` : ''}`
+        })
+      } catch (e) {
+        // De PDF bepaalt of er al ondertekend is, niet de database. Zit er al een
+        // handtekening in, dan is dit document klaar en kost het geen pincode meer.
+        if (e instanceof AlreadySealedError) {
+          alGewaarmerkt.push(doc.id)
+          await prisma.document.update({
+            where: { id: doc.id },
+            data: { sealStage: 'QUALIFIED', sealCertSerial: e.certSerial ?? undefined }
+          })
+          await writeAudit({
+            type: 'GEKWALIFICEERD_ONDERTEKEND',
+            dossierId: doc.dossierId,
+            accountantId: accountant.id,
+            message: 'was al gewaarmerkt volgens het bestand zelf; administratie bijgewerkt',
+            metadata: { documentId: doc.id, certSerial: e.certSerial }
+          })
+          continue
+        }
+        throw e
+      }
       // De voorbereide PDF versleuteld wegschrijven; hij moet de redirect overleven.
       const key = await store.put(Buffer.from(p.preparedPdf, 'base64'), 'pdf')
       documentIds.push(doc.id)
@@ -158,6 +188,20 @@ export async function initiateQualifiedSigning(input: {
         documentDigest: p.documentDigest,
         reservedRegionStart: p.reservedRegionStart,
         reservedRegionEnd: p.reservedRegionEnd
+      }
+    }
+
+    if (documentIds.length === 0) {
+      // Alles bleek al gewaarmerkt; de administratie is hierboven bijgewerkt.
+      const { completeAfterQualifiedSigning } = await import('@/lib/signflow')
+      for (const dossierId of new Set(
+        alGewaarmerkt.map((id) => documents.find((x) => x.id === id)?.dossierId).filter((x): x is string => !!x)
+      )) {
+        await completeAfterQualifiedSigning(dossierId)
+      }
+      return {
+        ok: false,
+        error: 'Deze documenten waren al gewaarmerkt. De administratie is bijgewerkt; u hoeft niets te doen.'
       }
     }
 
@@ -320,26 +364,39 @@ export async function completeQualifiedSigning(input: {
     // Vanaf hier vastleggen. Het gewaarmerkte artefact apart bewaren als
     // herstartpunt: faalt straks alleen het organisatiezegel, dan hoeft de
     // accountant niet opnieuw met zijn pincode te bevestigen.
-    const dossierIds = new Set<string>()
+    //
+    // Eerst ALLE blobs wegschrijven (nieuwe sleutels), daarna in ÉÉN transactie de
+    // verwijzingen zetten, de sessie afsluiten en de handtekeningwaarden wissen.
+    // Zou het wissen buiten die transactie vallen, dan gooit een crash ertussen de
+    // handtekeningen weg terwijl de stage nog op PRESEAL staat — en dan is de
+    // pincode alsnog verspild, precies wat het bewaren moest voorkomen.
+    const sealedAt = new Date()
+    const nieuweSleutels = new Map<string, { key: string; sha: string }>()
     for (const r of results) {
-      const key = await store.put(r.bytes, 'pdf')
-      const doc = await prisma.document.update({
-        where: { id: r.documentId },
-        data: {
-          postQualifiedKey: key,
-          postQualifiedSha256: sha256Hex(r.bytes),
-          sealedKey: key,
-          sealedSha256: sha256Hex(r.bytes),
-          sealedAt: new Date(),
-          sealStage: 'QUALIFIED'
-        },
-        select: { dossierId: true }
-      })
-      dossierIds.add(doc.dossierId)
+      nieuweSleutels.set(r.documentId, { key: await store.put(r.bytes, 'pdf'), sha: sha256Hex(r.bytes) })
     }
-    await markSession(session.id, 'SIGNED')
-    // Cryptografisch materiaal direct wissen; geen langere retentie dan nodig.
-    await clearSignatureValues(session.id)
+    const dossierIds = new Set<string>()
+    await prisma.$transaction(async (tx) => {
+      for (const [documentId, { key, sha }] of nieuweSleutels) {
+        const doc = await tx.document.update({
+          where: { id: documentId },
+          data: {
+            postQualifiedKey: key,
+            postQualifiedSha256: sha,
+            sealedKey: key,
+            sealedSha256: sha,
+            sealedAt,
+            sealStage: 'QUALIFIED'
+          },
+          select: { dossierId: true }
+        })
+        dossierIds.add(doc.dossierId)
+      }
+      await tx.cscSigningSession.update({
+        where: { id: session.id },
+        data: { status: 'SIGNED', lastError: null, signatureValues: Prisma.DbNull }
+      })
+    })
 
     // Tijdelijke, voorbereide bestanden opruimen.
     for (const documentId of session.documentIds) {

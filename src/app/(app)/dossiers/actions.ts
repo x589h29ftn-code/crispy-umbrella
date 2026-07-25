@@ -346,6 +346,34 @@ export async function remindDossierAction(dossierId: string): Promise<{ ok: bool
   return { ok: true }
 }
 
+/**
+ * Verstuurt een verlopen verzoek opnieuw. Zelfde dossier, nieuwe tekenlinks.
+ *
+ * Bewust géén nieuw dossier: de praktijk is "de cliënt was op vakantie". Zou dit
+ * betekenen dat de accountant de documenten en velden opnieuw moet doen, dan zet
+ * iemand binnen een maand de geldigheidsduur op een jaar en is de vervaltermijn
+ * feitelijk weg. Een geweigerd verzoek blijft wél onherroepelijk.
+ */
+export async function resendExpiredDossierAction(
+  dossierId: string,
+  input?: { reason?: string; days?: number }
+): Promise<{ ok: boolean; error?: string; ontvangers?: number }> {
+  const owned = await ownedDossier(dossierId)
+  if (!owned) return { ok: false, error: 'Dossier niet gevonden.' }
+  const { acc } = owned
+  const { resendExpiredDossier } = await import('@/lib/lifecycle')
+  const res = await resendExpiredDossier({
+    dossierId,
+    accountantId: acc.id,
+    reason: input?.reason,
+    extraDays: input?.days
+  })
+  if (!res.ok) return { ok: false, error: res.error }
+  revalidatePath(`/dossiers/${dossierId}`)
+  revalidatePath('/dashboard')
+  return { ok: true, ontvangers: res.ontvangers }
+}
+
 export async function withdrawDossierAction(dossierId: string): Promise<{ ok: boolean; error?: string }> {
   const owned = await ownedDossier(dossierId)
   if (!owned) return { ok: false, error: 'Dossier niet gevonden.' }
