@@ -287,6 +287,14 @@ export async function signHashes(input: {
   return sigs.map(String)
 }
 
+/**
+ * De hashes wijken af van wat er is geautoriseerd. Dat is een programmeerfout en
+ * geen storing: opnieuw proberen maskeert hem alleen. Sessie op FAILED, melden.
+ */
+export class CscHashMismatchError extends Error {
+  readonly permanent = true as const
+}
+
 /** Is dit een verlopen SAD (opnieuw beginnen) of een geweigerde autorisatie? */
 export function isExpiredSad(e: unknown): boolean {
   if (!(e instanceof CscError)) return false

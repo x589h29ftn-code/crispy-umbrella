@@ -1,6 +1,7 @@
 import 'server-only'
 import { prisma } from '@/lib/db'
 import { storage } from '@/lib/storage'
+import { writeAudit } from '@/lib/audit'
 
 // Bewaartermijn: afgeronde dossiers krijgen `retentionUntil` op zeven jaar na
 // afronding. Daarna worden ze opgeruimd.
@@ -61,6 +62,12 @@ export async function purgeExpiredDossiers(opts?: {
     try {
       // Eerst de database, in één transactie. Lukt dat niet, dan blijven de
       // bestanden staan en is er niets half weg.
+      // Laatste hash van de keten vastleggen vóór het verwijderen, voor de grafsteen.
+      const laatste = await prisma.auditEvent.findFirst({
+        where: { dossierId: dossier.id },
+        orderBy: { seq: 'desc' },
+        select: { hash: true }
+      })
       const auditCount = await prisma.$transaction(async (tx) => {
         const n = await tx.auditEvent.count({ where: { dossierId: dossier.id } })
         // Het auditspoor is append-only; voor de geplande opruiming zetten we de
@@ -80,6 +87,19 @@ export async function purgeExpiredDossiers(opts?: {
           .remove(key)
           .catch((e) => console.error(`[bewaartermijn] bestand ${key} niet verwijderd`, e))
       }
+
+      // Grafsteen in de ketenloze reeks: ook het verwijderen van een compleet
+      // dossier laat zo een spoor na. De goedkope versie van een extern anker.
+      await writeAudit({
+        type: 'BEWAARTERMIJN_OPGERUIMD',
+        message: `dossier "${dossier.title}" opgeruimd na verstrijken van de bewaartermijn`,
+        metadata: {
+          dossierId: dossier.id,
+          auditRegels: auditCount,
+          documenten: dossier.documents.length,
+          laatsteHash: laatste?.hash ?? null
+        }
+      })
 
       result.dossiers += 1
       result.documents += dossier.documents.length

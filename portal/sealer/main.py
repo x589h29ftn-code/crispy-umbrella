@@ -64,6 +64,30 @@ def _timestamper():
     return HTTPTimeStamper(url=url, auth=auth, headers=headers, timeout=max(timeout, 1))
 
 
+def _existing_signature(pdf: bytes, field_name: str) -> Optional[dict]:
+    """Staat er al een handtekening in dit veld? Geeft dan de kerngegevens terug.
+
+    Wordt gebruikt voor idempotentie: zo kan hetzelfde bestand twee keer worden
+    aangeboden zonder dat er een tweede zegel in belandt.
+    """
+    try:
+        from pyhanko.pdf_utils.reader import PdfFileReader
+
+        reader = PdfFileReader(io.BytesIO(pdf))
+        for emb in reader.embedded_signatures:
+            if emb.field_name != field_name:
+                continue
+            serial = str(emb.signer_cert.serial_number) if emb.signer_cert else None
+            signed_at = None
+            dt = getattr(emb, "self_reported_timestamp", None)
+            if dt is not None:
+                signed_at = dt.isoformat()
+            return {"certSerial": serial, "signingTime": signed_at}
+    except Exception:  # noqa: BLE001 - geen leesbare PDF of geen handtekeningen
+        return None
+    return None
+
+
 @app.get("/health")
 async def health(x_sealer_secret: Optional[str] = Header(None)):
     """Controleert of de driver te bouwen is en of de TSA bereikbaar is."""
@@ -128,6 +152,22 @@ async def seal(
         return JSONResponse({"error": f"sealer niet gereed: {exc}"}, status_code=502)
 
     level = os.environ.get("PADES_LEVEL", "lt").strip().lower()
+
+    # Idempotentie op de PDF zelf, niet op de database. Reden: tussen het
+    # wegschrijven van de bytes en het committen van de databaserij kan het
+    # proces omvallen. De rij weet dan niet dat er al verzegeld is, een retry
+    # verzegelt opnieuw, en er staan twee zegels in één document. Niet ongeldig,
+    # maar onuitlegbaar op een auditcertificaat.
+    #
+    # Daarom: staat er al een handtekening in dit veld, dan geeft de sealer 409
+    # met de bestaande gegevens en tekent hij niet. De aanroeper behandelt 409 als
+    # succes en werkt alleen de database bij.
+    existing = _existing_signature(pdf, field_name)
+    if existing is not None:
+        return JSONResponse(
+            {"alreadySigned": True, "fieldName": field_name, **existing},
+            status_code=409,
+        )
 
     try:
         writer = IncrementalPdfFileWriter(io.BytesIO(pdf))
@@ -408,34 +448,95 @@ async def validate(
     if not sigs:
         return {"signed": False, "signatures": []}
 
-    vc = ValidationContext(allow_fetching=True)
+    # GEEN allow_fetching hier. Dit endpoint is publiek bereikbaar, en bij het
+    # ophalen van revocatiegegevens bepaalt de GEÜPLOADE PDF welke URL's worden
+    # benaderd. Een kwaadaardig bestand kan zo naar interne adressen wijzen
+    # (db, sealer, metadata-endpoint van de host): server-side request forgery
+    # zonder dat de aanvaller hoeft in te loggen.
+    #
+    # Voor een B-LT-document is dat geen verlies: de revocatiegegevens zitten al
+    # in het document, dat is precies het doel van de LT-laag. Ontbreken ze, dan
+    # melden we dat als uitkomst in plaats van te gaan ophalen.
+    vc = ValidationContext(allow_fetching=False)
     results = []
     for emb in sigs:
+        # Twee gescheiden vragen, en bewust in deze volgorde:
+        #
+        # 1. Is het bestand ongewijzigd sinds het zegel? Dat is puur rekenwerk aan
+        #    het document zelf: geen vertrouwensketen, geen netwerk, kan niet
+        #    stranden op een onbekende uitgever.
+        # 2. Is de uitgever te vertrouwen? Dat vraagt wél een keten en revocatie-
+        #    informatie, en kan dus mislukken.
+        #
+        # Bij één gecombineerde aanroep sleept vraag 2 vraag 1 mee in de val: een
+        # zegel van een CA die hier niet in de trust store zit, zou dan alleen een
+        # foutmelding opleveren en de lezer zou niets over de integriteit horen.
+        entry: dict = {
+            "fieldName": emb.field_name,
+            "intact": None,
+            "valid": None,
+            "trusted": False,
+            "coversWholeDocument": None,
+            "modified": None,
+            "signerName": emb.signer_cert.subject.human_friendly if emb.signer_cert else None,
+            "certSerial": str(emb.signer_cert.serial_number) if emb.signer_cert else None,
+            "timestamp": None,
+            "summary": None,
+        }
+        try:
+            from pyhanko.sign.validation.generic_cms import validate_sig_integrity
+
+            emb.compute_integrity_info()
+            coverage = getattr(emb, "coverage", None)
+            entry["coversWholeDocument"] = bool(coverage is not None and coverage.name == "ENTIRE_FILE")
+            intact, _valid = validate_sig_integrity(
+                emb.signer_info,
+                emb.signer_cert,
+                expected_content_type="data",
+                actual_digest=emb.compute_digest(),
+            )
+            entry["intact"] = bool(intact)
+            entry["modified"] = not entry["coversWholeDocument"]
+            zelf_gemeld = emb.self_reported_timestamp
+            if zelf_gemeld is not None:
+                entry["timestamp"] = zelf_gemeld.isoformat()
+        except Exception as exc:  # noqa: BLE001 - kapotte handtekeningstructuur
+            entry["error"] = f"handtekening niet te lezen: {exc}"
+            results.append(entry)
+            continue
+
         try:
             status = await async_validate_pdf_signature(emb, signer_validation_context=vc)
             ts = getattr(status, "timestamp_validity", None)
-            results.append(
-                {
-                    "fieldName": emb.field_name,
-                    "intact": bool(status.intact),
-                    "valid": bool(status.valid),
-                    "trusted": bool(getattr(status, "trusted", False)),
-                    "modified": not bool(status.coverage_ok()) if hasattr(status, "coverage_ok") else None,
-                    "coversWholeDocument": bool(
-                        getattr(status, "coverage", None)
-                        and status.coverage.name == "ENTIRE_FILE"
-                    ),
-                    "signerName": (
-                        emb.signer_cert.subject.human_friendly if emb.signer_cert else None
-                    ),
-                    "certSerial": str(emb.signer_cert.serial_number) if emb.signer_cert else None,
-                    "timestamp": (
-                        ts.timestamp.isoformat() if ts is not None and getattr(ts, "timestamp", None) else None
-                    ),
-                    "summary": status.summary() if hasattr(status, "summary") else None,
-                }
-            )
+            entry["intact"] = bool(status.intact)
+            entry["valid"] = bool(status.valid)
+            entry["trusted"] = bool(getattr(status, "trusted", False))
+            if hasattr(status, "coverage_ok"):
+                entry["modified"] = not bool(status.coverage_ok())
+            if getattr(status, "coverage", None) is not None:
+                entry["coversWholeDocument"] = status.coverage.name == "ENTIRE_FILE"
+            if ts is not None and getattr(ts, "timestamp", None):
+                entry["timestamp"] = ts.timestamp.isoformat()
+            if hasattr(status, "summary"):
+                entry["summary"] = status.summary()
         except Exception as exc:  # noqa: BLE001
-            results.append({"fieldName": emb.field_name, "error": str(exc)})
+            # De vertrouwensvraag is niet te beantwoorden. De integriteit hierboven
+            # staat al vast, dus dit is een aanvulling en geen totaalverlies.
+            msg = str(exc)
+            laag = msg.lower()
+            if any(k in laag for k in ("revocation", "ocsp", "crl", "fetch")):
+                # Bewust niet gaan ophalen: zie de toelichting hierboven.
+                entry["trustError"] = (
+                    "Dit document bevat geen ingebedde validatiegegevens (OCSP/CRL). "
+                    "De echtheid van de uitgever is daarom niet volledig automatisch vast te stellen."
+                )
+            elif any(k in laag for k in ("self-signed", "self signed", "validation path", "issuer")):
+                entry["trustError"] = (
+                    "De uitgever van dit zegel staat niet in de lijst met vertrouwde "
+                    "certificaatautoriteiten van deze controle."
+                )
+            else:
+                entry["trustError"] = msg
+        results.append(entry)
 
     return {"signed": True, "signatures": results}

@@ -20,7 +20,12 @@
     "csc:check": "tsx --conditions react-server scripts/csc-stub-check.ts",
     "keys:rotate": "tsx --conditions react-server scripts/rotate-keys.ts",
     "restore:verify": "tsx --conditions react-server scripts/verify-restore.ts",
-    "retention:purge": "tsx --conditions react-server scripts/purge-retention.ts"
+    "retention:purge": "tsx --conditions react-server scripts/purge-retention.ts",
+    "test:opstart": "tsx --conditions react-server scripts/regressie/opstartregels.ts",
+    "test:audit": "tsx --conditions react-server scripts/regressie/audit-en-bewaartermijn.ts",
+    "test:gelijktijdig": "tsx --conditions react-server scripts/regressie/gelijktijdig-ondertekenen.ts",
+    "test:sessie": "tsx --conditions react-server scripts/regressie/ondertekensessie.ts",
+    "test:regressie": "npm run test:opstart && npm run test:audit && npm run test:gelijktijdig && npm run test:sessie"
   },
   "prisma": {
     "seed": "tsx prisma/seed.ts"

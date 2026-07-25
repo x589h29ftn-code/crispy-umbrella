@@ -19,3 +19,8 @@ storage/
 public/pdf.worker.min.mjs
 
 .DS_Store
+
+# Python (sealer)
+__pycache__/
+*.pyc
+.venv-sealer/

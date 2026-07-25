@@ -12,9 +12,17 @@ import {
   fetchServiceToken,
   isExpiredSad,
   signHashes,
-  CscError
+  CscError,
+  CscHashMismatchError
 } from './client'
-import { assertCredentialUsable, createSession, markSession, resolveSession } from './session'
+import {
+  assertCredentialUsable,
+  clearSignatureValues,
+  createSession,
+  markSession,
+  resolveSession,
+  storeSignatureValues
+} from './session'
 
 // Orkestratie van het gekwalificeerd ondertekenen waarbij de accountant zelf
 // autoriseert.
@@ -161,6 +169,8 @@ export async function initiateQualifiedSigning(input: {
       // Naast de opslagsleutel bewaren we per document wat /inject nodig heeft.
       preparedKeys: { ...preparedKeys, __prepared: JSON.stringify(prepared) },
       hashesBase64,
+      // Exact wat er geautoriseerd wordt, zodat we het vóór injectie kunnen controleren.
+      sentHashes: documentIds.map((id) => hashesBase64[id]),
       serviceToken: accessToken
     })
 
@@ -257,13 +267,37 @@ export async function completeQualifiedSigning(input: {
     }
 
     const hashes = session.documentIds.map((id) => session.hashesBase64[id])
-    const signatures = await signHashes({
-      cfg,
-      serviceToken,
-      sad,
-      credentialId: session.credentialId,
-      hashesBase64: hashes
-    })
+
+    // 4.2 — de invariant. Tussen voorbereiden en injecteren zit een menselijke
+    // pauze van minuten. Zit er ook maar één tijdsafhankelijk attribuut in de
+    // signedAttrs, dan verandert de hash en is de handtekening stil ongeldig.
+    // Daarom vóór het ondertekenen controleren of de hashes nog byte-gelijk zijn
+    // aan wat er naar de autorisatie is gestuurd.
+    const sent = (session.sentHashes ?? null) as string[] | null
+    if (sent && (sent.length !== hashes.length || sent.some((h, i) => h !== hashes[i]))) {
+      throw new CscHashMismatchError(
+        'de te ondertekenen hashes wijken af van wat er is geautoriseerd; ' +
+          'dit is een programmeerfout, niet een storing'
+      )
+    }
+
+    // Handtekeningen eerst vastleggen, dan injecteren. Valt het proces halverwege
+    // een batch van vijftig om, dan is het cryptografische werk niet verloren en
+    // hoeft de accountant niet opnieuw te bevestigen.
+    let signatures: string[]
+    const bewaard = (session.signatureValues ?? null) as string[] | null
+    if (bewaard && bewaard.length === hashes.length) {
+      signatures = bewaard
+    } else {
+      signatures = await signHashes({
+        cfg,
+        serviceToken,
+        sad,
+        credentialId: session.credentialId,
+        hashesBase64: hashes
+      })
+      await storeSignatureValues(session.id, signatures)
+    }
 
     // Eerst alles injecteren in het geheugen; pas daarna wegschrijven. Zo blijft
     // de batch atomair: gaat er iets mis, dan is er nog niets veranderd.
@@ -283,18 +317,29 @@ export async function completeQualifiedSigning(input: {
       results.push({ documentId, bytes })
     }
 
-    // Vanaf hier vastleggen.
+    // Vanaf hier vastleggen. Het gewaarmerkte artefact apart bewaren als
+    // herstartpunt: faalt straks alleen het organisatiezegel, dan hoeft de
+    // accountant niet opnieuw met zijn pincode te bevestigen.
     const dossierIds = new Set<string>()
     for (const r of results) {
-      const sealedKey = await store.put(r.bytes, 'pdf')
+      const key = await store.put(r.bytes, 'pdf')
       const doc = await prisma.document.update({
         where: { id: r.documentId },
-        data: { sealedKey, sealedSha256: sha256Hex(r.bytes), sealedAt: new Date() },
+        data: {
+          postQualifiedKey: key,
+          postQualifiedSha256: sha256Hex(r.bytes),
+          sealedKey: key,
+          sealedSha256: sha256Hex(r.bytes),
+          sealedAt: new Date(),
+          sealStage: 'QUALIFIED'
+        },
         select: { dossierId: true }
       })
       dossierIds.add(doc.dossierId)
     }
     await markSession(session.id, 'SIGNED')
+    // Cryptografisch materiaal direct wissen; geen langere retentie dan nodig.
+    await clearSignatureValues(session.id)
 
     // Tijdelijke, voorbereide bestanden opruimen.
     for (const documentId of session.documentIds) {
@@ -320,9 +365,31 @@ export async function completeQualifiedSigning(input: {
 
     return { ok: true, dossierIds: [...dossierIds], documentCount: results.length }
   } catch (e) {
+    // Drie categorieën, met verschillend gedrag:
+    //  - hash-mismatch: programmeerfout. FAILED, melden, nooit opnieuw.
+    //  - verlopen SAD / afgebroken autorisatie: EXPIRED, opnieuw MET pincode.
+    //  - overige fouten na een geslaagde signHash: FAILED met bewaarde
+    //    handtekeningen, zodat opnieuw proberen ZONDER pincode kan.
+    if (e instanceof CscHashMismatchError) {
+      await markSession(session.id, 'FAILED', e.message)
+      await clearSignatureValues(session.id).catch(() => {})
+      await writeAudit({
+        type: 'CSC_ONDERTEKENING_MISLUKT',
+        accountantId: input.accountantId,
+        message: `hash-mismatch: ${e.message}`.slice(0, 500),
+        metadata: { permanent: true, documentIds: session.documentIds }
+      })
+      return {
+        ok: false,
+        error:
+          'De te ondertekenen gegevens wijken af van wat is geautoriseerd. Er is niets ondertekend. ' +
+          'Dit is een fout in de applicatie; de beheerder is op de hoogte gesteld.'
+      }
+    }
     const err = e as CscError
     const expired = isExpiredSad(err)
     await markSession(session.id, expired ? 'EXPIRED' : 'FAILED', err.message)
+    if (expired) await clearSignatureValues(session.id).catch(() => {})
     await writeAudit({
       type: expired ? 'CSC_AUTORISATIE_VERLOPEN' : 'CSC_ONDERTEKENING_MISLUKT',
       accountantId: input.accountantId,

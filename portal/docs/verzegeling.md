@@ -238,6 +238,29 @@ npm run csc:check
   handtekening, dan wordt het organisatiezegel standaard overgeslagen. Zet
   `SEAL_WHEN_QUALIFIED_PRESENT=true` als je beide wilt.
 
+### Wat er tijdelijk in de database staat
+
+Een ondertekensessie loopt over een browserredirect naar de provider. Tussen het
+voorbereiden en het afronden moet het portaal daarom een aantal dingen bewaren, en
+dat is een bewuste afweging waard:
+
+| Wat | Waarom | Hoe lang |
+| --- | --- | --- |
+| De voorbereide PDF's (opslagsleutels) | zonder die exacte bytes klopt de hash niet meer | tot afronden of verlopen (max. 15 min) |
+| De hashes die naar de autorisatie zijn gestuurd (`sentHashes`) | om vóór injectie te controleren dat er ondertekend is wat de accountant heeft gezien | idem |
+| De uitkomst van `signHash` (`signatureValues`) | zodat een mislukte injectie niet opnieuw een pincode kost | tot de injectie klaar is, daarna direct gewist |
+
+`signatureValues` is de gevoeligste van de drie: dat is de handtekeningwaarde zelf.
+Daarom is dat veld **versleuteld** opgeslagen (dezelfde envelope-encryptie als de
+documenten) en wordt het **onmiddellijk na injectie gewist** — niet aan het einde
+van de dag door een opruimtaak. Wat overblijft is een sessierij zonder inhoud.
+
+Eerlijk over de keuze: vóór deze wijziging stond de handtekeningwaarde nergens en
+kostte elke mislukte injectie een nieuwe autorisatie. Bij een batch van vijftig
+stukken is dat vijftig keer opnieuw een pincode voor iets wat de provider al had
+ondertekend. De waarde kort en versleuteld bewaren is het kleinere kwaad, maar het
+is wél nieuw: er staat nu tijdelijk iets in de database wat er eerder niet stond.
+
 ## Mail: weten of de uitnodiging is aangekomen
 
 Bij SMTP (Microsoft 365) weet je alleen dat je de mail aan de server hebt

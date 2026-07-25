@@ -1,6 +1,7 @@
 import 'server-only'
 import { randomBytes } from 'node:crypto'
 import { prisma } from '@/lib/db'
+import { Prisma } from '@prisma/client'
 import { env } from '@/env'
 import { encryptString, decryptString } from '@/lib/storage/crypto'
 import { currentStorageKey, storageKeyResolver } from '@/lib/storage/keys'
@@ -27,6 +28,8 @@ export interface CreateSessionInput {
   documentIds: string[]
   preparedKeys: Record<string, string>
   hashesBase64: Record<string, string>
+  /** De hashes in exact de volgorde en vorm waarin ze zijn geautoriseerd. */
+  sentHashes?: string[]
   serviceToken?: string | null
 }
 
@@ -41,6 +44,7 @@ export async function createSession(input: CreateSessionInput): Promise<{ id: st
       documentIds: input.documentIds,
       preparedKeys: input.preparedKeys,
       hashes: input.hashesBase64,
+      sentHashes: input.sentHashes ?? undefined,
       // Nooit in leesbare vorm: hetzelfde envelope-schema als de documentopslag.
       serviceToken: input.serviceToken
         ? encryptString(currentStorageKey().secret, input.serviceToken, currentStorageKey().version)
@@ -67,6 +71,10 @@ export interface ResolvedSession {
   preparedKeys: Record<string, string>
   hashesBase64: Record<string, string>
   serviceToken: string | null
+  /** Eerder vastgelegde handtekeningen (ontsleuteld), als die er zijn. */
+  signatureValues: string[] | null
+  /** De hashes exact zoals verstuurd naar de autorisatie. */
+  sentHashes: string[] | null
   status: CscSessionStatus
 }
 
@@ -99,9 +107,31 @@ export async function resolveSession(state: string, currentAccountantId: string)
       preparedKeys: (row.preparedKeys ?? {}) as Record<string, string>,
       hashesBase64: (row.hashes ?? {}) as Record<string, string>,
       serviceToken: row.serviceToken ? decryptString(storageKeyResolver(), row.serviceToken) : null,
+      signatureValues: Array.isArray(row.signatureValues)
+        ? (row.signatureValues as string[]).map((s) => decryptString(storageKeyResolver(), s))
+        : null,
+      sentHashes: Array.isArray(row.sentHashes) ? (row.sentHashes as string[]) : null,
       status: row.status as CscSessionStatus
     }
   }
+}
+
+/**
+ * Legt de handtekeningen van de provider vast, versleuteld, vóór het injecteren.
+ * Zonder dit raakt een crash halverwege de batch cryptografisch werk kwijt en moet
+ * de accountant opnieuw met zijn pincode bevestigen.
+ */
+export async function storeSignatureValues(id: string, signatures: string[]): Promise<void> {
+  const { secret, version } = currentStorageKey()
+  await prisma.cscSigningSession.update({
+    where: { id },
+    data: { signatureValues: signatures.map((s) => encryptString(secret, s, version)) }
+  })
+}
+
+/** Wist de opgeslagen handtekeningen; direct doen zodra alles is geïnjecteerd. */
+export async function clearSignatureValues(id: string): Promise<void> {
+  await prisma.cscSigningSession.update({ where: { id }, data: { signatureValues: Prisma.DbNull } })
 }
 
 export async function markSession(id: string, status: CscSessionStatus, error?: string): Promise<void> {
@@ -128,6 +158,8 @@ export async function cleanupExpiredSessions(now = new Date()): Promise<number> 
     for (const key of keys) {
       await store.remove(key).catch(() => {})
     }
+    // Ook het cryptografische materiaal wissen: geen langere retentie dan nodig.
+    await prisma.cscSigningSession.update({ where: { id: s.id }, data: { signatureValues: Prisma.DbNull } })
     await markSession(s.id, 'EXPIRED', 'opgeruimd: bevestiging niet ontvangen binnen de geldigheidsduur')
   }
   return stale.length
