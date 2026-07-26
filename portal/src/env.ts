@@ -286,8 +286,9 @@ export function assertSealingChoiceIsDeliberate(cfg: {
  * de gevaarlijkste stille toestand die er is: stukken gaan de deur uit die niemand
  * later kan valideren, en niets in de status verraadt het.
  *
- * `organisation` is gereserveerd en niet gebouwd. Beter een leesbare weigering dan
- * een halve implementatie.
+ * `organisation` is sinds v1.7 de normale route en heeft hier geen grendel nodig:
+ * het zegel komt uit de sealer-sidecar, die zijn eigen SEAL_CSC_*-gegevens heeft.
+ * De webapp kan daar niets over vaststellen, dus een controle hier zou schijnzekerheid zijn.
  *
  * Zie docs/hosting-handleiding.md voor de afvinklijst.
  */
