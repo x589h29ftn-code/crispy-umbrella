@@ -3,7 +3,8 @@
 import { redirect } from 'next/navigation'
 import { prisma } from '@/lib/db'
 import { verifyPassword, hashPassword } from '@/lib/auth/password'
-import { verifyTotp, decryptTotpSecret } from '@/lib/auth/totp'
+import { verifyTotpStep, decryptTotpSecret } from '@/lib/auth/totp'
+import { claimTotpStap } from '@/lib/auth/reauth'
 import { consumeBackupCode, looksLikeBackupCode } from '@/lib/auth/backupCodes'
 import {
   createSession,
@@ -87,7 +88,15 @@ export async function verify2faAction(_prev: FormState, formData: FormData): Pro
     await writeAudit({ type: 'INGELOGD', accountantId: accountant.id, message: 'Ingelogd met herstelcode' })
   } else {
     const secret = decryptTotpSecret(accountant.totpSecret)
-    if (!/^\d{6}$/.test(code) || !verifyTotp(secret, code)) return { error: 'Onjuiste of verlopen code.' }
+    if (!/^\d{6}$/.test(code)) return { error: 'Onjuiste of verlopen code.' }
+    const uitkomst = verifyTotpStep(secret, code)
+    if (!uitkomst.ok || uitkomst.step === undefined) return { error: 'Onjuiste of verlopen code.' }
+    // Ook hier de tijdstap verbruiken. Zonder dit blijft de code waarmee net is
+    // ingelogd binnen hetzelfde venster bruikbaar om mee te ondertekenen, en dan
+    // stelt de herverificatie op het ondertekenmoment niets voor.
+    if (!(await claimTotpStap(accountant.id, uitkomst.step))) {
+      return { error: 'Deze code is al gebruikt. Wacht op de volgende code in uw app.' }
+    }
   }
 
   clearPending2fa()

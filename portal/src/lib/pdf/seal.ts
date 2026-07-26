@@ -24,6 +24,8 @@ export interface SealSigner {
   /** Wanneer deze persoon het document voor het eerst opende. */
   openedAt?: Date | null
   otpVerifiedAt?: Date | null
+  /** Kantoorondertekenaar: moment van herverificatie met een verse TOTP-code. */
+  reauthVerifiedAt?: Date | null
   signedAt?: Date | null
   /** Hoe de identiteit is gecontroleerd; bepaalt de tekst op het certificaat. */
   verification?: 'EMAIL' | 'SMS' | 'KANTOOR' | null
@@ -124,7 +126,10 @@ function verificationText(v: SealSigner['verification']): string {
     case 'SMS':
       return 'e-mailadres bevestigd door het kantoor; verificatiecode per sms naar het opgegeven nummer'
     case 'KANTOOR':
-      return 'medewerker van het kantoor, ingelogd met wachtwoord en tweefactorauthenticatie'
+      return (
+        'medewerker van het kantoor, ingelogd met wachtwoord en tweefactorauthenticatie, ' +
+        'plus een verse verificatiecode op het moment van ondertekenen'
+      )
     case 'EMAIL':
     default:
       return 'e-mailadres bevestigd door het kantoor; verificatiecode per e-mail naar dat adres'
@@ -132,7 +137,7 @@ function verificationText(v: SealSigner['verification']): string {
 }
 
 export async function sealDocument(input: SealInput): Promise<SealResult> {
-  const { PDFDocument, StandardFonts, rgb } = await import('@cantoo/pdf-lib')
+  const { PDFDocument, StandardFonts, rgb, PDFName } = await import('@cantoo/pdf-lib')
   // Hash over de volledig ondertekende inhoud, vóór het certificaat wordt
   // toegevoegd. Zo is de vingerafdruk reproduceerbaar te verifiëren.
   const sha256 = createHash('sha256').update(Buffer.from(input.pdfBytes)).digest('hex')
@@ -225,7 +230,9 @@ export async function sealDocument(input: SealInput): Promise<SealResult> {
     // als iemand later zegt dat hij het nooit heeft gekregen.
     line(`    Uitnodiging verstuurd: ${fmt(s.sentAt)}`, { size: 9, color: grey })
     line(`    Voor het eerst geopend: ${fmt(s.openedAt)}`, { size: 9, color: grey })
-    if (s.verification !== 'KANTOOR') {
+    if (s.verification === 'KANTOOR') {
+      line(`    Herverificatie bij ondertekenen: ${fmt(s.reauthVerifiedAt)}`, { size: 9, color: grey })
+    } else {
       line(`    Verificatiecode ingevoerd: ${fmt(s.otpVerifiedAt)}`, { size: 9, color: grey })
     }
     line(`    Ondertekend: ${fmt(s.signedAt)}`, { size: 9, color: grey })
@@ -309,8 +316,77 @@ export async function sealDocument(input: SealInput): Promise<SealResult> {
     )
   }
 
+  plattenEnControleren(doc, PDFName)
+
   const sealedBytes = await doc.save()
   return { sealedBytes, sha256 }
+}
+
+/** Er stond nog een formulierveld of annotatie in het document na het plat slaan. */
+export class NietPlatError extends Error {
+  readonly platgeslagen = false as const
+}
+
+// pdf-lib komt via een dynamische import binnen, dus de typen zijn hier
+// structureel opgeschreven in plaats van geïmporteerd.
+type PDFNameLike = { of(name: string): unknown }
+type PageLike = { node: { set(k: unknown, v: unknown): void; get(k: unknown): unknown } }
+type PDFDocumentLike = {
+  getPages(): PageLike[]
+  getForm(): { flatten(): void; getFields(): unknown[] }
+  context: { obj(v: unknown): unknown }
+}
+
+/**
+ * Stap 3 uit de pipeline: plat slaan, en dan controleren dat het gelukt is.
+ *
+ * Waarom dit moet: het organisatiezegel certificeert met DocMDP P=1, en de
+ * stempels van de ondertekenaars moeten dan pagina-inhoud zijn en geen
+ * annotaties. Blijven ze annotaties, dan kan een viewer ze als verwijderbaar
+ * presenteren. Onder P=1 breekt dat de handtekening, dus je merkt het — maar dan
+ * hangt het visuele verslag af van een foutmelding, en dat is te fragiel voor
+ * iets wat het bewijsstuk zelf is.
+ *
+ * Hetzelfde geldt voor formuliervelden die al in het aangeleverde bestand zaten
+ * (een Word-conversie of een aangeleverd formulier): die zijn na het zegel nog
+ * invulbaar of ze breken het zegel.
+ *
+ * De controle is bewust hard. Faalt hij, dan stopt de pipeline en gaat het stuk
+ * niet de deur uit.
+ */
+function plattenEnControleren(doc: PDFDocumentLike, PDFName: PDFNameLike): void {
+  // pdf-lib gooit als er geen AcroForm is; dat is geen fout maar het normale
+  // geval voor een gewoon tekstdocument.
+  try {
+    doc.getForm().flatten()
+  } catch {
+    /* geen formulier aanwezig */
+  }
+
+  // Wat het plat slaan niet meeneemt (losse annotaties zonder formulierveld)
+  // gaat er hier uit. De sealer maakt straks zijn eigen handtekeningveld aan.
+  for (const page of doc.getPages()) {
+    page.node.set(PDFName.of('Annots'), doc.context.obj([]))
+  }
+
+  let annotaties = 0
+  for (const page of doc.getPages()) {
+    const annots = page.node.get(PDFName.of('Annots')) as { size?: () => number } | undefined
+    annotaties += typeof annots?.size === 'function' ? annots.size() : 0
+  }
+  let velden = 0
+  try {
+    velden = doc.getForm().getFields().length
+  } catch {
+    velden = 0
+  }
+  if (annotaties !== 0 || velden !== 0) {
+    throw new NietPlatError(
+      `plat slaan mislukt: nog ${annotaties} annotatie(s) en ${velden} formulierveld(en) over. ` +
+        'Onder DocMDP P=1 moeten stempels pagina-inhoud zijn; anders kan een viewer ze als ' +
+        'verwijderbaar presenteren of breekt het zegel bij openen.'
+    )
+  }
 }
 
 export function sha256Hex(bytes: Uint8Array): string {

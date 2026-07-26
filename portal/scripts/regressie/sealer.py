@@ -168,6 +168,7 @@ async def main():
         location="Sneek",
         appearance_text="",
         appearance_box="null",
+        certify_level="none",
     )
 
     # 1. Verzegelen lukt.
@@ -321,6 +322,34 @@ async def main():
     except HTTPException as exc:
         code = exc.status_code
     check("verkeerd secret geeft 401", code == 401, code)
+
+    # --- certify_level op het eindpunt (A uit changeset v1.7) ---
+    # De pyHanko-kant staat in certificering.py; dit test de grendels op de route.
+    gecert = dict(vaste)
+    gecert["certify_level"] = "no_changes"
+    res = await sealer.seal(pdf=maak_pdf(), field_name="Zegel1", x_sealer_secret="testsecret", **gecert)
+    check("certificerend verzegelen levert een 200", getattr(res, "status_code", 200) == 200,
+          getattr(res, "body", b"")[:300])
+    check("de sealer meldt terug wat hij heeft gezet", res.headers.get("X-Seal-Certify") == "no_changes",
+          dict(res.headers))
+
+    onzin = dict(vaste)
+    onzin["certify_level"] = "alles-mag"
+    res = await sealer.seal(pdf=maak_pdf(), field_name="Zegel2", x_sealer_secret="testsecret", **onzin)
+    check("een onbekend certify_level geeft 400", getattr(res, "status_code", 0) == 400,
+          getattr(res, "body", b"")[:200])
+
+    # LTA zet een losse document-timestamp als incrementele update bovenop de
+    # handtekening; met certificeren is dat precies de combinatie die je niet wilt.
+    os.environ["PADES_LEVEL"] = "lta"
+    try:
+        res = await sealer.seal(pdf=maak_pdf(), field_name="Zegel3", x_sealer_secret="testsecret", **gecert)
+        check("PADES_LEVEL=lta wordt geweigerd bij certificeren", getattr(res, "status_code", 0) == 400,
+              getattr(res, "body", b"")[:200])
+        res = await sealer.seal(pdf=maak_pdf(), field_name="Zegel4", x_sealer_secret="testsecret", **vaste)
+        check("maar lta zonder certificeren mag gewoon", getattr(res, "status_code", 200) == 200)
+    finally:
+        os.environ["PADES_LEVEL"] = "lt"
 
     PdfSignatureMetadata.__init__ = origineel_init
     del pdf_signer_mod

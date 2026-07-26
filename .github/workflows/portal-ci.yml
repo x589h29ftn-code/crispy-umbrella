@@ -101,5 +101,11 @@ jobs:
       # publieke controle niets van internet ophaalt.
       - name: Sealertests
         run: .venv-sealer/bin/python scripts/regressie/sealer.py
+      # Het certificerende organisatiezegel (DocMDP P=1). Legt vast dat de
+      # DSS-update de eigen NO_CHANGES-permissie niet schendt, dat een echte
+      # wijziging dat wél doet, en dat pyHanko onder P=1 weigert een tweede
+      # handtekening te zetten.
+      - name: Certificering
+        run: .venv-sealer/bin/python scripts/regressie/certificering.py
       - name: Validatormodus
         run: .venv-sealer/bin/python scripts/regressie/validatormodus.py

@@ -38,6 +38,18 @@ MAX_PDF_BYTES = int(os.environ.get("SEALER_MAX_PDF_BYTES", 60 * 1024 * 1024))
 SIGNATURE_RESERVE_BYTES = int(os.environ.get("SEALER_SIGNATURE_RESERVE", 16384))
 SHARED_SECRET = os.environ.get("SEALER_SHARED_SECRET", "")
 
+# Toegestane waarden voor certify_level bij /seal, met de bijbehorende naam uit
+# pyhanko.sign.fields.MDPPerm. Als string zodat dit blok geen pyHanko-import op
+# moduleniveau nodig heeft: importfouten horen een 502 te worden en geen crash
+# bij het opstarten.
+#
+#   none       geen DocMDP; een gewone approval signature
+#   no_changes P=1, route A. Het organisatiezegel is de eerste en enige
+#              handtekening en zet het document helemaal dicht.
+#   fill_forms P=2, route B. Laat precies één ding toe: een bestaand leeg
+#              handtekeningveld invullen, voor het beroepscertificaat.
+_MDP_PERMISSIES = {"none": None, "no_changes": "NO_CHANGES", "fill_forms": "FILL_FORMS"}
+
 # --- Validatormodus: dezelfde image, andere rol ---
 #
 # /validate verwerkt bestanden die van buiten komen en is via de publieke
@@ -183,9 +195,18 @@ async def seal(
     field_name: str = Form("OfficeSeal"),
     appearance_text: str = Form(""),
     appearance_box: str = Form("null"),
+    certify_level: str = Form("none"),
     x_sealer_secret: Optional[str] = Header(None),
 ):
-    """Zet één PAdES-handtekening (approval, geen DocMDP) op een afgeronde PDF."""
+    """Zet één PAdES-handtekening op een afgeronde PDF.
+
+    ``certify_level`` bepaalt of dit een certificerende handtekening is:
+
+    * ``none``       — approval signature, geen DocMDP (route B, tweede handtekening)
+    * ``no_changes`` — certificerend met DocMDP P=1 (route A, het organisatiezegel)
+    * ``fill_forms`` — certificerend met DocMDP P=2 (route B, ruimte voor het
+      beroepscertificaat in een vooraf geplaatst veld)
+    """
     _check_secret(x_sealer_secret)
     _refuse_in_validator_mode()
     if len(pdf) > MAX_PDF_BYTES:
@@ -194,8 +215,14 @@ async def seal(
     # Imports, driver en TSA zijn omgevingszaken: gaat hier iets mis, dan is dat
     # een 502 (de aanroeper probeert het later opnieuw), nooit een onbehandelde
     # 500 — die zou als definitieve fout gelden en nooit opnieuw geprobeerd worden.
+    certify_level = (certify_level or "none").strip().lower()
+    if certify_level not in _MDP_PERMISSIES:
+        return JSONResponse(
+            {"error": f"certify_level ongeldig: {certify_level!r}"}, status_code=400
+        )
+
     try:
-        from pyhanko.sign.fields import SigFieldSpec, SigSeedSubFilter
+        from pyhanko.sign.fields import MDPPerm, SigFieldSpec, SigSeedSubFilter
         from pyhanko.sign.signers import PdfSignatureMetadata, PdfSigner
         from pyhanko.pdf_utils.incremental_writer import IncrementalPdfFileWriter
         from pyhanko_certvalidator import ValidationContext
@@ -212,6 +239,20 @@ async def seal(
         return JSONResponse({"error": f"sealer niet gereed: {exc}"}, status_code=502)
 
     level = os.environ.get("PADES_LEVEL", "lt").strip().lower()
+
+    # LTA zet een lósse document-timestamp als incrementele update bovenop de
+    # handtekening. Bij een certificerende handtekening is dat precies de
+    # combinatie die je niet wilt: een viewer die streng is over DocMDP kan die
+    # extra revisie als schending presenteren. Bij LT zit de tijdstempel ín de
+    # handtekening. Dit is een eis, geen voorkeur — niet "verbeteren" naar LTA.
+    if level == "lta" and certify_level != "none":
+        return JSONResponse(
+            {
+                "error": "PADES_LEVEL=lta gaat niet samen met een certificerende "
+                "handtekening. Zet PADES_LEVEL=lt."
+            },
+            status_code=400,
+        )
 
     # Idempotentie op de PDF zelf, niet op de database. Reden: tussen het
     # wegschrijven van de bytes en het committen van de databaserij kan het
@@ -262,8 +303,12 @@ async def seal(
         validation_context=ValidationContext(allow_fetching=True),
         use_pades_lta=(level == "lta"),
         subfilter=SigSeedSubFilter.PADES,
-        # Bewust GEEN certify/DocMDP: een approval signature is robuuster en
-        # laat een tweede handtekening (incremental update) intact.
+        certify=(certify_level != "none"),
+        docmdp_permissions=(
+            getattr(MDPPerm, _MDP_PERMISSIES[certify_level])
+            if certify_level != "none"
+            else None
+        ),
     )
 
     if box is not None:
@@ -315,6 +360,9 @@ async def seal(
     headers = {
         "X-Seal-Driver": driver_name,
         "X-Seal-Level": level,
+        # Terugmelden wat er daadwerkelijk is gezet, zodat de aanroeper kan
+        # controleren dat hij kreeg wat hij vroeg in plaats van het aan te nemen.
+        "X-Seal-Certify": certify_level,
         "X-Seal-Tsa-Url": os.environ.get("TSA_URL", ""),
     }
     if signing_time:

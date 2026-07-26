@@ -151,6 +151,35 @@ npm run retention:purge -- --apply # voert het uit (niet terug te draaien)
 Steekproef: haal af en toe een gearchiveerd stuk uit SharePoint en gooi het door
 **Document controleren** in het portaal. Blijft dat groen, dan klopt de keten.
 
+## Het handtekeningplaatje is weergave, geen bewijs
+
+De opgeslagen handtekening van een medewerker (`Accountant.signaturePng`) wordt bij
+elk stuk opnieuw gebruikt. Wie een eerder ondertekend PDF in handen heeft, kan die
+afbeelding er dus uit halen en elders plakken. Dat is inherent aan werken met een
+afbeelding, en het geldt precies zo bij PKIsigning en vergelijkbare diensten.
+
+Zeg daarom nooit "zijn handtekening staat erop" als bewijs. Het bewijs is:
+
+- het **auditspoor** — wie, wanneer, vanaf welk IP en apparaat, met welke
+  identiteitscontrole, en welke verklaring die persoon las;
+- bij een kantoorondertekenaar bovendien de **herverificatie**: een verse code uit
+  zijn authenticatie-app op het moment van tekenen, die daarna niet nogmaals werkt;
+- het **organisatiezegel** met tijdstempel, dat elke wijziging daarna aantoonbaar
+  maakt.
+
+Het plaatje is er zodat het stuk eruitziet zoals mensen verwachten. Meer niet.
+
+### Vakantie en ziekte: overdragen, niet delen
+
+Staat er een stuk te wachten op een collega die er niet is, gebruik dan
+**Overdragen** bij die ondertekenaar op de dossierpagina. Dat hangt het slot aan een
+andere accountant, laat hem zelf zien wat hij tekent, en legt in het auditspoor vast
+van wie naar wie en door wie.
+
+Geef nooit iemand anders je inloggegevens om "even te tekenen". Dan staat er een
+handtekening op naam van iemand die er niet bij was, en dat is precies wat het
+auditspoor hoort uit te sluiten.
+
 ## Auditspoor controleren
 
 ```bash

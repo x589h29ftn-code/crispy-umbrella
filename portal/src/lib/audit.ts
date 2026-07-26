@@ -11,6 +11,13 @@ export type AuditType =
   | 'OTP_GEVERIFIEERD'
   | 'OTP_MISLUKT'
   | 'OTP_GEBLOKKEERD'
+  // Herverificatie met een verse TOTP-code bij het ondertekenen door een
+  // kantoorgebruiker. De tegenhanger van OTP_GEVERIFIEERD aan de cliëntkant.
+  | 'HERVERIFICATIE_GESLAAGD'
+  | 'HERVERIFICATIE_MISLUKT'
+  // Een ZELF-ontvanger is overgedragen aan een andere accountant (vakantie,
+  // ziekte). Expliciet, met van wie naar wie en door wie.
+  | 'ONTVANGER_OVERGEDRAGEN'
   | 'TOEGANGSCODE_GEVERIFIEERD'
   | 'TOEGANGSCODE_MISLUKT'
   | 'ONDERTEKEND'
@@ -118,6 +125,9 @@ const VERPLICHTE_TYPEN: ReadonlySet<AuditType> = new Set<AuditType>([
   'ONDERTEKEND',
   'GEKWALIFICEERD_ONDERTEKEND',
   'OTP_GEVERIFIEERD',
+  // De tegenhanger van OTP_GEVERIFIEERD voor de kantoorkant: dit is wat bewijst
+  // dat de accountant er op dat moment zélf bij was.
+  'HERVERIFICATIE_GESLAAGD',
   'VERZEGELD',
   'GEWEIGERD'
 ])

@@ -111,21 +111,78 @@ export function otpEmail(opts: { recipientName: string; code: string; ttlMinutes
   return { subject, html, text }
 }
 
-export function completedEmail(opts: { recipientName: string; documentTitle: string }): {
+/**
+ * De voltooiingsmail. Deze mail is méér dan een bevestiging: hij is het eigen
+ * exemplaar van de cliënt.
+ *
+ * Daarom staan de controlegetallen (SHA-256) in de body als leesbare tekst. Ze
+ * belanden zo in de mailbox van de cliënt, met zíjn ontvangstdatum, buiten ons
+ * beheer. Dat dekt precies het scenario waarin een onafhankelijk zegel telt:
+ * dat iemand óns kantoor verdenkt. Wij kunnen die mail niet aanpassen.
+ *
+ * Let op de volgorde: de hash van het verzegelde bestand kán niet op de
+ * auditpagina in het PDF staan, want die pagina zit ín het bestand waarvan de
+ * hash wordt berekend. Vandaar dat het certificaat uitlegt dat de hash per
+ * persoon over de getoonde versie gaat, en dat deze mail de hash van het
+ * eindbestand draagt.
+ */
+export function completedEmail(opts: {
+  recipientName: string
+  documentTitle: string
+  /** Per document de SHA-256 van het verzegelde bestand. */
+  hashes?: { title: string; sha256: string }[]
+  /** Downloadlink voor het getekende exemplaar (optioneel). */
+  downloadUrl?: string | null
+  downloadDagen?: number
+}): {
   subject: string
   html: string
   text: string
 } {
   const subject = `Ondertekend: ${opts.documentTitle}`
+  const dagen = opts.downloadDagen ?? 90
+  const hashes = opts.hashes ?? []
+
+  const hashHtml = hashes.length
+    ? `<p style="margin-top:20px"><strong>Controlegetallen</strong><br>
+       <span style="color:#64748b;font-size:13px">Deze code hoort bij het bijgevoegde document. Bewaar deze
+       e-mail; hij is uw eigen controlemiddel.</span></p>
+       ${hashes
+         .map(
+           (h) =>
+             `<p style="margin:6px 0;font-size:13px">${escapeHtml(h.title)}<br>
+              <code style="font-family:Consolas,monospace;font-size:12px;color:#1d4ed8;word-break:break-all">${h.sha256}</code></p>`
+         )
+         .join('')}`
+    : ''
+
+  const downloadHtml = opts.downloadUrl
+    ? `<p style="margin:24px 0">${button(opts.downloadUrl, 'Document downloaden')}</p>
+       <p style="color:#64748b;font-size:13px">Deze downloadlink werkt ${dagen} dagen. Bewaar deze e-mail met het
+       document als uw eigen exemplaar.</p>`
+    : ''
+
   const html = layout(
     'Document volledig ondertekend',
     `<p>Beste ${escapeHtml(opts.recipientName)},</p>
      <p>Het document <strong>${escapeHtml(
        opts.documentTitle
      )}</strong> is door alle partijen ondertekend. De definitieve, verzegelde versie vindt u in de bijlage.</p>
+     ${downloadHtml}
+     ${hashHtml}
      <p>Met vriendelijke groet,<br>Otto Visser &amp; Partners</p>`
   )
-  const text = `Beste ${opts.recipientName},\n\nHet document "${opts.documentTitle}" is door alle partijen ondertekend. De verzegelde versie zit in de bijlage.\n\nMet vriendelijke groet,\nOtto Visser & Partners`
+
+  const hashText = hashes.length
+    ? `\n\nControlegetallen (SHA-256). Deze code hoort bij het bijgevoegde document. Bewaar deze e-mail; hij is uw eigen controlemiddel.\n` +
+      hashes.map((h) => `  ${h.title}\n  ${h.sha256}`).join('\n')
+    : ''
+  const downloadText = opts.downloadUrl
+    ? `\n\nDownloaden: ${opts.downloadUrl}\nDeze downloadlink werkt ${dagen} dagen. Bewaar deze e-mail met het document als uw eigen exemplaar.`
+    : ''
+  const text =
+    `Beste ${opts.recipientName},\n\nHet document "${opts.documentTitle}" is door alle partijen ondertekend. ` +
+    `De verzegelde versie zit in de bijlage.${downloadText}${hashText}\n\nMet vriendelijke groet,\nOtto Visser & Partners`
   return { subject, html, text }
 }
 

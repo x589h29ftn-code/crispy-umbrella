@@ -2,7 +2,7 @@
   "name": "ovp-ondertekenportaal",
   "version": "0.1.0",
   "private": true,
-  "description": "Online ondertekenportaal — documenten importeren, ondertekenen en veilig laten tekenen in de browser.",
+  "description": "Online ondertekenportaal \u2014 documenten importeren, ondertekenen en veilig laten tekenen in de browser.",
   "scripts": {
     "dev": "next dev",
     "build": "prisma generate && next build",
@@ -25,10 +25,12 @@
     "test:audit": "tsx --conditions react-server scripts/regressie/audit-en-bewaartermijn.ts",
     "test:gelijktijdig": "tsx --conditions react-server scripts/regressie/gelijktijdig-ondertekenen.ts",
     "test:sessie": "tsx --conditions react-server scripts/regressie/ondertekensessie.ts",
-    "test:regressie": "npm run test:opstart && npm run test:labels && npm run test:audit && npm run test:gelijktijdig && npm run test:sessie && npm run test:levensloop && npm run test:opslag",
+    "test:regressie": "npm run test:opstart && npm run test:labels && npm run test:audit && npm run test:gelijktijdig && npm run test:sessie && npm run test:levensloop && npm run test:opslag && npm run test:herverificatie",
     "test:levensloop": "tsx --conditions react-server scripts/regressie/levensloop.ts",
     "test:opslag": "tsx --conditions react-server scripts/regressie/opslag-en-ankers.ts",
-    "test:labels": "tsx --conditions react-server scripts/regressie/labels-en-modus.ts"
+    "test:labels": "tsx --conditions react-server scripts/regressie/labels-en-modus.ts",
+    "test:herverificatie": "tsx --conditions react-server scripts/regressie/herverificatie-en-download.ts",
+    "test:certificering": "python3 scripts/regressie/certificering.py"
   },
   "prisma": {
     "seed": "tsx prisma/seed.ts"

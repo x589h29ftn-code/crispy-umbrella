@@ -22,6 +22,17 @@ export interface SealAppearanceBox {
   height: number
 }
 
+/**
+ * Certificeringsniveau van de handtekening (DocMDP).
+ *
+ * - `none`       gewone approval signature, geen DocMDP
+ * - `no_changes` P=1 — route A. Het organisatiezegel is de eerste en enige
+ *                handtekening en zet het document helemaal dicht.
+ * - `fill_forms` P=2 — route B. Laat alleen het invullen van een bestaand leeg
+ *                handtekeningveld toe, voor het beroepscertificaat.
+ */
+export type CertifyLevel = 'none' | 'no_changes' | 'fill_forms'
+
 export interface SealRequest {
   pdfBytes: Uint8Array
   reason?: string
@@ -29,6 +40,7 @@ export interface SealRequest {
   fieldName?: string
   appearanceText?: string
   appearanceBox?: SealAppearanceBox | null
+  certify?: CertifyLevel
 }
 
 export interface SealResult {
@@ -60,11 +72,22 @@ export class AlreadySealedError extends Error {
 /**
  * Staat de cryptografische verzegeling aan?
  *
- * Sinds v1.4 betekent dat: de gekwalificeerde handtekening van de accountant is de
- * verzegeling (`SEAL_MODE=qualified`). Er is geen organisatiezegel meer.
+ * Sinds v1.7 is `organisation` de normale route: het organisatiezegel is de enige
+ * cryptografische handtekening in een gewoon dossier. Een jaarrekening krijgt bij
+ * samenstellen geen beroepscertificaat, want dat is niet voorgeschreven.
+ *
+ * `qualified` is de uitzonderingsroute (route B) voor documentsoorten waar een
+ * beroepscertificaat wél vereist is, zoals een SBR-accountantsverklaring.
  */
 export function sealEnabled(): boolean {
-  return env.SEAL_MODE === 'qualified'
+  return env.SEAL_MODE === 'organisation' || env.SEAL_MODE === 'qualified'
+}
+
+/** Route A (organisatiezegel) of route B (beroepscertificaat)? */
+export function sealRoute(): 'geen' | 'organisatie' | 'beroeps' {
+  if (env.SEAL_MODE === 'organisation') return 'organisatie'
+  if (env.SEAL_MODE === 'qualified') return 'beroeps'
+  return 'geen'
 }
 
 export function sha256Hex(bytes: Uint8Array): string {
@@ -110,6 +133,8 @@ export async function sealPdf(req: SealRequest): Promise<SealResult> {
   form.append('field_name', req.fieldName ?? 'OfficeSeal')
   form.append('appearance_text', req.appearanceText ?? '')
   form.append('appearance_box', JSON.stringify(req.appearanceBox ?? null))
+  const gevraagd: CertifyLevel = req.certify ?? 'none'
+  form.append('certify_level', gevraagd)
 
   const res = await postToSealer('/seal', form, env.SEALER_TIMEOUT_MS)
   if (res.status === 409) {
@@ -126,6 +151,18 @@ export async function sealPdf(req: SealRequest): Promise<SealResult> {
       throw new SealRetryableError(msg)
     }
     throw new SealPermanentError(msg)
+  }
+
+  // Kregen we wat we vroegen? Een oudere sealer kent certify_level niet en zou
+  // een gewone approval signature terugsturen: het document lijkt dan verzegeld
+  // maar staat niet dicht. Dat is dezelfde soort stille afwaardering als het
+  // best-effort ondertekenen dat er in v1.7 uit is gegaan, dus fail-closed.
+  const gekregen = res.headers.get('X-Seal-Certify')
+  if (gevraagd !== 'none' && gekregen !== gevraagd) {
+    throw new SealPermanentError(
+      `sealer certificeerde niet zoals gevraagd (gevraagd: ${gevraagd}, gekregen: ${gekregen ?? 'geen antwoord'}). ` +
+        'Draait er een oudere sealer-image? Het document zou dan niet vergrendeld zijn.'
+    )
   }
 
   const sealedBytes = Buffer.from(await res.arrayBuffer())

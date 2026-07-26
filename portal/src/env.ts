@@ -149,11 +149,15 @@ const schema = z.object({
   //
   // none         = geen cryptografische handtekening; alleen de zichtbare stempels
   //                en het auditcertificaat. Vereist ALLOW_UNSEALED in productie.
-  // qualified    = de standaard. De GEKWALIFICEERDE handtekening van de accountant
-  //                (beroepscertificaat) is de verzegeling. Eén mechanisme: geen
-  //                organisatiezegel eroverheen.
-  // organisation = gereserveerd voor een apart organisatiecertificaat. Niet
-  //                gebouwd; de app weigert te starten met deze waarde.
+  // organisation = ROUTE A, de normale route. Het organisatiezegel is de enige
+  //                cryptografische handtekening in een dossier: certificerend,
+  //                DocMDP P=1, onbeheerd en onzichtbaar. Een jaarrekening krijgt
+  //                bij samenstellen geen beroepscertificaat — dat is niet
+  //                voorgeschreven — dus dit dekt het dagelijkse werk.
+  // qualified    = ROUTE B, de uitzondering. Alleen voor documentsoorten waar een
+  //                beroepscertificaat wél vereist is (SBR-accountantsverklaring,
+  //                waarmerken van een SBR-jaarrekening). De accountant autoriseert
+  //                zelf via de CSC-koppeling.
   //
   // 'sealer' is de oude naam van 'qualified' en wordt nog geaccepteerd zodat een
   // bestaand .env-bestand niet stilvalt.
@@ -268,8 +272,8 @@ export function assertSealingChoiceIsDeliberate(cfg: {
   throw new Error(
     'SEAL_MODE=none in productie: verzonden documenten zijn dan niet cryptografisch ' +
       'beschermd. Is dat bewust (bijvoorbeeld tijdens een pilot zonder certificaat), zet dan ' +
-      'ook ALLOW_UNSEALED=true. Anders: stel een organisatiecertificaat en TSA_URL in en zet ' +
-      'SEAL_MODE=sealer.'
+      'ook ALLOW_UNSEALED=true. Anders: stel een organisatiecertificaat en TSA_URL in bij de ' +
+      'sealer en zet SEAL_MODE=organisation.'
   )
 }
 
@@ -293,11 +297,11 @@ export function assertReadyForRealSealing(cfg: {
 }): void {
   if (cfg.SEAL_MODE === 'none') return
   if (cfg.SEAL_MODE === 'organisation') {
-    throw new Error(
-      'SEAL_MODE=organisation is gereserveerd en niet gebouwd. Het beroepscertificaat van de ' +
-        'accountant is de handtekening; zet SEAL_MODE=qualified. Een apart organisatiecertificaat ' +
-        'is bewust van de lijst gehaald (één ondertekenmechanisme).'
-    )
+    // Route A. Het zegel komt uit de sealer-sidecar, die zijn eigen
+    // SEAL_CSC_*-gegevens heeft; de webapp heeft er verder geen instelling voor.
+    // Wel controleren dat er niet per ongeluk óók een beroepscertificaatroute
+    // aanstaat, want dan is onduidelijk welke van de twee het dossier afsluit.
+    return
   }
   if (cfg.SEAL_MODE === 'qualified' && cfg.PROFESSIONAL_SIGNING_DRIVER === 'none') {
     throw new Error(

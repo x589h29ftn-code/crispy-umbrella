@@ -23,7 +23,14 @@ const definities = {
   token: { points: 30, duration: 600, blockDuration: 0 },
   passwordReset: { points: 5, duration: 900, blockDuration: 0 },
   /** Publieke controlepagina: PDF-bommen zijn hier de goedkoopste aanval. */
-  validate: { points: 20, duration: 600, blockDuration: 600 }
+  validate: { points: 20, duration: 600, blockDuration: 600 },
+  /**
+   * Downloadlink uit de voltooiingsmail. Ruimer dan de andere limieten, want een
+   * legitieme cliënt haalt zijn stuk soms een paar keer op en deelt het binnen
+   * een bedrijf. Strak genoeg om het raden van tokens onbetaalbaar te maken —
+   * al is dat met 256 bits sowieso kansloos.
+   */
+  download: { points: 60, duration: 600, blockDuration: 0 }
 } as const
 
 export type LimitKey = keyof typeof definities

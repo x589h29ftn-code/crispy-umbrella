@@ -158,6 +158,14 @@ export async function purgeExpiredDossiers(opts?: {
           sealedKey: null
         }
       })
+      // De downloadlink wijst nu nergens meer naar. Hem laten staan levert een
+      // token op dat de database wél kent maar dat niets meer kan opleveren; dat
+      // is onnodige blootstelling zonder enig nut. De route geeft daarna een
+      // uitgelegde 410 in plaats van een blanco 404.
+      await prisma.recipient.updateMany({
+        where: { dossierId: dossier.id },
+        data: { downloadTokenHash: null, downloadTokenExpiresAt: null }
+      })
       let verwijderd = 0
       for (const key of keys) {
         await store
