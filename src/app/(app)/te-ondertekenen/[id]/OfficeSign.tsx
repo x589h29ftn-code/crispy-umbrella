@@ -27,12 +27,14 @@ export function OfficeSign({
   dossierId,
   documents,
   fields,
+  consentText,
   savedSignature
 }: {
   recipientId: string
   dossierId: string
   documents: DocInfo[]
   fields: FieldRect[]
+  consentText: string
   savedSignature?: string | null
 }) {
   const router = useRouter()
@@ -41,12 +43,16 @@ export function OfficeSign({
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [done, setDone] = useState(false)
+  const [code, setCode] = useState('')
 
   async function submit() {
-    if (!signature) return
+    if (!signature || code.trim().length !== 6) return
     setBusy(true)
     setError(null)
-    const res = await officeSignAction(recipientId, signature)
+    const res = await officeSignAction(recipientId, signature, code.trim())
+    // De code is eenmalig: na een mislukte poging moet er een verse komen,
+    // anders typt iemand vijf keer dezelfde in en is hij geblokkeerd.
+    setCode('')
     setBusy(false)
     if (res.ok) {
       setDone(true)
@@ -124,10 +130,29 @@ export function OfficeSign({
         ) : (
           <TypeSignature onChange={setSignature} />
         )}
+        <p className="rounded-lg bg-slate-50 p-3 text-xs leading-relaxed text-slate-600">{consentText}</p>
+        <div className="space-y-1">
+          <label htmlFor="reauth" className="block text-sm font-medium text-slate-700">
+            Verificatiecode uit uw authenticatie-app
+          </label>
+          <input
+            id="reauth"
+            inputMode="numeric"
+            autoComplete="one-time-code"
+            maxLength={6}
+            value={code}
+            onChange={(e) => setCode(e.target.value.replace(/\D/g, ''))}
+            className="w-32 rounded-lg border border-slate-300 px-3 py-2 text-center text-lg tracking-[0.3em]"
+            placeholder="000000"
+          />
+          <p className="text-xs text-slate-500">
+            Een sessie blijft uren geldig. Met een verse code staat vast dat u er op dit moment zelf bij was.
+          </p>
+        </div>
         {error && <p className="text-sm text-rose-600">{error}</p>}
         <p className="text-xs text-slate-500">Uw handtekening wordt op alle bovenstaande documenten geplaatst.</p>
         <div className="flex items-center gap-3">
-          <button className="btn-primary" onClick={submit} disabled={busy || !signature}>
+          <button className="btn-primary" onClick={submit} disabled={busy || !signature || code.trim().length !== 6}>
             {busy ? 'Bezig…' : 'Ondertekenen'}
           </button>
           <button className="btn-ghost text-sm text-rose-600" onClick={decline} disabled={busy}>

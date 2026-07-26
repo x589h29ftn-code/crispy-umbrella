@@ -54,7 +54,10 @@ enum DossierStatus {
 enum SealStage {
   NONE // niets voorbereid
   PRESEAL // auditcertificaat erop, platgeslagen, hash vastgelegd
-  QUALIFIED // gekwalificeerde handtekening van de accountant staat erop
+  // VEROUDERD sinds v1.7 (deel F): hoorde bij de omgekeerde volgorde waarin de
+  // accountant vóór het organisatiezegel waarmerkte. Wordt niet meer gezet.
+  // Blijft staan omdat een enumwaarde weghalen een migratie is.
+  QUALIFIED
   SEALED // definitief; organisatiezegel gezet of niet van toepassing
 }
 
@@ -98,6 +101,13 @@ model Accountant {
   role         Role     @default(MEDEWERKER)
   totpSecret   String? // versleuteld opgeslagen (AES-256-GCM)
   totpEnabled  Boolean  @default(false)
+  // Laatst geaccepteerde TOTP-tijdstap (unixtijd / 30). Een code blijft binnen
+  // zijn venster herbruikbaar; door de stap te onthouden en niet nogmaals te
+  // accepteren bewijst een code bezit van het apparaat nú, en niet dat iemand
+  // hem heeft gekopieerd. Geldt voor inloggen én voor herverificatie bij het
+  // ondertekenen, want anders is een bij het inloggen gebruikte code daarna nog
+  // te hergebruiken.
+  lastTotpStep Int?
   totpBackupCodes String[] @default([]) // SHA-256-hashes van eenmalige herstelcodes
   // Wachtwoord-vergeten: eenmalige, kortlevende herstellink (alleen hash bewaard).
   passwordResetTokenHash String?
@@ -255,10 +265,15 @@ model Document {
   // Apart bewaard zodat een mislukte verzegeling opnieuw kan zonder de
   // auditpagina een tweede keer toe te voegen.
   preSealKey     String?
-  // Tweede herstartpunt: de PDF ná de gekwalificeerde handtekening van de
-  // accountant, vóór het organisatiezegel. Zonder dit punt zou een mislukt zegel
-  // de retry terugzetten naar vóór het waarmerken, en dat kost bij een batch van
-  // vijftig stukken vijftig keer opnieuw een pincode.
+  // VEROUDERD sinds changeset v1.7 (deel F). Stamt uit de opzet waarin eerst de
+  // accountant waarmerkte en daarná het organisatiezegel kwam. Die volgorde is
+  // omgedraaid: in route B zegelt de organisatie eerst (P=2) en vult het
+  // beroepscertificaat daarna het vooraf geplaatste veld. Er wordt niet meer
+  // naar geschreven.
+  //
+  // Niet verwijderd, en dat is bewust: een kolom weghalen is een migratie op
+  // bestaande dossiers, en die is de opruiming niet waard. Hetzelfde geldt voor
+  // SealStage.QUALIFIED.
   postQualifiedKey    String?
   postQualifiedSha256 String?
   // Expliciet vastleggen hoe ver het verzegelen is, in plaats van het af te leiden
@@ -311,10 +326,24 @@ model Recipient {
   otpAttempts   Int       @default(0)
   otpVerifiedAt DateTime?
 
+  // Herverificatie bij ondertekenen door een kantoorgebruiker (rol ZELF). Eigen
+  // teller: vijf misslagen blokkeren déze ondertekening, niet het account —
+  // anders sluit een accountant zich met een typefout uit de hele app.
+  reauthAttempts   Int       @default(0)
+  reauthVerifiedAt DateTime?
+
   // Eenmalige, kortlevende tekentoken — alleen de hash bewaren.
   tokenHash      String?   @unique
   tokenExpiresAt DateTime?
   tokenUsedAt    DateTime?
+
+  // Downloadtoken voor het getekende exemplaar. Bewust GESCHEIDEN van het
+  // tekentoken: dat is eenmalig en verbruikt na ondertekening, en dat moet zo
+  // blijven. Dit token is herbruikbaar binnen zijn termijn (een download is een
+  // download, geen handeling) en kan niet worden gebruikt om te ondertekenen.
+  // Geldigheid gelijk aan hoelang de bestanden in het portaal blijven staan.
+  downloadTokenHash      String?   @unique
+  downloadTokenExpiresAt DateTime?
 
   // Momentopname van de instemmingstekst zoals die op het scherm stond. Een
   // later gewijzigd sjabloon mag niet veranderen wat er is gelezen.

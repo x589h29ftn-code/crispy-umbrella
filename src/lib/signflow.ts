@@ -6,7 +6,7 @@ import { hashSigningToken, generateSigningToken } from '@/lib/auth/signingToken'
 import { storage } from '@/lib/storage'
 import { stampSignatureImage } from '@/lib/pdf/signing'
 import { sealDocument } from '@/lib/pdf/seal'
-import { sealEnabled, sealPdf, sha256Hex, SealRetryableError, AlreadySealedError } from '@/lib/seal/sealer'
+import { sealEnabled, sealRoute, sealPdf, sha256Hex, SealRetryableError, AlreadySealedError } from '@/lib/seal/sealer'
 import { enqueueOnce } from '@/lib/jobs/queue'
 import { recomputeStatus } from '@/lib/status'
 import { writeAudit } from '@/lib/audit'
@@ -14,6 +14,7 @@ import { sendMail } from '@/lib/email/transport'
 import { requestEmail, completedEmail, officeTurnEmail } from '@/lib/email/templates'
 import { renderTemplate, firstNameFrom } from '@/lib/docanalyze/templates'
 import { archiveDossier, archiveEnabled, buildDefaultFolder } from '@/lib/archive'
+import { blobBewaardagen } from '@/lib/retention'
 
 /** Datum/tijd voor het zichtbare stempel, bijv. "23-9-2020 14:04:44". */
 function formatStampDate(d: Date): string {
@@ -386,6 +387,7 @@ export async function buildPreSealArtifacts(dossierId: string): Promise<void> {
     email: r.email,
     signedAt: r.signedAt,
     otpVerifiedAt: r.otpVerifiedAt,
+    reauthVerifiedAt: r.reauthVerifiedAt,
     sentAt: spoor.get(r.id)?.sentAt ?? null,
     openedAt: spoor.get(r.id)?.openedAt ?? null,
     ip: spoor.get(r.id)?.ip ?? null,
@@ -451,6 +453,12 @@ export interface SealOutcome {
  * namens hem tekent.
  */
 function awaitsQualifiedSignature(owner: { signingCertEnabled: boolean; signingCredentialId: string | null }): boolean {
+  // Alleen in route B. Staat SEAL_MODE op 'organisation', dan sluit het
+  // organisatiezegel het dossier af en heeft de accountant niets te doen — ook
+  // niet als hij toevallig een beroepscertificaat gekoppeld heeft. Zonder deze
+  // voorwaarde zou een dossier op WACHT_OP_WAARMERK blijven staan wachten op een
+  // handeling die in route A niet bestaat.
+  if (env.SEAL_MODE !== 'qualified') return false
   return env.PROFESSIONAL_SIGNING_DRIVER === 'cleverbase' && owner.signingCertEnabled && !!owner.signingCredentialId
 }
 
@@ -526,7 +534,15 @@ async function applySeals(dossierId: string): Promise<SealOutcome> {
     try {
       const result = await sealPdf({
         pdfBytes: preSeal,
-        appearanceText: 'Verzegeld door Otto Visser & Partners Accountants'
+        appearanceText: 'Verzegeld door Otto Visser & Partners Accountants',
+        // Route A: certificerend met P=1. Het zegel is de eerste handtekening in
+        // dit document, dus het mag zijn eigen veld aanmaken en alles daarna
+        // dichtzetten. Geen appearanceBox: het zegel is onzichtbaar, de zichtbare
+        // verantwoording staat op het ondertekencertificaat.
+        //
+        // Route B zet hier 'fill_forms' (P=2), zodat het beroepscertificaat
+        // daarna nog een vooraf geplaatst veld kan invullen.
+        certify: sealRoute() === 'organisatie' ? 'no_changes' : 'fill_forms'
       })
       const sealedKey = await store.put(result.sealedBytes, 'pdf')
       await prisma.document.update({
@@ -606,12 +622,15 @@ export async function sealAndComplete(dossierId: string): Promise<SealOutcome> {
     return completeAfterQualifiedSigning(dossierId)
   }
 
-  // Eén ondertekenmechanisme: bij SEAL_MODE=qualified is de gekwalificeerde
-  // handtekening van de accountant DE verzegeling. Kan de eigenaar van dit dossier
-  // niet gekwalificeerd ondertekenen, dan is er niets om mee te verzegelen — en dan
-  // mag het stuk niet als afgerond de deur uit. Fail-closed, met een melding die
-  // zegt wat er moet gebeuren.
-  if (sealEnabled()) {
+  // Route B: bij SEAL_MODE=qualified is de gekwalificeerde handtekening van de
+  // accountant DE verzegeling. Kan de eigenaar van dit dossier niet gekwalificeerd
+  // ondertekenen, dan is er niets om mee te verzegelen — en dan mag het stuk niet
+  // als afgerond de deur uit. Fail-closed, met een melding die zegt wat er moet
+  // gebeuren.
+  //
+  // In route A geldt dit niet: daar zegelt de organisatie zelf, onbeheerd, en is
+  // er geen accountant nodig. Die valt hieronder door naar applySeals.
+  if (sealRoute() === 'beroeps') {
     const reden =
       env.PROFESSIONAL_SIGNING_DRIVER === 'none'
         ? 'PROFESSIONAL_SIGNING_DRIVER staat op "none"'
@@ -718,16 +737,50 @@ async function completeDossier(dossierId: string): Promise<void> {
     }
   }
 
+  // De controlegetallen van de verzegelde bestanden. Die gaan mee in de body van
+  // de mail, zodat ze in de mailbox van de cliënt terechtkomen met zijn eigen
+  // ontvangstdatum — buiten ons beheer.
+  const mailHashes = dossier.documents
+    .filter((d) => d.sealedKey && d.sealedSha256)
+    .map((d) => ({ title: d.title, sha256: d.sealedSha256! }))
+
+  // Downloadtoken per ontvanger. Apart van het tekentoken: dat is eenmalig en
+  // verbruikt, en dat moet zo blijven. Dit token is herbruikbaar en kan niet
+  // worden gebruikt om te ondertekenen (andere route, andere validatie).
+  const downloadDagen = blobBewaardagen()
+  const downloadLinks = new Map<string, string>()
+  if (dossier.sendCopyToRecipient) {
+    for (const r of dossier.recipients) {
+      const { raw, hash } = generateSigningToken()
+      await prisma.recipient.update({
+        where: { id: r.id },
+        data: {
+          downloadTokenHash: hash,
+          downloadTokenExpiresAt: new Date(Date.now() + downloadDagen * 24 * 60 * 60 * 1000)
+        }
+      })
+      downloadLinks.set(r.id, `${env.APP_URL}/downloaden/${raw}`)
+    }
+  }
+
   const targets = [
-    ...(dossier.sendCopyToRecipient ? dossier.recipients.map((r) => ({ name: r.name, email: r.email })) : []),
-    { name: dossier.owner.name, email: dossier.owner.email }
+    ...(dossier.sendCopyToRecipient
+      ? dossier.recipients.map((r) => ({ name: r.name, email: r.email, url: downloadLinks.get(r.id) ?? null }))
+      : []),
+    { name: dossier.owner.name, email: dossier.owner.email, url: null }
   ]
   // Dedupe op e-mailadres (eigenaar kan ook ondertekenaar zijn).
   const seen = new Set<string>()
   for (const t of targets) {
     if (seen.has(t.email.toLowerCase())) continue
     seen.add(t.email.toLowerCase())
-    const mail = completedEmail({ recipientName: t.name, documentTitle: dossier.title })
+    const mail = completedEmail({
+      recipientName: t.name,
+      documentTitle: dossier.title,
+      hashes: mailHashes,
+      downloadUrl: t.url,
+      downloadDagen
+    })
     await sendMail({ to: t.email, ...mail, attachments }).catch((e) => console.error('[finalize mail]', e))
   }
 

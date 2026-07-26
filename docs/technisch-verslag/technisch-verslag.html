@@ -59,7 +59,7 @@
   <div class="bar"></div>
   <p class="title">Technisch verslag</p>
   <p class="sub">Ondertekenportaal &mdash; wat de applicatie doet, hoe zij werkt, en waarom de keuzes zo zijn gemaakt</p>
-  <p class="meta">Otto Visser &amp; Partners accountants<br />25 juli 2026 &middot; na changeset v1.4</p>
+  <p class="meta">Otto Visser &amp; Partners accountants<br />26 juli 2026 &middot; na changeset v1.7</p>
 </section>
 
 <section class="toc">
@@ -79,7 +79,7 @@
     <li><span>Documentherkenning</span><span class="s">tekstlaag, OCR, sjablonen</span></li>
     <li><span>Gelijktijdigheid en vergrendeling</span><span class="s">waar het bijna stukging</span></li>
     <li><span>Back-up en herstel</span><span class="s">wat het kroonjuweel is</span></li>
-    <li><span>Kwaliteit en tests</span><span class="s">171 controles</span></li>
+    <li><span>Kwaliteit en tests</span><span class="s">221 controles</span></li>
     <li><span>Hosting en beheer</span><span class="s">4 GB veilig maken</span></li>
     <li><span>Wat bewust niet is gebouwd</span><span class="s">en waarom</span></li>
     <li><span>Wat nog niet bewezen is</span><span class="s">eerlijk over de grenzen</span></li>
@@ -143,13 +143,13 @@
 
   <h3>1.4 Omvang van de codebase</h3>
   <table class="kv">
-    <tr><td>TypeScript/React</td><td>147 bestanden, ongeveer 16.400 regels</td></tr>
-    <tr><td>Python (de sealer)</td><td>ongeveer 740 regels</td></tr>
-    <tr><td>Databasemigraties</td><td>19</td></tr>
+    <tr><td>TypeScript/React</td><td>150 bestanden, ongeveer 17.500 regels</td></tr>
+    <tr><td>Python (de sealer)</td><td>ongeveer 790 regels</td></tr>
+    <tr><td>Databasemigraties</td><td>21</td></tr>
     <tr><td>Datamodellen</td><td>14, met 10 opsommingstypen</td></tr>
-    <tr><td>Soorten auditgebeurtenissen</td><td>33</td></tr>
-    <tr><td>Omgevingsvariabelen</td><td>92, allemaal gevalideerd bij het opstarten</td></tr>
-    <tr><td>Automatische controles</td><td>171 (146 applicatie, 21 sealer, 4 validatormodus)</td></tr>
+    <tr><td>Soorten auditgebeurtenissen</td><td>36</td></tr>
+    <tr><td>Omgevingsvariabelen</td><td>88, allemaal gevalideerd bij het opstarten</td></tr>
+    <tr><td>Automatische controles</td><td>221 (175 applicatie, 26 sealer, 16 certificering, 4 validatormodus)</td></tr>
   </table>
 </section>
 
@@ -420,7 +420,49 @@
   zodat niemand die hashes met het eindbestand gaat vergelijken en de verkeerde
   conclusie trekt.</p>
 
-  <h3>5.4 Het ondertekencertificaat</h3>
+  <h3>5.4 De accountant is een gewone ontvanger</h3>
+  <p>Een kantoorondertekenaar heeft net als een cli&euml;nt een positie in de volgorde.
+  Het afronden begint zodra <em>alle</em> ontvangers hebben getekend, ongeacht rol.
+  Het verschil zit alleen in de authenticatie: een cli&euml;nt komt binnen via een
+  magic link plus een code per e-mail, een medewerker via inloggen op
+  <code>/te-ondertekenen</code>.</p>
+  <p>Dat kan omdat <strong>iedere handtekening van iedere partij een visuele stempel
+  is</strong>. Alleen het zegel aan het eind is cryptografisch. De volgorde is daarom
+  vrij configureerbaar zonder cryptografische gevolgen &mdash; geen toeval, maar de
+  reden dat deze opzet werkt.</p>
+  <div class="warn"><strong>De zwakke plek, en wat eraan is gedaan.</strong> Een
+  sessie leeft uren. Wie langsloopt bij een onvergrendelde laptop zou kunnen
+  ondertekenen namens degene die is ingelogd. Daarom vraagt het indienen van een
+  kantoorondertekening om een <strong>verse code uit de authenticatie-app</strong>.
+  Bewust niet om het wachtwoord: dat vullen browsers in, en dan bewijs je niets over
+  het moment.</p>
+  <p style="margin-top:8px">Het detail dat hierbij het vaakst wordt overgeslagen: een
+  TOTP-code blijft binnen zijn tijdvenster geldig en is dus tot anderhalve minuut
+  herbruikbaar. De laatst geaccepteerde tijdstap wordt daarom vastgelegd en niet
+  nogmaals geaccepteerd &mdash; ook niet als hij bij het inloggen is gebruikt. Dat is
+  het verschil tussen een bewijs van bezit en een bewijs van kopi&euml;ren.</p></div>
+  <p>Vijf misslagen blokkeren d&iacute;e ondertekening, niet het account: anders sluit een
+  accountant zich met een typefout uit de hele applicatie. Vakantiedekking gaat via
+  een expliciete <strong>overdracht</strong> aan een collega, met een auditregel die
+  vastlegt van wie naar wie en door wie &mdash; niet via &ldquo;iedereen mag elk
+  kantoorveld invullen&rdquo;.</p>
+
+  <h3>5.5 Het getekende exemplaar</h3>
+  <p>De voltooiingsmail is meer dan een bevestiging; hij is het eigen exemplaar van
+  de cli&euml;nt. Daarom staat de SHA-256 van het verzegelde bestand als leesbare tekst
+  in de body. Die belandt zo in zijn mailbox, met z&iacute;jn ontvangstdatum, buiten ons
+  beheer &mdash; en dat dekt precies het sc&eacute;nario waarin een onafhankelijk zegel
+  telt: dat iemand <em>ons</em> verdenkt. Wij kunnen die mail niet aanpassen.</p>
+  <p>Daarnaast zit er een downloadlink bij, met een eigen token. Bewust gescheiden
+  van het tekentoken: dat is eenmalig en verbruikt na ondertekening, en dat moet zo
+  blijven. Het downloadtoken is herbruikbaar binnen zijn termijn (90 dagen, gelijk
+  aan hoelang de bestanden in het portaal staan), en kan niet worden gebruikt om te
+  ondertekenen &mdash; andere route, andere validatie. Elke download komt als
+  <code>GEDOWNLOAD</code> in het auditspoor. Zodra de bestanden worden opgeruimd,
+  wordt het token gewist en geeft de link een uitgelegde melding in plaats van een
+  blanco foutpagina.</p>
+
+  <h3>5.6 Het ondertekencertificaat</h3>
   <p>Een extra pagina achter het document, in het Nederlands. Het uitgangspunt: iemand
   die over vijf jaar <em>alleen dit PDF-bestand</em> in handen krijgt, zonder toegang tot
   het portaal, moet het hele verloop kunnen nalopen. Alles wat daarvoor nodig is staat
@@ -452,15 +494,15 @@
 <section class="chapter">
   <p class="kicker">Hoofdstuk 6</p>
   <h2>Digitale handtekening en tijdstempel</h2>
-  <p class="lead">E&eacute;n mechanisme: het beroepscertificaat van de accountant is de
-  handtekening &eacute;n de integriteitsbescherming.</p>
+  <p class="lead">In een gewoon dossier is er &eacute;&eacute;n cryptografische handtekening: het
+  organisatiezegel. Het beroepscertificaat is de uitzondering.</p>
 
   <h3>6.1 De drie standen</h3>
   <table>
     <tr><th><code>SEAL_MODE</code></th><th>Betekenis</th></tr>
     <tr><td><code>none</code></td><td>geen cryptografische handtekening. Banner in het portaal, een niet-onderdrukbare regel op het certificaat, en <code>VERZEGELING_OVERGESLAGEN</code> in het auditspoor. In productie ook <code>ALLOW_UNSEALED=true</code> nodig: &eacute;&eacute;n vlag zet iemand per ongeluk, twee niet.</td></tr>
-    <tr><td><code>qualified</code></td><td>de standaard zodra er een certificaat is. De gekwalificeerde handtekening van de accountant is de verzegeling en zet <code>sealStage = SEALED</code>.</td></tr>
-    <tr><td><code>organisation</code></td><td>gereserveerd en niet gebouwd. De applicatie weigert te starten met deze waarde: beter een leesbare weigering dan een halve implementatie.</td></tr>
+    <tr><td><code>organisation</code></td><td><strong>route A, de normale route.</strong> Het organisatiezegel is de enige cryptografische handtekening: certificerend met DocMDP P=1, onbeheerd en onzichtbaar. Zet <code>sealStage = SEALED</code>.</td></tr>
+    <tr><td><code>qualified</code></td><td><strong>route B, de uitzondering.</strong> Alleen voor documentsoorten waar een beroepscertificaat vereist is: een SBR-accountantsverklaring of het waarmerken van een SBR-jaarrekening. De accountant autoriseert zelf.</td></tr>
   </table>
   <div class="stop"><strong>De opstartgrendel.</strong> Met
   <code>SEAL_MODE=qualified</code> en <code>PROFESSIONAL_SIGNING_DRIVER=none</code>
@@ -468,14 +510,49 @@
   er wordt dan niets verzegeld terwijl de configuratie zegt van wel, en niets in de
   status verraadt het.</div>
 
-  <h3>6.2 Waarom geen organisatiezegel meer</h3>
+  <h3>6.2 Wat het certificerende zegel wel en niet doet</h3>
+  <p>Het zegel certificeert met <strong>DocMDP P=1</strong> (<code>NO_CHANGES</code>).
+  Dat is sterker dan een gewone handtekening: die zegt alleen &ldquo;dit was de inhoud&rdquo;,
+  terwijl een certificerende handtekening ook zegt wat er daarna n&oacute;g mag. Bij P=1
+  is dat niets.</p>
+  <p>De ene echte onzekerheid vooraf was of de revocatiegegevens van de LT-laag de
+  eigen permissie zouden schenden: die DSS-dictionary komt namelijk in een l&aacute;tere
+  revisie dan de handtekening. Nagemeten in
+  <code>scripts/regressie/certificering.py</code>:</p>
+  <ul>
+    <li>Ja, de DSS komt in een latere revisie &mdash; en dat kan niet anders. De DSS
+    bevat validatie-informatie <em>over</em> de handtekening, dus die moet er al zijn.
+    Er is geen variant van PAdES B-LT waarin het anders ligt.</li>
+    <li>Nee, dat schendt de permissie niet. De PAdES-regels zonderen DSS-updates
+    expliciet uit, en pyHanko meldt <code>docmdp_ok=true</code> met
+    &ldquo;acceptable modifications&rdquo;.</li>
+    <li>Een echte inhoudelijke wijziging w&oacute;rdt gemeld, en niet als &ldquo;er is iets
+    veranderd&rdquo; maar als permissieschending. Dat onderscheid is precies wat
+    certificeren toevoegt.</li>
+    <li>Sterker dan verwacht: onder P=1 <em>weigert</em> pyHanko een tweede
+    handtekening te zetten. Niet &ldquo;het mag maar het wordt gemeld&rdquo; &mdash; het
+    gereedschap doet het niet.</li>
+  </ul>
+  <div class="warn"><strong>Wat we hierover niet beweren.</strong> Geen enkel
+  PDF-mechanisme verhindert f&iacute;siek dat iemand bytes achter een bestand plakt; dat
+  is in dezelfde test aangetoond en geldt bij elke leverancier. En het gedrag
+  verschilt per viewer. De formulering is daarom niet &ldquo;het document kan niet
+  worden gewijzigd&rdquo; maar <strong>&ldquo;wijzigen wordt geblokkeerd en elke
+  wijziging is aantoonbaar&rdquo;</strong>. Wat niet is getest: Adobe Acrobat zelf &mdash;
+  daar bestaat geen headless variant van. Dat hoort met de hand te gebeuren zodra
+  er een echt certificaat is.</div>
+  <p><code>PADES_LEVEL=lt</code> is hierbij een eis en geen voorkeur. Bij LTA komt er
+  een losse document-timestamp als incrementele update bovenop, en dat is precies de
+  combinatie die met certificeren wringt. De sealer weigert die combinatie.</p>
+
+  <h3>6.3 Waarom geen tweede zegel er&oacute;verheen</h3>
   <p>Dat stond er wel, met een eigen driver voor GlobalSign. Het is eruit. Het
   beroepscertificaat doet hetzelfde werk: het beschermt de integriteit &eacute;n het
   vervangt de natte handtekening. Twee mechanismen naast elkaar betekent een tweede
   certificaat (&euro;450&ndash;650 per jaar), een tweede storingsbron, en de vraag welke
   van de twee er nu eigenlijk toe doet.</p>
 
-  <h3>6.3 En waarom er ook geen tweede ondertekendriver meer is</h3>
+  <h3>6.4 En waarom er ook geen tweede ondertekendriver meer is</h3>
   <p>Er was een driver (<code>digidentity</code>) die t&iacute;jdens het ondertekenen
   namens de accountant tekende, zonder handeling van hem. Prettig in gebruik, maar hij
   tekende <strong>best-effort</strong>: viel de provider weg, dan bleef het zichtbare
@@ -494,7 +571,7 @@
   &mdash; het gebeurt later, apart, waar mislukken alleen het kantoor raakt en het
   dossier netjes blijft wachten.</div>
 
-  <h3>6.4 De vijf eindpunten van de sealer</h3>
+  <h3>6.5 De vijf eindpunten van de sealer</h3>
   <table>
     <tr><th>Eindpunt</th><th>Wat het doet</th></tr>
     <tr><td><code>/health</code></td><td>kan de driver worden gebouwd, is de TSA bereikbaar</td></tr>
@@ -504,7 +581,7 @@
     <tr><td><code>/validate</code></td><td>controleert de handtekening(en); slaat niets op</td></tr>
   </table>
 
-  <h3>6.5 Tweefasig ondertekenen, en waarom dat nodig is</h3>
+  <h3>6.6 Tweefasig ondertekenen, en waarom dat nodig is</h3>
   <p>Bij Cleverbase autoriseert de <em>accountant</em>, niet de server: hij bevestigt
   met een pincode in de app van de provider, na een browserredirect. Daardoor moet het
   ondertekenen in twee delen:</p>
@@ -540,7 +617,7 @@
   <p>De verzameling is <strong>atomair</strong>: mislukt er &eacute;&eacute;n, dan wordt
   er niets ge&iuml;njecteerd. Een half ondertekende verzameling is erger dan geen.</p>
 
-  <h3>6.6 De PDF bepaalt of er al ondertekend is, nooit de database</h3>
+  <h3>6.7 De PDF bepaalt of er al ondertekend is, nooit de database</h3>
   <p>Tussen het wegschrijven van de bytes en het committen van de databaserij kan het
   proces omvallen. De rij weet dan niet dat er al is ondertekend, een nieuwe poging
   ondertekent opnieuw, en er staan twee handtekeningen in &eacute;&eacute;n document.
@@ -554,7 +631,7 @@
   een placeholder niet als handtekening, dus de controle is wel zinvol. Dat is precies
   het soort ding dat je niet moet beredeneren maar meten.</div>
 
-  <h3>6.7 De zichtbare tekst per documentsoort</h3>
+  <h3>6.8 De zichtbare tekst per documentsoort</h3>
   <table>
     <tr><th>Documentsoort</th><th>Wat er in de handtekening staat</th></tr>
     <tr><td><code>JAARREKENING</code></td><td>Ondertekend door &lt;naam&gt;, AA of RA</td></tr>
@@ -569,7 +646,7 @@
   &ldquo;tekenen we op het aangiftestuk zelf of alleen op de akkoordbrief?&rdquo; later
   kan komen.</p>
 
-  <h3>6.8 De controlepagina</h3>
+  <h3>6.9 De controlepagina</h3>
   <p>Onder <strong>Document controleren</strong> kan een medewerker een ondertekend
   stuk uploaden. De pagina geeft <strong>&eacute;&eacute;n eindoordeel</strong> met drie
   toestanden:</p>
@@ -658,7 +735,7 @@
 <section class="chapter">
   <p class="kicker">Hoofdstuk 8</p>
   <h2>Het auditspoor</h2>
-  <p class="lead">33 soorten gebeurtenissen, append-only afgedwongen door de database,
+  <p class="lead">36 soorten gebeurtenissen, append-only afgedwongen door de database,
   met een hashketen per dossier.</p>
 
   <h3>8.1 Wat er wordt vastgelegd</h3>
@@ -793,7 +870,7 @@
   <code>INTEGRITEIT_AFWIJKING</code> in het auditspoor.</p>
 
   <h3>9.6 Opstartregels</h3>
-  <p>Alle 92 omgevingsvariabelen worden bij het opstarten gevalideerd; een ontbrekend of
+  <p>Alle 88 omgevingsvariabelen worden bij het opstarten gevalideerd; een ontbrekend of
   te zwak geheim laat de applicatie niet starten. Daarnaast drie harde weigeringen:</p>
   <ul>
     <li>de openbare teststub van de ondertekenprovider in productie &mdash; op de
@@ -1060,7 +1137,7 @@
   <p class="kicker">Hoofdstuk 15</p>
   <h2>Kwaliteit en tests</h2>
 
-  <h3>15.1 171 automatische controles</h3>
+  <h3>15.1 221 automatische controles</h3>
   <table>
     <tr><th>Pakket</th><th>Aantal</th><th>Wat het dekt</th></tr>
     <tr><td>Opstartregels</td><td>11</td><td>de harde weigeringen bij het opstarten</td></tr>
@@ -1070,7 +1147,9 @@
     <tr><td>Ondertekensessie</td><td>8</td><td>versleuteld bewaren en wissen, eigenaarscontrole</td></tr>
     <tr><td>Levensloop</td><td>32</td><td>herinneren, verlopen, opnieuw verzenden, nudge</td></tr>
     <tr><td>Opslag en bewaartermijn</td><td>45</td><td>nieuwe sleutels, weesbestanden, het bewaarmodel, de grendel</td></tr>
-    <tr><td>Sealer</td><td>21</td><td>verzegelen, idempotentie, manipulatiedetectie, validatie</td></tr>
+    <tr><td>Sealer</td><td>26</td><td>verzegelen, idempotentie, manipulatiedetectie, validatie</td></tr>
+    <tr><td>Certificering</td><td>16</td><td>DocMDP P=1, de DSS-vraag, en wat een viewer wél en niet blokkeert</td></tr>
+    <tr><td>Herverificatie en download</td><td>24</td><td>verse TOTP-code, replaybescherming, gescheiden downloadtoken</td></tr>
     <tr><td>Validatormodus</td><td>4</td><td>de omgekeerde grendel in het juiste proces</td></tr>
   </table>
   <p>Ze draaien tegen een echte PostgreSQL en een echte pyHanko, niet tegen nagemaakte
@@ -1228,7 +1307,7 @@
   &ldquo;verzonden&rdquo; de zwakste schakel in het bewijsdossier.</p>
 
   <h3>18.5 Er draait geen pijplijn</h3>
-  <p>De 171 controles draaien handmatig. Dat is het grootste procesgat: handmatige
+  <p>De 221 controles draaien handmatig. Dat is het grootste procesgat: handmatige
   tests verlopen binnen enkele maanden zonder dat iemand het merkt.</p>
 
   <h3>18.6 Eén openstaande vraag voor het kantoor</h3>

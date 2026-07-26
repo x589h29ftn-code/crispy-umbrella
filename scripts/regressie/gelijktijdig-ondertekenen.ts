@@ -178,6 +178,26 @@ async function main() {
   check('certificaat benoemt de tijdzone', certTekst.includes('Europe/Amsterdam'))
   check('certificaat benoemt de identiteitscontrole', /Identiteitscontrole: /.test(certTekst))
 
+  // A.2 uit changeset v1.7. Het organisatiezegel certificeert met DocMDP P=1, dus
+  // de stempels moeten pagina-inhoud zijn en er mag geen formulierveld of
+  // annotatie meer in staan. Blijven het annotaties, dan kan een viewer ze als
+  // verwijderbaar presenteren en hangt het visuele verslag af van een foutmelding.
+  const platBytes = metCert.preSealKey ? await storage().get(metCert.preSealKey) : new Uint8Array()
+  const { PDFDocument: PDFDoc, PDFName } = await import('@cantoo/pdf-lib')
+  const platDoc = await PDFDoc.load(Uint8Array.from(platBytes))
+  const veldenOver = platDoc.getForm().getFields().length
+  let annotatiesOver = 0
+  for (const p of platDoc.getPages()) {
+    const a = p.node.get(PDFName.of('Annots')) as { size?: () => number } | undefined
+    annotatiesOver += typeof a?.size === 'function' ? a.size() : 0
+  }
+  check('geen formuliervelden meer na het plat slaan', veldenOver === 0, veldenOver)
+  check('geen annotaties meer na het plat slaan', annotatiesOver === 0, annotatiesOver)
+  // En het plat slaan mag de stempels niet hebben opgegeten.
+  for (const naam of namen) {
+    check(`stempel van ${naam} staat nog in het platgeslagen bestand`, certTekst.includes(naam))
+  }
+
   console.log(fails === 0 ? '\nALLES GOED' : `\n${fails} TEST(EN) MISLUKT`)
   await prisma.$disconnect()
   process.exit(fails === 0 ? 0 : 1)

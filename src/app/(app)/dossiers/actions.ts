@@ -14,8 +14,8 @@ import { generateSigningToken } from '@/lib/auth/signingToken'
 import { sendMail } from '@/lib/email/transport'
 import { mailBlocked } from '@/lib/email/status'
 import { reminderEmail, officeTurnEmail } from '@/lib/email/templates'
-import { activateInitial, currentSigners } from '@/lib/signflow'
-import type { DocumentKind } from '@prisma/client'
+import { activateInitial, activateSigner, currentSigners } from '@/lib/signflow'
+import { Prisma, type DocumentKind } from '@prisma/client'
 import { extractText } from '@/lib/docanalyze/extractText'
 import { classifyText } from '@/lib/docanalyze/classify'
 import { analyzeDocument, type AnalyzeResult } from '@/lib/docanalyze/analyze'
@@ -234,6 +234,29 @@ export async function saveFieldsAction(
     }
   }
 
+  // C.2 uit changeset v1.7: ondertekenen door een kantoorgebruiker vraagt om een
+  // verse TOTP-code. Wie geen tweefactorauthenticatie heeft, kan dus niet tekenen.
+  // Dat hier controleren en niet pas als hij aan de beurt is: anders loopt een
+  // dossier vast op het moment dat de cliënt al getekend heeft, en dan is het
+  // niet meer op te lossen zonder het opnieuw te versturen.
+  const kantoorIds = signers.filter((s) => s.kind === 'office' && s.accountantId).map((s) => s.accountantId as string)
+  if (kantoorIds.length > 0) {
+    const zonder2fa = await prisma.accountant.findMany({
+      where: { id: { in: kantoorIds }, totpEnabled: false },
+      select: { name: true }
+    })
+    if (zonder2fa.length > 0) {
+      const namen = zonder2fa.map((a) => a.name).join(', ')
+      return {
+        ok: false,
+        error:
+          `${namen} ${zonder2fa.length === 1 ? 'heeft' : 'hebben'} nog geen tweefactorauthenticatie ingesteld en ` +
+          `${zonder2fa.length === 1 ? 'kan' : 'kunnen'} daarom niet als ondertekenaar worden toegevoegd. ` +
+          'Dat kan onder Instellingen.'
+      }
+    }
+  }
+
   // Vervang bestaande ondertekenaars/velden (dossier is nog concept).
   await prisma.$transaction([
     prisma.signatureField.deleteMany({ where: { dossierId } }),
@@ -395,6 +418,81 @@ export async function setArchivedAction(
   if (!res.ok) return { ok: false, error: 'error' in res ? res.error : 'Er ging iets mis.' }
   revalidatePath(`/dossiers/${dossierId}`)
   revalidatePath('/dashboard')
+  return { ok: true }
+}
+
+/**
+ * Draagt een kantoorondertekenaar over aan een andere accountant (C.3 uit
+ * changeset v1.7).
+ *
+ * Vakantie en ziekte lossen we hiermee op, en niet met "iedere medewerker mag
+ * elk ZELF-veld invullen". Dat laatste is comfortabel tot het moment dat je moet
+ * uitleggen wie er nu eigenlijk heeft getekend. Deze route legt vast van wie
+ * naar wie en door wie, en de handtekening blijft aan één persoon hangen.
+ *
+ * Alleen de eigenaar van het dossier of een beheerder mag dit.
+ */
+export async function transferSignerAction(
+  recipientId: string,
+  naarAccountantId: string
+): Promise<{ ok: boolean; error?: string }> {
+  const acc = await requireAccountant()
+  const recipient = await prisma.recipient.findUnique({
+    where: { id: recipientId },
+    include: { dossier: { select: { id: true, ownerId: true, status: true } }, accountant: { select: { name: true } } }
+  })
+  if (!recipient || recipient.role !== 'ZELF') return { ok: false, error: 'Ontvanger niet gevonden.' }
+  if (recipient.dossier.ownerId !== acc.id && acc.role !== 'BEHEERDER') {
+    return { ok: false, error: 'U mag deze ondertekenaar niet overdragen.' }
+  }
+  if (recipient.status !== 'PENDING') return { ok: false, error: 'Deze ondertekenaar is al klaar.' }
+  if (recipient.accountantId === naarAccountantId) return { ok: true }
+
+  const naar = await prisma.accountant.findUnique({
+    where: { id: naarAccountantId },
+    select: { id: true, name: true, email: true, active: true, totpEnabled: true }
+  })
+  if (!naar?.active) return { ok: false, error: 'Die medewerker bestaat niet of is niet actief.' }
+  // Zelfde eis als bij het aanmaken: zonder tweefactorauthenticatie kan iemand
+  // niet ondertekenen, dus overdragen zou het dossier alsnog vastzetten.
+  if (!naar.totpEnabled) {
+    return {
+      ok: false,
+      error: `${naar.name} heeft nog geen tweefactorauthenticatie ingesteld en kan daarom niet ondertekenen.`
+    }
+  }
+
+  await prisma.recipient.update({
+    where: { id: recipientId },
+    data: {
+      accountantId: naar.id,
+      name: naar.name,
+      email: naar.email,
+      // De nieuwe ondertekenaar moet zélf zien wat hij tekent en zelf instemmen.
+      // De vastlegging van zijn voorganger overnemen zou een onjuist spoor geven.
+      consentTextSnapshot: null,
+      consentTextHash: null,
+      consentShownAt: null,
+      presentedHashes: Prisma.DbNull,
+      presentedAt: null,
+      reauthAttempts: 0,
+      reauthVerifiedAt: null
+    }
+  })
+  await writeAudit({
+    type: 'ONTVANGER_OVERGEDRAGEN',
+    dossierId: recipient.dossier.id,
+    recipientId,
+    accountantId: acc.id,
+    message: `van ${recipient.accountant?.name ?? 'onbekend'} naar ${naar.name}, door ${acc.name}`,
+    metadata: { vanAccountantId: recipient.accountantId, naarAccountantId: naar.id, doorAccountantId: acc.id },
+    ...requestContext()
+  })
+  // De nieuwe ondertekenaar moet weten dat er iets op hem wacht.
+  await activateSigner(recipientId)
+
+  revalidatePath(`/dossiers/${recipient.dossier.id}`)
+  revalidatePath('/te-ondertekenen')
   return { ok: true }
 }
 

@@ -1,22 +1,31 @@
 # Verzegeling, tijdstempel en achtergrondtaken
 
-> **Sinds changeset v1.4: één ondertekenmechanisme.**
+> **Sinds changeset v1.7: het organisatiezegel is de normale route.**
 >
-> Het **beroepscertificaat van de accountant** is de handtekening én de
-> integriteitsbescherming. Er is geen apart organisatiezegel meer, en de
-> GlobalSign-DSS-driver is verwijderd. Dat scheelt een tweede certificaat
-> (€450–650 per jaar), een tweede storingsbron, en een uitleg die niemand wil geven.
+> Drie besluiten van het kantoor bepalen dit. Een jaarrekening krijgt bij
+> samenstellen géén beroepscertificaat, want dat is niet voorgeschreven. Er wordt
+> per dossier ondertekend, niet in batches. En de accountant tekent ingelogd, met
+> herverificatie op het ondertekenmoment.
 >
-> `SEAL_MODE` heeft drie waarden:
+> Gevolg: in een gewoon dossier is er **één** cryptografische handtekening, het
+> organisatiezegel, en het beroepscertificaat is de uitzondering. De hele
+> batchmachinerie en de externe afhankelijkheid van een provider verdwijnen
+> daarmee uit het dagelijkse pad.
 >
-> | Waarde | Betekenis |
+> | `SEAL_MODE` | Betekenis |
 > |---|---|
 > | `none` | geen cryptografische handtekening. Banner in het portaal, regel op het certificaat, en `VERZEGELING_OVERGESLAGEN` in het auditspoor. In productie ook `ALLOW_UNSEALED=true` nodig. |
-> | `qualified` | de standaard. De gekwalificeerde handtekening van de accountant is de verzegeling; die zet `sealStage = SEALED`. Vereist een werkende `PROFESSIONAL_SIGNING_DRIVER`, anders weigert de app te starten. |
-> | `organisation` | gereserveerd, niet gebouwd. De app weigert te starten met deze waarde. |
+> | `organisation` | **route A, de normale route.** Certificerend organisatiezegel met DocMDP P=1, onbeheerd en onzichtbaar. |
+> | `qualified` | **route B, de uitzondering.** Alleen voor SBR-verklaringen en het waarmerken van een SBR-jaarrekening. Vereist een werkende `PROFESSIONAL_SIGNING_DRIVER`. |
 >
 > `sealer` blijft geaccepteerd als oude naam voor `qualified`, zodat een bestaand
 > `.env` niet stilvalt.
+>
+> Eén eigenschap die het ontwerp draagt en die je moet bewaken: **iedere
+> handtekening van iedere partij is een visuele stempel; alleen het zegel aan het
+> eind is cryptografisch.** Daardoor is de ondertekenvolgorde vrij configureerbaar
+> zonder cryptografische gevolgen. Dat is geen toeval maar de reden dat de
+> accountant een gewone ontvanger kan zijn.
 >
 > De zichtbare tekst hangt af van de documentsoort: op een jaarrekening staat
 > "Ondertekend door \<naam\>, RA", op een stuk waarin de cliënt iets verklaart
@@ -68,21 +77,42 @@ Dan werkt het portaal precies als voorheen: zichtbare stempels en het
 ondertekencertificaat, maar **geen** digitaal zegel. Handig om eerst te testen.
 De `sealer`-container mag dan gewoon meedraaien; hij wordt niet gebruikt.
 
-### 2. Verzegeling aanzetten
+### 2. Route A aanzetten — het organisatiezegel (de normale route)
 
-Nodig: een **beroepscertificaat** voor de accountant waarvan de private sleutel bij
-de aanbieder in een cloud-HSM staat, plus een **tijdstempeldienst (TSA)**.
+Nodig: een **organisatiecertificaat** (eSeal) waarvan de private sleutel bij de
+aanbieder in een cloud-HSM staat, plus een **tijdstempeldienst (TSA)**.
 
 > Zet nooit een `.pfx` of `.p12` op de server. Dat mag niet meer en is praktisch
 > onverdedigbaar.
 
 ```
-SEAL_MODE="qualified"
+SEAL_MODE="organisation"
 SEALER_SHARED_SECRET="<openssl rand -base64 48>"
 SEAL_DRIVER="csc"
 TSA_URL="https://<tijdstempeldienst>/tsr"
 PADES_LEVEL="lt"
+```
 
+Dit is het dagelijkse pad. Een jaarrekening krijgt bij samenstellen géén
+beroepscertificaat — dat is niet voorgeschreven — dus in een gewoon dossier is er
+precies **één** cryptografische handtekening: het organisatiezegel. Het gaat
+onbeheerd, dus er komt geen telefoon of pincode aan te pas, en het is onzichtbaar:
+de zichtbare verantwoording staat op het ondertekencertificaat.
+
+**`PADES_LEVEL=lt` is een eis, geen voorkeur.** Bij LTA komt er een losse
+document-timestamp als incrementele update bovenop, en dat is precies de
+combinatie die met een certificerende handtekening wringt. Bij LT zit de
+tijdstempel ín de handtekening. De sealer weigert `lta` in combinatie met
+certificeren; niet "verbeteren".
+
+### 3. Route B — het beroepscertificaat (de uitzondering)
+
+Alleen voor documentsoorten waar een beroepscertificaat wél vereist is: een
+SBR-accountantsverklaring of het waarmerken van een SBR-jaarrekening. Niet nodig
+om live te gaan.
+
+```
+SEAL_MODE="qualified"
 PROFESSIONAL_SIGNING_DRIVER="cleverbase"
 CLEVERBASE_CSC_BASE_URL=""
 CLEVERBASE_CSC_CLIENT_ID=""
@@ -100,16 +130,62 @@ configuratie zegt van wel. Dat is de gevaarlijkste stille toestand die er is.
 ## Hoe het in de praktijk verloopt
 
 De volgorde is strikt, want zodra er een handtekening in een PDF zit mag het
-bestand niet meer worden bewerkt:
+bestand niet meer worden bewerkt.
 
-1. Zichtbare handtekeningen en stempels plaatsen.
+### Route A (normaal)
+
+1. Alle zichtbare stempels plaatsen, in vaste volgorde (`Recipient.order`, dan `id`).
 2. Ondertekencertificaat als extra pagina toevoegen.
-3. Plat slaan en de hash vastleggen (`preSealSha256`).
-4. De accountant zet zijn **gekwalificeerde handtekening** (pincode in de app van de
-   provider). Die handtekening ís de verzegeling: hij zet `sealStage = SEALED` en
-   vult `sealedKey`, `sealedSha256`, `timestampedAt` en `sealCertSerial`.
-5. Pas daarna: de voltooiingsmail. Archiveren gebeurt handmatig, met een vinkje in
-   het portaal; zie `beheer.md`.
+3. **Plat slaan**, en controleren dat het gelukt is: nul annotaties, nul
+   formuliervelden. Faalt die controle, dan stopt de pipeline. De stempels moeten
+   pagina-inhoud zijn; blijven het annotaties, dan kan een viewer ze als
+   verwijderbaar presenteren.
+4. `preSealKey` en `preSealSha256` vastleggen.
+5. **Organisatiezegel, certificerend, DocMDP P=1 (`NO_CHANGES`)**, onbeheerd en
+   onzichtbaar. Zet `sealStage = SEALED` en vult `sealedKey`, `sealedSha256`,
+   `timestampedAt`, `sealCertSerial` en `sealTsaUrl`.
+6. Voltooiingsmail met het verzegelde bestand als bijlage, de SHA-256 in de body en
+   een downloadlink.
+
+Doorlooptijd na de laatste ondertekening: seconden.
+
+Geen leeg handtekeningveld vooraf plaatsen, en geen FieldMDP-lock: het zegel is de
+eerste handtekening in het document en mag zijn eigen veld aanmaken, en P=1
+vergrendelt daarna alles.
+
+### Route B (uitzondering)
+
+Stap 1 t/m 3 gelijk. Daarna:
+
+4. **Leeg handtekeningveld** aanmaken voor de accountant. Dit moet vóór het
+   certificeren: een veld toevoegen aan een gecertificeerd document is onder P=2
+   geen toegestane wijziging. De certificeerder plaatst het veld, de tweede partij
+   vult het.
+5. **Organisatiezegel, certificerend, P=2 (`FILL_FORMS`)**, onbeheerd.
+6. Dossier naar `WACHT_OP_WAARMERK`. **Geen mail.**
+7. De accountant autoriseert via CSC. De hash gaat mee in die aanvraag en wordt dus
+   berekend over het **org-verzegelde** document uit stap 5.
+8. Het beroepscertificaat tekent in het bestaande veld, met een FieldMDP-lock.
+9. `sealedKey`, `sealStage = SEALED`, dan pas de mail.
+
+> Het org-verzegelde tussenresultaat mag het systeem **nooit** verlaten. Geen mail,
+> geen download, geen archivering. Anders bestaan er twee versies met verschillende
+> hashes en meldt onze eigen integriteitscontrole later een afwijking op de versie
+> die de cliënt heeft.
+
+## Wat we hierover wel en niet beweren
+
+Twee dingen niet overdrijven, ook niet richting cliënten:
+
+1. Geen enkel PDF-mechanisme verhindert fysiek dat iemand bytes aan een bestand
+   plakt. Je krijgt preventie in de praktijk en detectie in beginsel. Dat geldt voor
+   elke leverancier precies zo — het is nagemeten in
+   `scripts/regressie/certificering.py`.
+2. Het gedrag verschilt per viewer. In Acrobat staan de bewerkgereedschappen op
+   grijs; andere viewers laten de bewerking soms toe en melden daarna de schending.
+
+Schrijf dus niet "het document kan niet worden gewijzigd" maar **"wijzigen wordt
+geblokkeerd en elke wijziging is aantoonbaar"**.
 
 ### Fail-closed: geen zegel, geen afronding
 
@@ -270,9 +346,8 @@ npm run csc:check
   wordt bij **elke** ondertekensessie gecontroleerd, niet alleen bij het inrichten.
 - **Atomaire batch.** Mislukt er één document, dan wordt er niets ondertekend.
   Een half ondertekende verzameling is erger dan geen.
-- **Geen dubbele handtekening zonder reden.** Staat er al een gekwalificeerde
-  handtekening, dan wordt het organisatiezegel standaard overgeslagen. Zet
-  `SEAL_WHEN_QUALIFIED_PRESENT=true` als je beide wilt.
+- **Eén zegel per document.** Route A en route B zijn expliciet gescheiden via
+  `SEAL_MODE`; er is geen vlag die er een tweede handtekening bovenop zet.
 
 ### Wat er tijdelijk in de database staat
 

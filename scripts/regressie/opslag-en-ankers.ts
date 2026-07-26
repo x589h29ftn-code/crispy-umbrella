@@ -310,9 +310,17 @@ function testGrendel() {
     'zonder verzegeling blokkeert de grendel niets',
     !throws(() => assertReadyForRealSealing({ SEAL_MODE: 'none', PROFESSIONAL_SIGNING_DRIVER: 'none' }))
   )
+  // Sinds v1.7 is organisation de normale route (het certificerende
+  // organisatiezegel) en niet meer een gereserveerde waarde. Het zegel komt uit de
+  // sealer-sidecar, die zijn eigen SEAL_CSC_*-gegevens heeft; de webapp heeft er
+  // geen driverinstelling voor nodig.
   check(
-    'de gereserveerde waarde organisation weigert te starten',
-    throws(() => assertReadyForRealSealing({ SEAL_MODE: 'organisation', PROFESSIONAL_SIGNING_DRIVER: 'cleverbase' }))
+    'organisation mag starten — dat is route A',
+    !throws(() => assertReadyForRealSealing({ SEAL_MODE: 'organisation', PROFESSIONAL_SIGNING_DRIVER: 'none' }))
+  )
+  check(
+    'ook met een beroepscertificaat erbij ingesteld',
+    !throws(() => assertReadyForRealSealing({ SEAL_MODE: 'organisation', PROFESSIONAL_SIGNING_DRIVER: 'cleverbase' }))
   )
 }
 

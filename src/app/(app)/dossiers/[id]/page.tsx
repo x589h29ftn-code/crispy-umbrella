@@ -10,6 +10,7 @@ import { ArchiveFolderCard } from './ArchiveFolderCard'
 import { ArchiveCheck } from './ArchiveCheck'
 import { blobBewaardagen } from '@/lib/retention'
 import { PARTY_LABEL } from '@/lib/status'
+import { TransferSigner } from './TransferSigner'
 import { currentSigners } from '@/lib/signflow'
 import { archiveEnabled, buildDefaultFolder } from '@/lib/archive'
 import { formatDateTime } from '@/lib/utils'
@@ -57,6 +58,17 @@ export default async function DossierDetailPage({ params }: { params: { id: stri
 
   // Standaard-archiefbestemming (klantmap + boekjaar) voor het overzicht.
   const showArchive = archiveEnabled()
+
+  // Collega's aan wie een kantoorondertekenaar kan worden overgedragen. Alleen
+  // nodig als er nog een kantoorondertekenaar openstaat.
+  const heeftOpenKantoortekenaar = dossier.recipients.some((r) => r.role === 'ZELF' && r.status === 'PENDING')
+  const collegas = heeftOpenKantoortekenaar
+    ? await prisma.accountant.findMany({
+        where: { active: true, id: { notIn: dossier.recipients.map((r) => r.accountantId).filter((x): x is string => !!x) } },
+        orderBy: { name: 'asc' },
+        select: { id: true, name: true, totpEnabled: true }
+      })
+    : []
   const clientRec = dossier.recipients.find((r) => r.client)
   const archiveYear = dossier.documents.map((d) => d.detectedYear).find((y) => y != null) ?? null
   const defaultArchiveFolder = buildDefaultFolder({
@@ -188,6 +200,11 @@ export default async function DossierDetailPage({ params }: { params: { id: stri
                           )}
                         </div>
                         <div className="text-xs text-slate-500">{r.email}</div>
+                        {r.role === 'ZELF' && r.status === 'PENDING' && (
+                          <div className="mt-1">
+                            <TransferSigner recipientId={r.id} huidigeNaam={r.name} collegas={collegas} />
+                          </div>
+                        )}
                       </div>
                     </div>
                     <div className="flex items-center gap-2 text-sm">
