@@ -19,6 +19,14 @@ import { requestContext } from '@/lib/auth/session'
 //
 // De blootstelling is begrensd: het verzegelde PDF zit al als bijlage in
 // diezelfde mailbox, dus het token geeft geen toegang die er niet al was.
+//
+// Hier staat bewust GEEN controle op de dossierstatus, en dat leunt op één
+// invariant: een downloadtoken wordt alleen bij het afronden aangemaakt, en een
+// afgerond dossier is niet meer in te trekken (withdrawDossierAction weigert op
+// ONDERTEKEND). Er bestaat dus geen token bij een ingetrokken stuk.
+//
+// Wordt dat intrekken ooit wél toegestaan, dan moet hier een statuscontrole bij —
+// anders blijft een ingetrokken stuk downloadbaar.
 
 export const runtime = 'nodejs'
 export const dynamic = 'force-dynamic'

@@ -151,6 +151,37 @@ async function main() {
   const keten = await verifyAuditChain()
   check('auditketen is intact na gelijktijdig ondertekenen', keten.ok, keten)
 
+  // Dezelfde persoon die twee keer tegelijk indient. Dat is een ander geval dan
+  // twee verschillende ondertekenaars: hier lazen beide verzoeken een ontvanger
+  // op PENDING, kwamen beide door de tokencontrole, en stempelden achter elkaar
+  // op hetzelfde document. Resultaat waren twee identieke handtekeningen van één
+  // persoon en twee ONDERTEKEND-regels, allebei zonder foutmelding. Een
+  // dubbelklik is aan de voorkant afgevangen; een herhaalde POST na een haperende
+  // verbinding of een tweede tabblad niet.
+  const solo = await prisma.recipient.create({
+    data: { dossierId: dossier.id, role: 'EXTERN', name: 'S. Olo', email: 'solo@example.nl', order: 9 }
+  })
+  await prisma.signatureField.create({
+    data: { dossierId: dossier.id, recipientId: solo.id, documentId: doc.id, page: 1, x: 300, y: 500, width: 180, height: 60 }
+  })
+  const dubbel = await Promise.allSettled([
+    applySignature(solo.id, pngDataUrl(), { ip: '127.0.0.1', userAgent: 'dubbel-a' }),
+    applySignature(solo.id, pngDataUrl(), { ip: '127.0.0.1', userAgent: 'dubbel-b' })
+  ])
+  check(
+    'een herhaalde indiening geeft geen fout naar de gebruiker',
+    dubbel.every((u) => u.status === 'fulfilled'),
+    dubbel
+  )
+  const soloNa = await prisma.document.findUniqueOrThrow({ where: { id: doc.id }, select: { workingKey: true } })
+  const soloTekst = await tekstVan(await storage().get(soloNa.workingKey!))
+  const soloStempels = (soloTekst.match(/S\. Olo/g) ?? []).length
+  check('maar er staat precies één stempel van die persoon', soloStempels === 1, soloStempels)
+  const soloRegels = await prisma.auditEvent.count({
+    where: { dossierId: dossier.id, recipientId: solo.id, type: 'ONDERTEKEND' }
+  })
+  check('en precies één auditregel', soloRegels === 1, soloRegels)
+
   // Het ondertekencertificaat is het enige bewijsstuk dat met het bestand
   // meereist. IP en apparaat stonden er ooit altijd als "-" op terwijl ze wél in
   // het auditspoor zaten: het veld werd afgedrukt maar nooit gevuld. Dat valt

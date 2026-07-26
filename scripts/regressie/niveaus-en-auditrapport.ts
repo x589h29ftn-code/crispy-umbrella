@@ -236,6 +236,45 @@ async function main() {
   )
   check('en wijst naar de hash in de voltooiingsmail', tekst.includes('voltooiingsmail'))
 
+  // --- Het rapport gaat naar de CLIËNT, dus wat er niet in hoort, hoort er niet in ---
+  // Het auditspoor is intern: het bevat het credential-id van de accountant bij
+  // zijn certificaatprovider, het pad in SharePoint, het message-id van de
+  // mailprovider en foutmeldingen die de configuratie prijsgeven. Dat stond
+  // letterlijk in het rapport, want de metadata werd als JSON afgedrukt.
+  await writeAudit({
+    type: 'GEARCHIVEERD',
+    dossierId: dossier.id,
+    message: '1 bestand(en) naar sharepoint',
+    metadata: { target: 'Getekende stukken/1234 - Geheime Klant BV/2025' }
+  })
+  await writeAudit({
+    type: 'VERZEGELING_MISLUKT',
+    dossierId: dossier.id,
+    message: 'sealer gaf 502: connect ECONNREFUSED sealer-intern.ovp.local:8000',
+    metadata: { retryable: true, oorzaak: 'geen ondertekenmechanisme' }
+  })
+  await writeAudit({
+    type: 'GEKWALIFICEERD_ONDERTEKEND',
+    dossierId: dossier.id,
+    accountantId: acc.id,
+    message: 'cleverbase (RA)',
+    metadata: { documentIds: ['geheim-id'], credentialId: 'CRED-GEHEIM-12345' }
+  })
+
+  const filterRapport = await buildAuditReportFor(dossier.id)
+  const filterTekst = filterRapport ? await tekstVan(filterRapport.bytes) : ''
+  check('het credential-id staat NIET in het rapport', !filterTekst.includes('CRED-GEHEIM-12345'), 'gelekt')
+  check('het archiefpad staat NIET in het rapport', !filterTekst.includes('Geheime Klant BV'), 'gelekt')
+  check('de interne hostnaam staat NIET in het rapport', !filterTekst.includes('sealer-intern'), 'gelekt')
+  check('de configuratie-oorzaak staat NIET in het rapport', !filterTekst.includes('geen ondertekenmechanisme'), 'gelekt')
+  check('interne document-id\'s staan NIET in het rapport', !filterTekst.includes('geheim-id'), 'gelekt')
+  // Maar de gebeurtenis zelf moet wél zichtbaar blijven, met een leesbare regel.
+  check('de mislukte verzegeling staat er wel als gebeurtenis in', filterTekst.includes('VERZEGELING_MISLUKT'))
+  check('met een neutrale uitleg', filterTekst.includes('verzegelen is op dat moment niet gelukt'))
+  check('en het archiveren ook', filterTekst.includes('GEARCHIVEERD'))
+  // De bounce-reden gaat over de eigen mailbox van de ontvanger en blijft staan.
+  check('de reden van de bounce blijft wel staan', filterTekst.includes('mailbox full'))
+
   // --- Een gebroken keten moet als gebroken worden gemeld ---
   const doelwit = await prisma.auditEvent.findFirstOrThrow({
     where: { dossierId: dossier.id, type: 'GEOPEND' },
