@@ -82,6 +82,13 @@ jobs:
       - name: Build
         run: npm run build
 
+      # Ná de build, want deze test start de echte server. Hij vangt de klasse
+      # fouten waar een groene build niets over zegt: pagina's op force-dynamic
+      # worden bij het bouwen nooit gerenderd, dus een module die bij het
+      # server-renderen omvalt blijft anders onopgemerkt.
+      - name: Paginarooktest
+        run: npm run test:paginas
+
   sealer:
     runs-on: ubuntu-latest
     defaults:
