@@ -48,6 +48,8 @@ export type AuditType =
   | 'BEWAARTERMIJN_OPGERUIMD'
   | 'INTEGRITEIT_AFWIJKING'
   | 'GEDOWNLOAD'
+  // Het losse auditrapport is opgemaakt (of dat is mislukt).
+  | 'AUDITRAPPORT_OPGEMAAKT'
   | 'INGETROKKEN'
   | 'INGELOGD'
   | 'GEARCHIVEERD'
@@ -77,8 +79,15 @@ export function canonicalJson(value: unknown): string {
   return `{${entries.map(([k, v]) => `${JSON.stringify(k)}:${canonicalJson(v)}`).join(',')}}`
 }
 
-/** Berekent de schakel in de hashketen over de inhoud van deze regel. */
-function chainHash(input: {
+/**
+ * Berekent de schakel in de hashketen over de inhoud van deze regel.
+ *
+ * Geëxporteerd zodat het auditrapport de keten van één dossier kan nalopen. De
+ * volledige `verifyAuditChain` loopt álle ketens door en zou op het rapport van
+ * dossier A melden dat er iets mis is in dossier B — misleidend, want dat zegt
+ * niets over dít stuk.
+ */
+export function chainHash(input: {
   prevHash: string | null
   type: string
   dossierId?: string | null

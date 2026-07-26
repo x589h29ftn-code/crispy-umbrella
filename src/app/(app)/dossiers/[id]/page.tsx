@@ -11,6 +11,8 @@ import { ArchiveCheck } from './ArchiveCheck'
 import { blobBewaardagen } from '@/lib/retention'
 import { PARTY_LABEL } from '@/lib/status'
 import { TransferSigner } from './TransferSigner'
+import { AssurancePicker } from './AssurancePicker'
+import { beschikbareNiveaus, ASSURANCE_LABEL, ASSURANCE_UITLEG } from '@/lib/assurance'
 import { currentSigners } from '@/lib/signflow'
 import { archiveEnabled, buildDefaultFolder } from '@/lib/archive'
 import { formatDateTime } from '@/lib/utils'
@@ -58,6 +60,7 @@ export default async function DossierDetailPage({ params }: { params: { id: stri
 
   // Standaard-archiefbestemming (klantmap + boekjaar) voor het overzicht.
   const showArchive = archiveEnabled()
+  const niveaus = beschikbareNiveaus()
 
   // Collega's aan wie een kantoorondertekenaar kan worden overgedragen. Alleen
   // nodig als er nog een kantoorondertekenaar openstaat.
@@ -99,7 +102,7 @@ export default async function DossierDetailPage({ params }: { params: { id: stri
         </div>
       </header>
 
-      <UnsealedBanner scope="dossier" />
+      <UnsealedBanner scope="dossier" niveau={dossier.assuranceLevel} />
 
       <div className="grid gap-6 lg:grid-cols-3">
         <div className="space-y-6 lg:col-span-2">
@@ -169,6 +172,26 @@ export default async function DossierDetailPage({ params }: { params: { id: stri
               locked={dossier.status === 'ONDERTEKEND'}
             />
           )}
+
+          <section className="card p-6">
+            <div className="mb-3">
+              <h2 className="text-lg font-semibold">Betrouwbaarheid</h2>
+              <p className="text-xs text-slate-500">
+                Hoeveel bewijskracht dit verzoek krijgt.{' '}
+                {dossier.status === 'CONCEPT'
+                  ? 'Nog te wijzigen tot het moment van versturen.'
+                  : 'Vastgelegd bij het versturen.'}
+              </p>
+            </div>
+            <AssurancePicker
+              dossierId={dossier.id}
+              huidig={dossier.assuranceLevel}
+              beschikbaar={niveaus}
+              labels={ASSURANCE_LABEL}
+              uitleg={ASSURANCE_UITLEG}
+              wijzigbaar={dossier.status === 'CONCEPT'}
+            />
+          </section>
 
           <section className="card p-6">
             <div className="mb-4 flex items-center justify-between">

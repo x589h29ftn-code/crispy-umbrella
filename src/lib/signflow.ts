@@ -15,6 +15,8 @@ import { requestEmail, completedEmail, officeTurnEmail } from '@/lib/email/templ
 import { renderTemplate, firstNameFrom } from '@/lib/docanalyze/templates'
 import { archiveDossier, archiveEnabled, buildDefaultFolder } from '@/lib/archive'
 import { blobBewaardagen } from '@/lib/retention'
+import { dossierVerzegelt, dossierRoute } from '@/lib/assurance'
+import { buildAuditReportFor } from '@/lib/auditReportData'
 
 /** Datum/tijd voor het zichtbare stempel, bijv. "23-9-2020 14:04:44". */
 function formatStampDate(d: Date): string {
@@ -421,7 +423,7 @@ export async function buildPreSealArtifacts(dossierId: string): Promise<void> {
       dossierTitle: doc.title,
       dossierId: dossier.id,
       documentId: doc.id,
-      sealed: sealEnabled(),
+      sealed: dossierVerzegelt(dossier.assuranceLevel),
       fieldCounts: veldenVoor(doc.id),
       signers
     })
@@ -507,6 +509,11 @@ async function applySeals(dossierId: string): Promise<SealOutcome> {
     where: { dossierId },
     orderBy: { order: 'asc' }
   })
+  // Niet de globale instelling maar de keuze voor dít dossier. SEAL_MODE zegt wat
+  // de server kán; assuranceLevel zegt wat de afzender voor dit stuk wilde.
+  const niveau = (
+    await prisma.dossier.findUniqueOrThrow({ where: { id: dossierId }, select: { assuranceLevel: true } })
+  ).assuranceLevel
   const store = storage()
 
   for (const doc of documents) {
@@ -515,7 +522,7 @@ async function applySeals(dossierId: string): Promise<SealOutcome> {
     if (!doc.preSealKey) continue
     const preSeal = await store.get(doc.preSealKey)
 
-    if (!sealEnabled()) {
+    if (!dossierVerzegelt(niveau)) {
       // Geen cryptografisch zegel: het pre-seal-artefact wordt de definitieve
       // versie. Vastleggen in het auditspoor welke stukken uit deze periode komen.
       const sealedKey = await store.put(preSeal, 'pdf')
@@ -526,7 +533,11 @@ async function applySeals(dossierId: string): Promise<SealOutcome> {
       await writeAudit({
         type: 'VERZEGELING_OVERGESLAGEN',
         dossierId,
-        message: `${doc.title} — verzegeling staat uit (SEAL_MODE=none)`
+        message:
+          niveau === 'AUDITSPOOR'
+            ? `${doc.title} — bewust zonder zegel verstuurd (niveau auditspoor)`
+            : `${doc.title} — verzegeling staat uit (SEAL_MODE=none)`,
+        metadata: { niveau }
       })
       continue
     }
@@ -542,7 +553,7 @@ async function applySeals(dossierId: string): Promise<SealOutcome> {
         //
         // Route B zet hier 'fill_forms' (P=2), zodat het beroepscertificaat
         // daarna nog een vooraf geplaatst veld kan invullen.
-        certify: sealRoute() === 'organisatie' ? 'no_changes' : 'fill_forms'
+        certify: dossierRoute(niveau) === 'organisatie' ? 'no_changes' : 'fill_forms'
       })
       const sealedKey = await store.put(result.sealedBytes, 'pdf')
       await prisma.document.update({
@@ -594,7 +605,11 @@ async function applySeals(dossierId: string): Promise<SealOutcome> {
 export async function sealAndComplete(dossierId: string): Promise<SealOutcome> {
   const current = await prisma.dossier.findUnique({
     where: { id: dossierId },
-    select: { status: true, owner: { select: { signingCertEnabled: true, signingCredentialId: true } } }
+    select: {
+      status: true,
+      assuranceLevel: true,
+      owner: { select: { signingCertEnabled: true, signingCredentialId: true } }
+    }
   })
   if (!current) return { ok: false, error: 'dossier niet gevonden', retryable: false }
   if (current.status === 'ONDERTEKEND') return { ok: true }
@@ -610,7 +625,7 @@ export async function sealAndComplete(dossierId: string): Promise<SealOutcome> {
   // handtekening er al op en faalde daarna alleen het organisatiezegel, dan zou
   // terugvallen naar deze wachtstand de accountant onnodig opnieuw om een pincode
   // vragen — bij een batch van vijftig stukken vijftig keer.
-  if (awaitsQualifiedSignature(current.owner)) {
+  if (current.assuranceLevel === 'BEROEPS' && awaitsQualifiedSignature(current.owner)) {
     const teWaarmerken = await prisma.document.count({
       where: { dossierId, preSealKey: { not: null }, sealStage: 'PRESEAL' }
     })
@@ -630,7 +645,7 @@ export async function sealAndComplete(dossierId: string): Promise<SealOutcome> {
   //
   // In route A geldt dit niet: daar zegelt de organisatie zelf, onbeheerd, en is
   // er geen accountant nodig. Die valt hieronder door naar applySeals.
-  if (sealRoute() === 'beroeps') {
+  if (current.assuranceLevel === 'BEROEPS') {
     const reden =
       env.PROFESSIONAL_SIGNING_DRIVER === 'none'
         ? 'PROFESSIONAL_SIGNING_DRIVER staat op "none"'
@@ -714,6 +729,35 @@ async function completeDossier(dossierId: string): Promise<void> {
   })
   await writeAudit({ type: 'VERZEGELD', dossierId, metadata: { hashes, sealed: sealEnabled() } })
 
+  // Het losse auditrapport. Altijd maken, niet alleen bij niveau AUDITSPOOR: het
+  // is goedkoop, en de vraag "wie tekende hier precies wat, en wanneer" komt bij
+  // een verzegeld stuk net zo goed langs. Bij AUDITSPOOR is dit hét bewijsstuk.
+  //
+  // Best-effort: mislukt het opmaken, dan is dat een auditregel en geen reden om
+  // het afronden te blokkeren. De onderliggende gegevens staan in de database en
+  // het rapport is opnieuw te genereren.
+  let auditRapport: { filename: string; content: Buffer } | null = null
+  try {
+    const rapport = await buildAuditReportFor(dossierId)
+    if (rapport) {
+      const key = await store.put(rapport.bytes, 'pdf')
+      await prisma.dossier.update({
+        where: { id: dossierId },
+        data: { auditReportKey: key, auditReportSha256: rapport.sha256 }
+      })
+      auditRapport = { filename: 'Auditrapport.pdf', content: Buffer.from(rapport.bytes) }
+      attachments.push(auditRapport)
+      await writeAudit({
+        type: 'AUDITRAPPORT_OPGEMAAKT',
+        dossierId,
+        message: `auditrapport opgemaakt (${rapport.gebeurtenissen} gebeurtenissen)`,
+        metadata: { sha256: rapport.sha256, ketenIntact: rapport.chainOk }
+      })
+    }
+  } catch (e) {
+    console.error('[auditrapport]', e)
+    await writeAudit({ type: 'AUDITRAPPORT_OPGEMAAKT', dossierId, message: `mislukt: ${(e as Error).message}` })
+  }
   // Getekende stukken automatisch in de klantmap zetten (indien ingesteld).
   if (archiveEnabled() && attachments.length > 0) {
     const clientRec = dossier.recipients.find((r) => r.client)
@@ -736,6 +780,7 @@ async function completeDossier(dossierId: string): Promise<void> {
       await writeAudit({ type: 'GEARCHIVEERD', dossierId, message: `mislukt: ${(e as Error).message}` })
     }
   }
+
 
   // De controlegetallen van de verzegelde bestanden. Die gaan mee in de body van
   // de mail, zodat ze in de mailbox van de cliënt terechtkomen met zijn eigen

@@ -76,6 +76,24 @@ enum VerificationMethod {
   SMS
 }
 
+/// Hoeveel bewijskracht de afzender voor dít dossier wil.
+///
+/// SEAL_MODE bepaalt wat de server KAN; dit bepaalt wat er voor dit dossier
+/// wordt GEBRUIKT. Zo kan een akkoordbrief met alleen een auditspoor de deur uit
+/// terwijl een jaarrekening een zegel krijgt, zonder de server te herconfigureren.
+enum AssuranceLevel {
+  /// Geen cryptografisch zegel. De bewijskracht zit in het auditspoor: de
+  /// tweefactorverificatie per e-mail of sms, IP, apparaat, tijdstippen, de
+  /// gelezen verklaring, de hashes van wat elke partij zag, en een los
+  /// auditrapport met het volledige verloop.
+  AUDITSPOOR
+  /// Route A: certificerend organisatiezegel (DocMDP P=1) bovenop het auditspoor.
+  ZEGEL
+  /// Route B: gekwalificeerde handtekening met het beroepscertificaat van de
+  /// accountant. Alleen waar dat vereist is.
+  BEROEPS
+}
+
 enum SigningMode {
   PARALLEL // iedereen tegelijk
   SEQUENTIAL // één voor één, op volgorde
@@ -202,6 +220,15 @@ model Dossier {
   sendCopyToRecipient Boolean @default(true)
   // Volgorde van ondertekenen: iedereen tegelijk of één voor één.
   signingMode         SigningMode @default(PARALLEL)
+  // Gekozen bewijskracht voor dit dossier. De applicatie zet dit bij het aanmaken
+  // expliciet op het hoogste niveau dat de server kan (zie standaardNiveau), zodat
+  // een kantoor mét certificaat niet per ongeluk onbeschermde stukken verstuurt.
+  // De databasestandaard hieronder is alleen een achtervang voor rijen die buiten
+  // de applicatie om zijn gemaakt; AUDITSPOOR omdat dat altijd werkt.
+  assuranceLevel      AssuranceLevel @default(AUDITSPOOR)
+  // Los auditrapport (PDF) met het volledige verloop, gemaakt bij het afronden.
+  auditReportKey      String?
+  auditReportSha256   String?
   // Geldigheidsduur van de tekenlink in dagen (instelbaar bij verzenden).
   linkTtlDays         Int         @default(10)
   expiresAt      DateTime?

@@ -49,6 +49,45 @@ export async function GET(req: NextRequest, { params }: { params: { token: strin
     )
   }
 
+  // Het auditrapport is met ?doc=auditrapport op te halen. Hetzelfde token, want
+  // het gaat om dezelfde ontvanger en hetzelfde dossier; het rapport zat al als
+  // bijlage in diezelfde mail.
+  if (req.nextUrl.searchParams.get('doc') === 'auditrapport') {
+    const key = recipient.dossier.auditReportKey
+    if (!key) {
+      return new NextResponse(
+        'Het auditrapport is niet meer beschikbaar in het portaal. Het zat als bijlage bij de e-mail ' +
+          'waarin u deze link kreeg.',
+        { status: 410 }
+      )
+    }
+    let rapport: Uint8Array
+    try {
+      rapport = await storage().get(key)
+    } catch (e) {
+      console.error('[downloaden] auditrapport niet leesbaar', e)
+      return new NextResponse('Het auditrapport kon niet worden opgehaald.', { status: 500 })
+    }
+    await writeAudit({
+      type: 'GEDOWNLOAD',
+      dossierId: recipient.dossierId,
+      recipientId: recipient.id,
+      message: 'auditrapport (downloadlink)',
+      metadata: { sha256: recipient.dossier.auditReportSha256 },
+      ip,
+      userAgent
+    })
+    return new NextResponse(Buffer.from(rapport), {
+      status: 200,
+      headers: {
+        'Content-Type': 'application/pdf',
+        'Content-Disposition': 'attachment; filename="Auditrapport.pdf"',
+        'X-Content-Type-Options': 'nosniff',
+        'Cache-Control': 'no-store'
+      }
+    })
+  }
+
   const documenten = recipient.dossier.documents.filter((d) => d.sealedKey)
   if (documenten.length === 0) {
     // Kan gebeuren na het opschonen van de bestanden (90 dagen): de rijen staan
