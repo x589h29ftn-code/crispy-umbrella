@@ -120,13 +120,81 @@ export interface AuditReportResult {
   sha256: string
 }
 
-/** Zet metadata om naar een compacte, leesbare regel. */
+// Dit rapport gaat als bijlage naar de CLIËNT. Het auditspoor is intern en bevat
+// dus dingen die daar niet horen: het credential-id van de accountant bij zijn
+// certificaatprovider, het pad in SharePoint waar het stuk is opgeslagen, het
+// message-id van de mailprovider, interne id's van medewerkers, en foutmeldingen
+// die de servernaam of de configuratie prijsgeven.
+//
+// Daarom een ALLOWLIST en geen denylist: alles wat hieronder niet staat, blijft
+// eruit. Wie later een veld toevoegt aan een auditregel lekt daarmee niet per
+// ongeluk iets naar buiten — hij moet het hier bewust bij zetten.
+
+/** Metadatavelden die op een cliëntgericht rapport thuishoren. */
+const METADATA_TOONBAAR = new Set([
+  // Verificatie en pogingen: zegt iets over het verloop bij deze ondertekenaar.
+  'kanaal',
+  'bestemming',
+  'attempt',
+  'attempts',
+  'remaining',
+  'poging',
+  'pogingen',
+  'resterend',
+  'max',
+  // Documentintegriteit.
+  'sha256',
+  'hashes',
+  'expected',
+  'actual',
+  'sealed',
+  'certSerial',
+  'ketenIntact',
+  'niveau',
+  // Bezorging: de reden dat een mail niet aankwam gaat over de eigen mailbox van
+  // de ontvanger en is juist relevant.
+  'reason',
+  'bounceType',
+  // Bewaartermijn en opnieuw versturen.
+  'blobBewaardagen',
+  'archivedAt',
+  'resendCount',
+  'bewijsBlijft'
+])
+
+/**
+ * Gebeurtenissen waarvan de melding interne details kan bevatten: een
+ * configuratienaam, een interne URL, of de letterlijke fout van een sidecar.
+ * Die worden vervangen door een feitelijke, neutrale regel — de gebeurtenis
+ * blijft zichtbaar, de binnenkant niet.
+ */
+const MELDING_NEUTRAAL: Record<string, string> = {
+  VERZEGELING_MISLUKT: 'het verzegelen is op dat moment niet gelukt; het portaal heeft het opnieuw geprobeerd',
+  CSC_ONDERTEKENING_MISLUKT: 'het waarmerken met het beroepscertificaat is op dat moment niet gelukt',
+  CERTIFICAAT_INGETROKKEN: 'het beroepscertificaat is bij de provider ingetrokken of geblokkeerd',
+  AUDITRAPPORT_OPGEMAAKT: 'auditrapport opgemaakt'
+}
+
+/** Filtert de melding van een gebeurtenis voor een cliëntgericht rapport. */
+function meldingVoorRapport(type: string, message?: string | null): string | null {
+  const vast = MELDING_NEUTRAAL[type]
+  if (vast) return vast
+  if (!message) return null
+  // Alles wat als "mislukt: <interne fout>" is vastgelegd, ongeacht de soort.
+  if (/^mislukt:/i.test(message.trim())) return 'deze stap is op dat moment niet gelukt'
+  return message
+}
+
+/** Zet de toonbare metadata om naar een compacte, leesbare regel. */
 function metaTekst(meta: unknown): string {
-  if (meta === null || meta === undefined) return ''
+  if (meta === null || typeof meta !== 'object' || Array.isArray(meta)) return ''
+  const toonbaar: Record<string, unknown> = {}
+  for (const [k, v] of Object.entries(meta as Record<string, unknown>)) {
+    if (METADATA_TOONBAAR.has(k)) toonbaar[k] = v
+  }
+  if (Object.keys(toonbaar).length === 0) return ''
   try {
-    const json = JSON.stringify(meta)
-    if (!json || json === '{}' || json === 'null') return ''
-    return json
+    return JSON.stringify(toonbaar)
   } catch {
     return ''
   }
@@ -358,7 +426,8 @@ export async function buildAuditReport(input: AuditReportInput): Promise<AuditRe
     if (e.actor) detail.push(e.actor)
     if (e.ipAddress) detail.push(`IP ${e.ipAddress}`)
     if (detail.length) regel(`      ${detail.join(' · ')}`, { size: 8, color: grijs })
-    if (e.message) alinea(e.message, { size: 8, indent: 22 })
+    const melding = meldingVoorRapport(e.type, e.message)
+    if (melding) alinea(melding, { size: 8, indent: 22 })
     if (e.userAgent) alinea(`Apparaat: ${e.userAgent}`, { size: 7.5, indent: 22 })
     const meta = metaTekst(e.metadata)
     if (meta) alinea(`Gegevens: ${meta}`, { size: 7.5, indent: 22 })

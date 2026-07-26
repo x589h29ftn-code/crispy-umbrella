@@ -203,12 +203,41 @@ export async function applySignature(
   const documentIds = [...byDoc.keys()].sort()
   /** Oude blobs; pas ná de commit opruimen, want een rollback heeft ze nog nodig. */
   const teVerwijderen: string[] = []
+  /** Was deze ondertekening al gedaan? Dan is dit verzoek een herhaling. */
+  let alGetekend = false
   await prisma.$transaction(
     async (tx) => {
       // Vergrendelen mag niet onbeperkt wachten: de tweede ondertekenaar hangt
       // anders tot de proxy de verbinding afkapt en weet dan niet of het gelukt is.
       await tx.$executeRawUnsafe(`SET LOCAL lock_timeout = '10s'`)
       await tx.$executeRawUnsafe(`SET LOCAL statement_timeout = '90s'`)
+
+      // EERST de ontvanger claimen, vóór er één byte wordt gestempeld.
+      //
+      // Het zetten van de status stond hieronder, ná het stempelen, en dat is een
+      // gat: twee gelijktijdige indieningen door DEZELFDE persoon lezen beide een
+      // ontvanger op PENDING, komen beide door de tokencontrole, en stempelen dan
+      // achter elkaar op hetzelfde document. Resultaat: twee identieke
+      // handtekeningen van één persoon en twee ONDERTEKEND-regels, allebei zonder
+      // foutmelding. Nagemeten: dat gebeurde ook echt.
+      //
+      // Een dubbelklik is aan de voorkant afgevangen, maar een herhaalde POST na
+      // een haperende verbinding of een tweede tabblad niet.
+      //
+      // `updateMany` met `status: 'PENDING'` in de voorwaarde is de claim: de
+      // database staat maar één winnaar toe. De tweede transactie wacht op de
+      // rijvergrendeling, ziet daarna SIGNED en krijgt count 0. Rolt de transactie
+      // terug, dan rolt de claim mee terug — dus geen ontvanger die op SIGNED
+      // blijft staan zonder stempel.
+      const geclaimd = await tx.recipient.updateMany({
+        where: { id: recipientId, status: 'PENDING' },
+        data: { status: 'SIGNED', signedAt, tokenUsedAt: signedAt }
+      })
+      if (geclaimd.count === 0) {
+        alGetekend = true
+        return
+      }
+
       for (const documentId of documentIds) {
         const fields = byDoc.get(documentId)!
         await tx.$queryRaw`SELECT id FROM "Document" WHERE id = ${documentId} FOR UPDATE`
@@ -244,14 +273,11 @@ export async function applySignature(
         teVerwijderen.push(fresh.workingKey)
       }
 
-      // Status en token in DEZELFDE transactie als de stempels. Anders kan het
-      // proces ertussen omvallen: de stempels staan er, de ontvanger staat nog op
-      // PENDING met een bruikbaar token, en opnieuw indienen stempelt dubbel.
+      // De status is hierboven al gezet, als claim. Deze regel hoort er nog wel bij
+      // en staat bewust in DEZELFDE transactie als de stempels: valt het proces
+      // ertussen om, dan mag er geen document zijn met stempels terwijl de velden
+      // nog als leeg te boek staan.
       await tx.signatureField.updateMany({ where: { recipientId }, data: { filled: true } })
-      await tx.recipient.update({
-        where: { id: recipientId },
-        data: { status: 'SIGNED', signedAt, tokenUsedAt: signedAt }
-      })
 
       // Bewijskritiek: zonder deze regel is er een handtekening zonder spoor.
       // 'required' rolt de hele transactie terug, dus dan is er ook geen stempel.
@@ -269,6 +295,11 @@ export async function applySignature(
     },
     { timeout: 180_000, maxWait: 30_000 }
   )
+
+  // Was het een herhaald verzoek, dan is er niets gebeurd en hoeft er niets te
+  // worden opgeruimd of doorgeschoven. Geen fout naar de aanroeper: de
+  // handtekening staat er, dus voor de gebruiker is dit gelukt.
+  if (alGetekend) return
 
   // Vanaf hier is de commit binnen: de oude versies mogen weg.
   for (const key of teVerwijderen) await store.remove(key).catch(() => {})
