@@ -79,7 +79,7 @@
     <li><span>Documentherkenning</span><span class="s">tekstlaag, OCR, sjablonen</span></li>
     <li><span>Gelijktijdigheid en vergrendeling</span><span class="s">waar het bijna stukging</span></li>
     <li><span>Back-up en herstel</span><span class="s">wat het kroonjuweel is</span></li>
-    <li><span>Kwaliteit en tests</span><span class="s">268 controles</span></li>
+    <li><span>Kwaliteit en tests</span><span class="s">281 controles</span></li>
     <li><span>Hosting en beheer</span><span class="s">4 GB veilig maken</span></li>
     <li><span>Wat bewust niet is gebouwd</span><span class="s">en waarom</span></li>
     <li><span>Wat nog niet bewezen is</span><span class="s">eerlijk over de grenzen</span></li>
@@ -149,7 +149,7 @@
     <tr><td>Datamodellen</td><td>14, met 11 opsommingstypen</td></tr>
     <tr><td>Soorten auditgebeurtenissen</td><td>37</td></tr>
     <tr><td>Omgevingsvariabelen</td><td>88, allemaal gevalideerd bij het opstarten</td></tr>
-    <tr><td>Automatische controles</td><td>268 (222 applicatie, 26 sealer, 16 certificering, 4 validatormodus)</td></tr>
+    <tr><td>Automatische controles</td><td>281 (222 applicatie, 13 paginarooktest, 26 sealer, 16 certificering, 4 validatormodus)</td></tr>
   </table>
 </section>
 
@@ -1177,7 +1177,7 @@
   <p class="kicker">Hoofdstuk 15</p>
   <h2>Kwaliteit en tests</h2>
 
-  <h3>15.1 268 automatische controles</h3>
+  <h3>15.1 281 automatische controles</h3>
   <table>
     <tr><th>Pakket</th><th>Aantal</th><th>Wat het dekt</th></tr>
     <tr><td>Opstartregels</td><td>11</td><td>de harde weigeringen bij het opstarten</td></tr>
@@ -1191,10 +1191,21 @@
     <tr><td>Certificering</td><td>16</td><td>DocMDP P=1, de DSS-vraag, en wat een viewer wél en niet blokkeert</td></tr>
     <tr><td>Herverificatie en download</td><td>24</td><td>verse TOTP-code, replaybescherming, gescheiden downloadtoken</td></tr>
     <tr><td>Niveaus en auditrapport</td><td>47</td><td>de keuze per dossier, en de inhoud van het rapport zelf</td></tr>
+    <tr><td>Paginarooktest</td><td>13</td><td>rendert elke kernpagina zonder serverfout, tegen een echte server</td></tr>
     <tr><td>Validatormodus</td><td>4</td><td>de omgekeerde grendel in het juiste proces</td></tr>
   </table>
   <p>Ze draaien tegen een echte PostgreSQL en een echte pyHanko, niet tegen nagemaakte
   onderdelen. De sealertests gebruiken een zelf aangemaakt testcertificaat.</p>
+
+  <div class="warn"><strong>Wat een groene build niet zegt.</strong> Tijdens het
+  maken van de handleiding bleken de drie schermen met een documentvoorbeeld onder
+  <code>next dev</code> een 500 te geven &mdash; velden plaatsen, ondertekenen door
+  de cli&euml;nt, en ondertekenen vanuit kantoor &mdash; terwijl de build en de
+  typecontrole volledig groen stonden. Die pagina&rsquo;s staan op
+  <code>force-dynamic</code> en worden bij het bouwen dus nooit gerenderd. In een
+  schone productiebuild werkte het w&eacute;l; het was een ontwikkelfout en geen
+  productiefout, maar niets in de gereedschapskist wees erop. Vandaar de
+  paginarooktest: die start de echte server en haalt elke route op.</div>
 
   <h3>15.2 Van de reparaties is bewezen dat de test ze vangt</h3>
   <p>Een test die groen staat bewijst niets als hij ook groen zou staan zonder de
@@ -1348,7 +1359,7 @@
   &ldquo;verzonden&rdquo; de zwakste schakel in het bewijsdossier.</p>
 
   <h3>18.5 Er draait geen pijplijn</h3>
-  <p>De 268 controles draaien handmatig. Dat is het grootste procesgat: handmatige
+  <p>De 281 controles draaien handmatig. Dat is het grootste procesgat: handmatige
   tests verlopen binnen enkele maanden zonder dat iemand het merkt.</p>
 
   <h3>18.6 Eén openstaande vraag voor het kantoor</h3>

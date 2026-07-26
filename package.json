@@ -31,7 +31,8 @@
     "test:labels": "tsx --conditions react-server scripts/regressie/labels-en-modus.ts",
     "test:herverificatie": "tsx --conditions react-server scripts/regressie/herverificatie-en-download.ts",
     "test:certificering": "python3 scripts/regressie/certificering.py",
-    "test:niveaus": "tsx --conditions react-server scripts/regressie/niveaus-en-auditrapport.ts"
+    "test:niveaus": "tsx --conditions react-server scripts/regressie/niveaus-en-auditrapport.ts",
+    "test:paginas": "tsx --conditions react-server scripts/regressie/paginas.ts"
   },
   "prisma": {
     "seed": "tsx prisma/seed.ts"
