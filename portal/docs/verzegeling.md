@@ -33,6 +33,59 @@
 > akkoordbrief wil je niet de indruk wekken dat de accountant de verklaring van de
 > cliënt mede onderschrijft. Instelbaar met `SIGN_AS_AUTHOR_KINDS`.
 
+## Drie niveaus, en de afzender kiest
+
+Sinds de laatste ronde is `SEAL_MODE` niet meer de enige knop. Die zegt wat de
+**server kan**; per verzoek kiest de afzender wat er **wordt gebruikt**:
+
+| Niveau | Wat de ontvanger krijgt | Wanneer |
+|---|---|---|
+| **Auditspoor** | Verificatiecode per e-mail of sms, IP, apparaat, tijdstippen, de gelezen verklaring, de vingerafdruk van wat elke partij zag, plus een **los auditrapport** met het volledige verloop. Geen digitaal zegel. | Akkoordbrieven, opdrachtbevestigingen — het dagelijkse werk waar dit ruim volstaat. |
+| **Organisatiezegel** | Alles hierboven, plus een certificerend zegel met gekwalificeerde tijdstempel. De PDF-lezer van de ontvanger controleert de echtheid zelf. | Stukken die naar een bank of een andere derde gaan. |
+| **Beroepscertificaat** | Alles hierboven, met de gekwalificeerde handtekening van de accountant op persoonlijke titel. | Alleen waar dat is voorgeschreven. |
+
+Auditspoor staat er **altijd** bij, en dat is bewust: het vraagt geen certificaat,
+geen provider en geen netwerk naar buiten. Er is dus altijd een niveau dat werkt,
+ook als een aanbieder eruit ligt.
+
+Het niveau staat op het dossier (`assuranceLevel`) en is te wijzigen tot het
+moment van versturen. Daarna niet meer: anders hebben de ondertekenaars iets
+anders gekregen dan waar het auditrapport over gaat. Een niveau kiezen dat de
+server niet kan, wordt bij het versturen geweigerd met een melding die zegt wat
+er moet gebeuren — niet bij het afronden, want dan hebben de cliënten al getekend.
+
+### Het losse auditrapport
+
+Na afronding komt er een apart PDF-bestand, meegestuurd als tweede bijlage en op
+te halen met de downloadlink (`?doc=auditrapport`). Bij niveau **Auditspoor** is
+dit hét bewijsstuk; bij de andere niveaus is het de leesbare onderbouwing naast
+het zegel. Het wordt altijd gemaakt — de vraag "wie tekende hier precies wat, en
+wanneer" komt bij een verzegeld stuk net zo goed langs.
+
+Wat erin staat: het verzoek en het gekozen niveau, per document alle hashes en
+zegelgegevens, per ondertekenaar het volledige verloop inclusief bezorgstatus en
+een eventuele bounce, het verificatiekanaal, de letterlijke verklaring met zijn
+vingerafdruk, en de hash van de versie die díe persoon zag. Daarna het complete
+chronologische auditspoor met volgnummers, IP, apparaat en metadata, en de
+hashketen met de uitkomst van de ketencontrole op het moment van opmaken.
+
+Twee dingen zijn expres niet weggepoetst. Een bounce staat er gewoon in — daar
+komt de discussie "ik heb het nooit gekregen" nu juist op aan. En het rapport zegt
+zelf wat het niet aantoont: het komt uit onze eigen database, dus wie het kantoor
+verdenkt heeft er niets aan. Die heeft de vingerafdruk uit de voltooiingsmail
+nodig (die staat in zíjn mailbox) of een echt zegel.
+
+De ketencontrole in het rapport kijkt naar de keten van **dit** dossier, niet naar
+alle ketens. Een breuk in een ander dossier zegt niets over dit stuk, en zou hier
+alleen ten onrechte alarm slaan.
+
+### Tweede factor: e-mail of sms
+
+Per ontvanger instelbaar (`Recipient.verificationMethod`), met de voorkeur van de
+cliënt als standaard. Sms loopt via MessageBird of Twilio (`SMS_PROVIDER`); staat
+die op `none`, dan geeft een sms-verzoek een leesbare fout in plaats van stil terug
+te vallen op e-mail. Het gekozen kanaal staat in het auditspoor en in het rapport.
+
 Deze notitie beschrijft wat er bij het hosten extra nodig is sinds het portaal
 documenten cryptografisch kan verzegelen. Bedoeld voor de beheerder/IT'er.
 

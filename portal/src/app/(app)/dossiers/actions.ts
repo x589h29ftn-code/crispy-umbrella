@@ -15,7 +15,8 @@ import { sendMail } from '@/lib/email/transport'
 import { mailBlocked } from '@/lib/email/status'
 import { reminderEmail, officeTurnEmail } from '@/lib/email/templates'
 import { activateInitial, activateSigner, currentSigners } from '@/lib/signflow'
-import { Prisma, type DocumentKind } from '@prisma/client'
+import { standaardNiveau, niveauControle, beschikbareNiveaus } from '@/lib/assurance'
+import { Prisma, type AssuranceLevel, type DocumentKind } from '@prisma/client'
 import { extractText } from '@/lib/docanalyze/extractText'
 import { classifyText } from '@/lib/docanalyze/classify'
 import { analyzeDocument, type AnalyzeResult } from '@/lib/docanalyze/analyze'
@@ -147,7 +148,12 @@ export async function createDossierAction(_prev: FormState, formData: FormData):
     status: 'CONCEPT' as const,
     message: parsed.data.message?.trim() || null,
     linkTtlDays: parsed.data.linkTtlDays,
-    sendCopyToRecipient: formData.get('sendCopyToRecipient') === 'on'
+    sendCopyToRecipient: formData.get('sendCopyToRecipient') === 'on',
+    // Standaard het hoogste niveau dat de server kan. Zo verstuurt een kantoor
+    // mét certificaat niet per ongeluk onbeschermde stukken omdat iemand een
+    // keuzemenu heeft overgeslagen; wie het bewust lager wil, zet het om op de
+    // dossierpagina.
+    assuranceLevel: standaardNiveau()
   }
 
   // Verzendwijze: alles in één verzoek (standaard) of elk document apart.
@@ -290,12 +296,41 @@ export async function saveFieldsAction(
   return { ok: true }
 }
 
+/**
+ * Zet het betrouwbaarheidsniveau van een conceptdossier.
+ *
+ * Alleen zolang het concept is: na het versturen zou het niveau veranderen
+ * betekenen dat de ondertekenaars iets anders hebben gekregen dan waar het
+ * rapport straks over gaat.
+ */
+export async function setAssuranceLevelAction(
+  dossierId: string,
+  niveau: AssuranceLevel
+): Promise<{ ok: boolean; error?: string }> {
+  const owned = await ownedDossier(dossierId)
+  if (!owned) return { ok: false, error: 'Dossier niet gevonden.' }
+  if (owned.dossier.status !== 'CONCEPT') {
+    return { ok: false, error: 'Het niveau is alleen te wijzigen zolang het verzoek nog niet is verstuurd.' }
+  }
+  if (!beschikbareNiveaus().includes(niveau)) {
+    const controle = niveauControle(niveau)
+    return { ok: false, error: controle.ok ? 'Onbekend niveau.' : controle.melding }
+  }
+  await prisma.dossier.update({ where: { id: dossierId }, data: { assuranceLevel: niveau } })
+  revalidatePath(`/dossiers/${dossierId}`)
+  return { ok: true }
+}
+
 export async function sendDossierAction(dossierId: string): Promise<{ ok: boolean; error?: string }> {
   const owned = await ownedDossier(dossierId)
   if (!owned) return { ok: false, error: 'Dossier niet gevonden.' }
   const { dossier } = owned
   if (dossier.status !== 'CONCEPT') return { ok: false, error: 'Dit dossier is al verstuurd.' }
   if (dossier.recipients.length === 0) return { ok: false, error: 'Geen ondertekenaars ingesteld.' }
+  // Kan het gekozen niveau nu geleverd worden? Beter hier weigeren dan pas bij het
+  // afronden: dan hebben de cliënten al getekend en staat het stuk vast.
+  const niveauOk = niveauControle(dossier.assuranceLevel)
+  if (!niveauOk.ok) return { ok: false, error: niveauOk.melding }
 
   const ttlMs = dossier.linkTtlDays * 24 * 60 * 60 * 1000
   await prisma.dossier.update({

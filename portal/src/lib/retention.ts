@@ -158,6 +158,19 @@ export async function purgeExpiredDossiers(opts?: {
           sealedKey: null
         }
       })
+      // Het auditrapport is ook een blob en gaat dus mee met de bestanden. De
+      // gegevens waaruit het is opgemaakt blijven zeven jaar in het auditspoor
+      // staan, dus het rapport is later opnieuw te genereren.
+      const rapportKey = (
+        await prisma.dossier.findUnique({ where: { id: dossier.id }, select: { auditReportKey: true } })
+      )?.auditReportKey
+      await prisma.dossier.update({
+        where: { id: dossier.id },
+        data: { auditReportKey: null, auditReportSha256: null }
+      })
+      if (rapportKey) {
+        await store.remove(rapportKey).catch((e) => console.error(`[bewaartermijn] auditrapport ${rapportKey}`, e))
+      }
       // De downloadlink wijst nu nergens meer naar. Hem laten staan levert een
       // token op dat de database wél kent maar dat niets meer kan opleveren; dat
       // is onnodige blootstelling zonder enig nut. De route geeft daarna een
