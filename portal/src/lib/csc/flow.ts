@@ -1,0 +1,484 @@
+import 'server-only'
+import { Prisma } from '@prisma/client'
+import { prisma } from '@/lib/db'
+import { env } from '@/env'
+import { storage } from '@/lib/storage'
+import { writeAudit } from '@/lib/audit'
+import { signatureReason } from '@/lib/signing-labels'
+import {
+  preparePdfForExternalSigning,
+  injectExternalSignature,
+  sha256Hex,
+  AlreadySealedError,
+  type InjectResult
+} from '@/lib/seal/sealer'
+import {
+  buildAuthorizeUrl,
+  cleverbaseConfig,
+  credentialInfo,
+  exchangeCodeForSad,
+  fetchServiceToken,
+  isExpiredSad,
+  signHashes,
+  CscError,
+  CscHashMismatchError
+} from './client'
+import {
+  assertCredentialUsable,
+  clearSignatureValues,
+  createSession,
+  markSession,
+  resolveSession,
+  storeSignatureValues
+} from './session'
+
+// Orkestratie van het gekwalificeerd ondertekenen waarbij de accountant zelf
+// autoriseert.
+//
+// Waarom dit een eigen, expliciete stap is en niet meelift op het tekenmoment:
+// zodra er een handtekening in een PDF zit mag het bestand niet meer worden
+// bewerkt. Het auditcertificaat en het plat slaan moeten er dus vóór gebeuren.
+// Die zijn pas klaar als alle partijen hebben getekend — en op dat moment is de
+// accountant er niet noodzakelijk bij om een pincode in te voeren.
+//
+// Daarom: als alles getekend is, komt het dossier op WACHT_OP_WAARMERK. De
+// accountant ziet dat als taak en bevestigt in één keer voor meerdere stukken
+// (de provider staat tot 50 hashes onder één bevestiging toe).
+
+export interface WaitingDocument {
+  documentId: string
+  dossierId: string
+  dossierTitle: string
+  documentTitle: string
+}
+
+/** Documenten die op de gekwalificeerde handtekening van deze accountant wachten. */
+export async function documentsAwaitingSignature(accountantId: string): Promise<WaitingDocument[]> {
+  const dossiers = await prisma.dossier.findMany({
+    where: { ownerId: accountantId, status: 'WACHT_OP_WAARMERK' },
+    orderBy: { updatedAt: 'asc' },
+    select: {
+      id: true,
+      title: true,
+      documents: {
+        where: { preSealKey: { not: null }, sealedKey: null },
+        orderBy: { order: 'asc' },
+        select: { id: true, title: true }
+      }
+    }
+  })
+  return dossiers.flatMap((d) =>
+    d.documents.map((doc) => ({
+      documentId: doc.id,
+      dossierId: d.id,
+      dossierTitle: d.title,
+      documentTitle: doc.title
+    }))
+  )
+}
+
+export type InitiateResult =
+  | { ok: true; authorizeUrl: string; documentCount: number }
+  | { ok: false; error: string }
+
+/**
+ * Fase 1: bereidt de geselecteerde documenten voor en geeft de URL waar de
+ * accountant naartoe gaat om te bevestigen.
+ *
+ * Alle hashes worden hier al berekend: de autorisatie geldt voor precies deze
+ * verzameling, en het SAD-token leeft daarna maar kort.
+ */
+export async function initiateQualifiedSigning(input: {
+  accountantId: string
+  documentIds: string[]
+}): Promise<InitiateResult> {
+  if (env.PROFESSIONAL_SIGNING_DRIVER !== 'cleverbase') {
+    return { ok: false, error: 'Er is geen provider ingesteld die om uw bevestiging vraagt.' }
+  }
+  if (input.documentIds.length === 0) return { ok: false, error: 'Kies minstens één document.' }
+  if (input.documentIds.length > env.CLEVERBASE_MAX_BATCH) {
+    return {
+      ok: false,
+      error: `U kunt maximaal ${env.CLEVERBASE_MAX_BATCH} documenten in één bevestiging meenemen.`
+    }
+  }
+
+  const accountant = await prisma.accountant.findUnique({ where: { id: input.accountantId } })
+  if (!accountant?.signingCertEnabled || !accountant.signingCredentialId) {
+    return { ok: false, error: 'Voor uw account staat gekwalificeerd ondertekenen niet aan.' }
+  }
+
+  // Alleen documenten uit eigen dossiers die daadwerkelijk wachten.
+  const documents = await prisma.document.findMany({
+    where: {
+      id: { in: input.documentIds },
+      preSealKey: { not: null },
+      sealedKey: null,
+      dossier: { ownerId: input.accountantId, status: 'WACHT_OP_WAARMERK' }
+    },
+    select: { id: true, title: true, preSealKey: true, dossierId: true, detectedKind: true }
+  })
+  if (documents.length !== input.documentIds.length) {
+    return { ok: false, error: 'Een of meer documenten wachten niet (meer) op uw handtekening.' }
+  }
+
+  let cfg
+  try {
+    cfg = cleverbaseConfig()
+  } catch (e) {
+    return { ok: false, error: (e as Error).message }
+  }
+
+  try {
+    const { accessToken } = await fetchServiceToken(cfg)
+    // Bij elke sessie opnieuw controleren: de provider trekt het certificaat in
+    // zodra de inschrijving in het register eindigt of wordt geschorst.
+    const usable = await assertCredentialUsable({
+      cfg,
+      serviceToken: accessToken,
+      accountantId: accountant.id,
+      credentialId: accountant.signingCredentialId
+    })
+    if (!usable.ok) return { ok: false, error: usable.reason }
+
+    // Placeholder + hash per document. De volgorde is bindend: de provider geeft
+    // de handtekeningen in dezelfde orde terug.
+    const store = storage()
+    const documentIds: string[] = []
+    const preparedKeys: Record<string, string> = {}
+    const hashesBase64: Record<string, string> = {}
+    const prepared: Record<string, unknown> = {}
+
+    /** Documenten die volgens de PDF zelf al gewaarmerkt zijn. */
+    const alGewaarmerkt: string[] = []
+    for (const doc of documents) {
+      const preSeal = await store.get(doc.preSealKey!)
+      let p
+      try {
+        p = await preparePdfForExternalSigning({
+          pdfBytes: preSeal,
+          certChainBase64: usable.certificates,
+          // Per documentsoort: op een jaarrekening zet de accountant zijn naam
+          // eronder, op een akkoordbrief van de cliënt is het alleen het slot op het
+          // document. Zie lib/signing-labels.ts.
+          reason: signatureReason({
+            kind: doc.detectedKind,
+            accountantName: accountant.name,
+            professionalTitle: accountant.professionalTitle
+          })
+        })
+      } catch (e) {
+        // De PDF bepaalt of er al ondertekend is, niet de database. Zit er al een
+        // handtekening in, dan is dit document klaar en kost het geen pincode meer.
+        if (e instanceof AlreadySealedError) {
+          alGewaarmerkt.push(doc.id)
+          await prisma.document.update({
+            where: { id: doc.id },
+            data: { sealStage: 'QUALIFIED', sealCertSerial: e.certSerial ?? undefined }
+          })
+          await writeAudit({
+            type: 'GEKWALIFICEERD_ONDERTEKEND',
+            dossierId: doc.dossierId,
+            accountantId: accountant.id,
+            message: 'was al gewaarmerkt volgens het bestand zelf; administratie bijgewerkt',
+            metadata: { documentId: doc.id, certSerial: e.certSerial }
+          })
+          continue
+        }
+        throw e
+      }
+      // De voorbereide PDF versleuteld wegschrijven; hij moet de redirect overleven.
+      const key = await store.put(Buffer.from(p.preparedPdf, 'base64'), 'pdf')
+      documentIds.push(doc.id)
+      preparedKeys[doc.id] = key
+      hashesBase64[doc.id] = p.hashToSign
+      prepared[doc.id] = {
+        signedAttrs: p.signedAttrs,
+        documentDigest: p.documentDigest,
+        reservedRegionStart: p.reservedRegionStart,
+        reservedRegionEnd: p.reservedRegionEnd
+      }
+    }
+
+    if (documentIds.length === 0) {
+      // Alles bleek al gewaarmerkt; de administratie is hierboven bijgewerkt.
+      const { completeAfterQualifiedSigning } = await import('@/lib/signflow')
+      for (const dossierId of new Set(
+        alGewaarmerkt.map((id) => documents.find((x) => x.id === id)?.dossierId).filter((x): x is string => !!x)
+      )) {
+        await completeAfterQualifiedSigning(dossierId)
+      }
+      return {
+        ok: false,
+        error: 'Deze documenten waren al gewaarmerkt. De administratie is bijgewerkt; u hoeft niets te doen.'
+      }
+    }
+
+    const { state } = await createSession({
+      accountantId: accountant.id,
+      credentialId: accountant.signingCredentialId,
+      dossierId: documents[0].dossierId,
+      documentIds,
+      // Naast de opslagsleutel bewaren we per document wat /inject nodig heeft.
+      preparedKeys: { ...preparedKeys, __prepared: JSON.stringify(prepared) },
+      hashesBase64,
+      // Exact wat er geautoriseerd wordt, zodat we het vóór injectie kunnen controleren.
+      sentHashes: documentIds.map((id) => hashesBase64[id]),
+      serviceToken: accessToken
+    })
+
+    const authorizeUrl = buildAuthorizeUrl({
+      cfg,
+      credentialId: accountant.signingCredentialId,
+      hashesBase64: documentIds.map((id) => hashesBase64[id]),
+      state
+    })
+
+    await writeAudit({
+      type: 'CSC_AUTORISATIE_GESTART',
+      accountantId: accountant.id,
+      message: `${documentIds.length} document(en) aangeboden ter bevestiging`,
+      metadata: { documentIds, credentialId: accountant.signingCredentialId }
+    })
+
+    return { ok: true, authorizeUrl, documentCount: documentIds.length }
+  } catch (e) {
+    const err = e as CscError
+    await writeAudit({
+      type: 'CSC_ONDERTEKENING_MISLUKT',
+      accountantId: input.accountantId,
+      message: `voorbereiden mislukt: ${err.message}`.slice(0, 500)
+    })
+    return { ok: false, error: `Voorbereiden mislukt: ${err.message}` }
+  }
+}
+
+export type CompleteResult =
+  | { ok: true; dossierIds: string[]; documentCount: number }
+  | { ok: false; error: string; expired?: boolean }
+
+/**
+ * Fase 2: verwerkt de callback. Wisselt de code in voor een SAD, laat de hashes
+ * ondertekenen en zet de handtekeningen in de documenten.
+ *
+ * De batch is atomair: mislukt er één, dan wordt er niets geïnjecteerd. Een half
+ * ondertekende verzameling is erger dan geen.
+ */
+export async function completeQualifiedSigning(input: {
+  code: string
+  state: string
+  accountantId: string
+}): Promise<CompleteResult> {
+  const resolved = await resolveSession(input.state, input.accountantId)
+  if (!resolved.ok) {
+    const messages: Record<string, string> = {
+      onbekend: 'Deze bevestiging hoort niet bij een lopende ondertekensessie.',
+      verlopen: 'De bevestiging kwam te laat binnen. Begin opnieuw.',
+      afgehandeld: 'Deze ondertekensessie is al afgerond.',
+      'geen-eigenaar': 'Deze ondertekensessie hoort bij een andere gebruiker.'
+    }
+    if (resolved.reason === 'verlopen') {
+      await writeAudit({
+        type: 'CSC_AUTORISATIE_VERLOPEN',
+        accountantId: input.accountantId,
+        message: 'sessie verlopen voordat de bevestiging binnenkwam'
+      })
+    }
+    return { ok: false, error: messages[resolved.reason], expired: resolved.reason === 'verlopen' }
+  }
+  const session = resolved.session
+
+  let cfg
+  try {
+    cfg = cleverbaseConfig()
+  } catch (e) {
+    return { ok: false, error: (e as Error).message }
+  }
+
+  await markSession(session.id, 'AUTHORIZING')
+  await writeAudit({
+    type: 'CSC_AUTORISATIE_ONTVANGEN',
+    accountantId: input.accountantId,
+    message: `${session.documentIds.length} document(en)`
+  })
+
+  const store = storage()
+  const preparedMeta = JSON.parse((session.preparedKeys as Record<string, string>).__prepared ?? '{}') as Record<
+    string,
+    { signedAttrs: string; documentDigest: string; reservedRegionStart: number; reservedRegionEnd: number }
+  >
+
+  try {
+    const { sad } = await exchangeCodeForSad(cfg, input.code)
+    const serviceToken = session.serviceToken ?? (await fetchServiceToken(cfg)).accessToken
+
+    // Certificaatketen opnieuw ophalen: die hebben we nodig voor de CMS én het is
+    // een tweede moment om een intrekking te zien.
+    const info = await credentialInfo(cfg, serviceToken, session.credentialId)
+    if ((info.keyStatus ?? '').toLowerCase() !== 'enabled' && info.keyStatus) {
+      throw new CscError(`certificaat niet bruikbaar (status ${info.keyStatus})`, 403, false)
+    }
+
+    const hashes = session.documentIds.map((id) => session.hashesBase64[id])
+
+    // 4.2 — de invariant. Tussen voorbereiden en injecteren zit een menselijke
+    // pauze van minuten. Zit er ook maar één tijdsafhankelijk attribuut in de
+    // signedAttrs, dan verandert de hash en is de handtekening stil ongeldig.
+    // Daarom vóór het ondertekenen controleren of de hashes nog byte-gelijk zijn
+    // aan wat er naar de autorisatie is gestuurd.
+    const sent = (session.sentHashes ?? null) as string[] | null
+    if (sent && (sent.length !== hashes.length || sent.some((h, i) => h !== hashes[i]))) {
+      throw new CscHashMismatchError(
+        'de te ondertekenen hashes wijken af van wat er is geautoriseerd; ' +
+          'dit is een programmeerfout, niet een storing'
+      )
+    }
+
+    // Handtekeningen eerst vastleggen, dan injecteren. Valt het proces halverwege
+    // een batch van vijftig om, dan is het cryptografische werk niet verloren en
+    // hoeft de accountant niet opnieuw te bevestigen.
+    let signatures: string[]
+    const bewaard = (session.signatureValues ?? null) as string[] | null
+    if (bewaard && bewaard.length === hashes.length) {
+      signatures = bewaard
+    } else {
+      signatures = await signHashes({
+        cfg,
+        serviceToken,
+        sad,
+        credentialId: session.credentialId,
+        hashesBase64: hashes
+      })
+      await storeSignatureValues(session.id, signatures)
+    }
+
+    // Eerst alles injecteren in het geheugen; pas daarna wegschrijven. Zo blijft
+    // de batch atomair: gaat er iets mis, dan is er nog niets veranderd.
+    const results: { documentId: string; injected: InjectResult }[] = []
+    for (let i = 0; i < session.documentIds.length; i++) {
+      const documentId = session.documentIds[i]
+      const meta = preparedMeta[documentId]
+      const key = (session.preparedKeys as Record<string, string>)[documentId]
+      if (!meta || !key) throw new CscError(`voorbereide gegevens ontbreken voor document ${documentId}`, 0, false)
+      const preparedPdf = await store.get(key)
+      const injected = await injectExternalSignature({
+        preparedPdfBase64: Buffer.from(preparedPdf).toString('base64'),
+        prepared: meta,
+        signatureValueBase64: signatures[i],
+        certChainBase64: info.certificates
+      })
+      results.push({ documentId, injected })
+    }
+
+    // Vanaf hier vastleggen.
+    //
+    // Deze handtekening IS de verzegeling (v1.4): er komt geen organisatiezegel
+    // bovenop. Daarom zetten we hier meteen sealStage = SEALED en vullen we sealedAt,
+    // timestampedAt, sealCertSerial en sealTsaUrl. Alles wat in de rest van de app
+    // vraagt "is dit verzegeld?" blijft daarmee ongewijzigd werken — dat is één plek
+    // aanpassen in plaats van tien.
+    //
+    // postQualifiedKey blijft gevuld als herstartpunt. Het heeft zijn oorspronkelijke
+    // doel verloren, maar het kost niets.
+    //
+    // Eerst ALLE blobs wegschrijven (nieuwe sleutels), daarna in ÉÉN transactie de
+    // verwijzingen zetten, de sessie afsluiten en de handtekeningwaarden wissen.
+    // Zou het wissen buiten die transactie vallen, dan gooit een crash ertussen de
+    // handtekeningen weg terwijl de stage nog op PRESEAL staat — en dan is de
+    // pincode alsnog verspild, precies wat het bewaren moest voorkomen.
+    const sealedAt = new Date()
+    const nieuweSleutels = new Map<string, { key: string; injected: InjectResult }>()
+    for (const r of results) {
+      nieuweSleutels.set(r.documentId, { key: await store.put(r.injected.bytes, 'pdf'), injected: r.injected })
+    }
+    const dossierIds = new Set<string>()
+    await prisma.$transaction(async (tx) => {
+      for (const [documentId, { key, injected }] of nieuweSleutels) {
+        const doc = await tx.document.update({
+          where: { id: documentId },
+          data: {
+            postQualifiedKey: key,
+            postQualifiedSha256: injected.sha256,
+            sealedKey: key,
+            sealedSha256: injected.sha256,
+            sealedAt,
+            // De bewijstijd komt uit de handtekening zelf, niet van de serverklok.
+            timestampedAt: injected.timestampedAt ?? null,
+            sealCertSerial: injected.certSerial ?? info.credentialId,
+            sealTsaUrl: injected.tsaUrl ?? null,
+            sealStage: 'SEALED'
+          },
+          select: { dossierId: true }
+        })
+        dossierIds.add(doc.dossierId)
+      }
+      await tx.cscSigningSession.update({
+        where: { id: session.id },
+        data: { status: 'SIGNED', lastError: null, signatureValues: Prisma.DbNull }
+      })
+    })
+
+    // Tijdelijke, voorbereide bestanden opruimen.
+    for (const documentId of session.documentIds) {
+      const key = (session.preparedKeys as Record<string, string>)[documentId]
+      if (key) await store.remove(key).catch(() => {})
+    }
+
+    for (const dossierId of dossierIds) {
+      await writeAudit({
+        type: 'GEKWALIFICEERD_ONDERTEKEND',
+        dossierId,
+        accountantId: input.accountantId,
+        message: `cleverbase (${info.subjectDn ?? 'onbekend'})`,
+        metadata: { certSerial: info.credentialId }
+      })
+    }
+
+    // Afronden: zegel (indien ingesteld) plus archief en mails.
+    const { completeAfterQualifiedSigning } = await import('@/lib/signflow')
+    for (const dossierId of dossierIds) {
+      await completeAfterQualifiedSigning(dossierId)
+    }
+
+    return { ok: true, dossierIds: [...dossierIds], documentCount: results.length }
+  } catch (e) {
+    // Drie categorieën, met verschillend gedrag:
+    //  - hash-mismatch: programmeerfout. FAILED, melden, nooit opnieuw.
+    //  - verlopen SAD / afgebroken autorisatie: EXPIRED, opnieuw MET pincode.
+    //  - overige fouten na een geslaagde signHash: FAILED met bewaarde
+    //    handtekeningen, zodat opnieuw proberen ZONDER pincode kan.
+    if (e instanceof CscHashMismatchError) {
+      await markSession(session.id, 'FAILED', e.message)
+      await clearSignatureValues(session.id).catch(() => {})
+      await writeAudit({
+        type: 'CSC_ONDERTEKENING_MISLUKT',
+        accountantId: input.accountantId,
+        message: `hash-mismatch: ${e.message}`.slice(0, 500),
+        metadata: { permanent: true, documentIds: session.documentIds }
+      })
+      return {
+        ok: false,
+        error:
+          'De te ondertekenen gegevens wijken af van wat is geautoriseerd. Er is niets ondertekend. ' +
+          'Dit is een fout in de applicatie; de beheerder is op de hoogte gesteld.'
+      }
+    }
+    const err = e as CscError
+    const expired = isExpiredSad(err)
+    await markSession(session.id, expired ? 'EXPIRED' : 'FAILED', err.message)
+    if (expired) await clearSignatureValues(session.id).catch(() => {})
+    await writeAudit({
+      type: expired ? 'CSC_AUTORISATIE_VERLOPEN' : 'CSC_ONDERTEKENING_MISLUKT',
+      accountantId: input.accountantId,
+      message: err.message.slice(0, 500),
+      metadata: { status: err.status, documentIds: session.documentIds }
+    })
+    return {
+      ok: false,
+      expired,
+      error: expired
+        ? 'De bevestiging was niet meer geldig (deze verloopt na enkele minuten). Begin opnieuw; er is niets ondertekend.'
+        : `Ondertekenen mislukt: ${err.message}. Er is niets ondertekend.`
+    }
+  }
+}

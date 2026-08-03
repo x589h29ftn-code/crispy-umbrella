@@ -1,0 +1,1381 @@
+<!doctype html>
+<html lang="nl">
+<head>
+<meta charset="utf-8" />
+<title>Technisch verslag Ondertekenportaal</title>
+<style>
+  @page { size: A4; margin: 20mm 18mm 20mm 18mm; }
+  * { box-sizing: border-box; }
+  html { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+  body { font-family: -apple-system, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; color: #1f2b3a; font-size: 10.5pt; line-height: 1.5; margin: 0; }
+  h1, h2, h3, h4 { color: #23364a; font-weight: 700; line-height: 1.2; }
+  h2 { font-size: 16pt; margin: 0 0 4px; }
+  h3 { font-size: 12pt; margin: 18px 0 6px; color: #2b6cad; }
+  h4 { font-size: 10.5pt; margin: 13px 0 4px; color: #16232f; }
+  p { margin: 0 0 8px; }
+  a { color: #2b6cad; word-break: break-all; }
+  ol, ul { margin: 0 0 9px; padding-left: 19px; }
+  li { margin-bottom: 4px; }
+  strong { color: #16232f; }
+  code { background: #eef3f8; padding: 1px 4px; border-radius: 3px; font-size: 9pt; font-family: "SFMono-Regular", Consolas, "Liberation Mono", monospace; }
+  pre { background: #f6f8fb; border: 1px solid #e3eaf1; border-radius: 6px; padding: 9px 11px; font-size: 8.5pt; line-height: 1.4; overflow: hidden; white-space: pre-wrap; page-break-inside: avoid; font-family: "SFMono-Regular", Consolas, "Liberation Mono", monospace; }
+  pre.wide { font-size: 7.6pt; line-height: 1.32; }
+  table { border-collapse: collapse; width: 100%; margin: 9px 0 12px; font-size: 9.3pt; page-break-inside: avoid; }
+  th, td { border: 1px solid #dbe3ec; padding: 5px 7px; text-align: left; vertical-align: top; }
+  th { background: #eef3f8; color: #23364a; font-weight: 700; }
+  td code { font-size: 8.6pt; }
+  .chapter { page-break-before: always; }
+  .lead { color: #5b6b7c; margin-bottom: 13px; font-size: 11pt; }
+  .kicker { color: #2b6cad; font-weight: 700; font-size: 9pt; letter-spacing: .08em; text-transform: uppercase; margin-bottom: 2px; }
+  .note { background: #eef6fc; border-left: 4px solid #3182c4; padding: 9px 13px; border-radius: 6px; margin: 11px 0; font-size: 9.8pt; page-break-inside: avoid; }
+  .warn { background: #fef8e7; border-left: 4px solid #e0a800; padding: 9px 13px; border-radius: 6px; margin: 11px 0; font-size: 9.8pt; page-break-inside: avoid; }
+  .stop { background: #fdeeee; border-left: 4px solid #c94040; padding: 9px 13px; border-radius: 6px; margin: 11px 0; font-size: 9.8pt; page-break-inside: avoid; }
+  .cover { height: 250mm; display: flex; flex-direction: column; justify-content: center; align-items: center; text-align: center; }
+  .cover img { width: 74mm; margin-bottom: 24px; }
+  .cover .title { font-size: 27pt; font-weight: 800; color: #23364a; margin: 0; }
+  .cover .sub { font-size: 13pt; color: #5b6b7c; margin-top: 10px; max-width: 130mm; }
+  .cover .meta { margin-top: 38px; color: #7b8a99; font-size: 10.5pt; }
+  .bar { width: 60mm; height: 5px; background: #2b6cad; border-radius: 3px; margin: 20px auto; }
+  .toc { page-break-before: always; }
+  .toc h2 { border-bottom: 2px solid #e3eaf1; padding-bottom: 7px; }
+  .toc ol { list-style: none; padding: 0; margin-top: 12px; counter-reset: toc; }
+  .toc li { display: flex; align-items: baseline; margin-bottom: 7px; font-size: 11pt; counter-increment: toc; }
+  .toc li::before { content: counter(toc) "."; color: #2b6cad; font-weight: 700; width: 22px; flex: 0 0 22px; }
+  .toc li span.s { color: #7b8a99; font-size: 9.5pt; margin-left: 8px; }
+  .kv { font-size: 9.5pt; }
+  .kv td:first-child { width: 38%; font-weight: 600; }
+  .two { column-count: 2; column-gap: 9mm; font-size: 9.5pt; }
+  .two ul { margin-top: 0; }
+  .small { font-size: 9.3pt; color: #5b6b7c; }
+  figure { margin: 10px 0 4px; page-break-inside: avoid; }
+  figure img { max-width: 100%; display: block; margin: 0 auto; border: 1px solid #d9e2ec; border-radius: 7px; }
+  figcaption { text-align: center; color: #7b8a99; font-size: 9pt; margin-top: 5px; }
+</style>
+</head>
+<body>
+
+<section class="cover">
+  <img src="../../public/logo-full.jpg" alt="Otto Visser &amp; Partners" />
+  <div class="bar"></div>
+  <p class="title">Technisch verslag</p>
+  <p class="sub">Ondertekenportaal &mdash; wat de applicatie doet, hoe zij werkt, en waarom de keuzes zo zijn gemaakt</p>
+  <p class="meta">Otto Visser &amp; Partners accountants<br />26 juli 2026 &middot; na changeset v1.7</p>
+</section>
+
+<section class="toc">
+  <h2>Inhoud</h2>
+  <ol>
+    <li><span>Wat de applicatie is</span><span class="s">doel, gebruikers, omvang</span></li>
+    <li><span>De architectuur</span><span class="s">vijf containers en waarom</span></li>
+    <li><span>Technische stack</span><span class="s">alle onderdelen met versies</span></li>
+    <li><span>Het datamodel</span><span class="s">14 modellen, 10 opsommingen</span></li>
+    <li><span>De ondertekenpipeline</span><span class="s">de kern van de applicatie</span></li>
+    <li><span>Digitale handtekening en tijdstempel</span><span class="s">PAdES, sealer, beroepscertificaat</span></li>
+    <li><span>Bewaartermijn en archivering</span><span class="s">doorvoerstation, niet archief</span></li>
+    <li><span>Het auditspoor</span><span class="s">hashketen, append-only, ankers</span></li>
+    <li><span>Beveiliging</span><span class="s">in lagen, met de grenzen erbij</span></li>
+    <li><span>E-mail en bezorging</span><span class="s">bounces, webhooks, herinneringen</span></li>
+    <li><span>Achtergrondtaken</span><span class="s">de wachtrij en tien taken</span></li>
+    <li><span>Documentherkenning</span><span class="s">tekstlaag, OCR, sjablonen</span></li>
+    <li><span>Gelijktijdigheid en vergrendeling</span><span class="s">waar het bijna stukging</span></li>
+    <li><span>Back-up en herstel</span><span class="s">wat het kroonjuweel is</span></li>
+    <li><span>Kwaliteit en tests</span><span class="s">293 controles</span></li>
+    <li><span>Hosting en beheer</span><span class="s">4 GB veilig maken</span></li>
+    <li><span>Wat bewust niet is gebouwd</span><span class="s">en waarom</span></li>
+    <li><span>Wat nog niet bewezen is</span><span class="s">eerlijk over de grenzen</span></li>
+  </ol>
+</section>
+
+<!-- ============================================================ 1 -->
+<section class="chapter">
+  <p class="kicker">Hoofdstuk 1</p>
+  <h2>Wat de applicatie is</h2>
+  <p class="lead">Een zelf-gehost portaal waarmee Otto Visser &amp; Partners documenten
+  online laat ondertekenen. Cli&euml;nten hebben geen account: zij komen binnen via een
+  eenmalige link en een verificatiecode. De accountant ondertekent met zijn
+  beroepscertificaat, wat de natte handtekening vervangt.</p>
+
+  <h3>1.1 Het uitgangspunt: een doorvoerstation</h3>
+  <p>De belangrijkste ontwerpbeslissing is niet technisch maar organisatorisch. Dit
+  portaal is <strong>geen archief</strong>. Een dossier wordt aangemaakt, de cli&euml;nt
+  tekent, de accountant waarmerkt, het stuk gaat naar SharePoint, en daarna verdwijnt
+  het uit het portaal. De bewaarplicht ligt bij SharePoint.</p>
+  <p>Daaruit volgt alles wat verder in dit verslag staat. Het primaire bewijs is de
+  ondertekende PDF, niet de database: dat bestand bevat een gekwalificeerde
+  handtekening met tijdstempel en ingebedde revocatiegegevens, plus een
+  certificaatpagina met de instemmingstekst. Het is self-contained. Iemand kan het over
+  vijf jaar in Acrobat openen en valideren zonder onze server, onze database of onze
+  medewerking. Het auditspoor in de database is detail eromheen: maillevering, mislukte
+  codes, IP per stap. Waardevol bij een betwisting, maar niet de drager van het bewijs.</p>
+
+  <h3>1.2 Voor wie en hoeveel</h3>
+  <table class="kv">
+    <tr><td>Kantoorgebruikers</td><td>medewerkers en accountants, maximaal 2 gelijktijdig, op werkdagen</td></tr>
+    <tr><td>Cli&euml;ntkant</td><td>24/7 bereikbaar, want cli&euml;nten tekenen op hun eigen moment</td></tr>
+    <tr><td>Volume</td><td>ongeveer 10 ondertekende documenten per werkdag</td></tr>
+    <tr><td>Documenten in het portaal</td><td>90 dagen na archivering</td></tr>
+    <tr><td>Auditspoor in het portaal</td><td>7 jaar na afronding</td></tr>
+    <tr><td>Archief</td><td>SharePoint, handmatig gevuld, met een vinkje in het portaal</td></tr>
+    <tr><td>De handtekening</td><td>het beroepscertificaat van de accountant (AA of RA)</td></tr>
+  </table>
+
+  <h3>1.3 Wat de applicatie kan</h3>
+  <div class="two">
+  <ul>
+    <li>Word- en PDF-documenten importeren, met automatische conversie naar PDF</li>
+    <li>Het documenttype herkennen (jaarrekening, notulen, akkoordverklaring&hellip;) en op basis daarvan een titel en begeleidend bericht voorstellen</li>
+    <li>Meerdere documenten in &eacute;&eacute;n verzoek, of elk apart</li>
+    <li>Tekenvelden plaatsen op de pagina, per ontvanger</li>
+    <li>Ontvangers uit de eigen cli&euml;ntendatabase halen</li>
+    <li>Versturen per e-mail met een eenmalige, kortlevende link</li>
+    <li>Tekenen in de browser, na een verificatiecode per e-mail of sms</li>
+    <li>Volgordelijk of gelijktijdig laten ondertekenen</li>
+    <li>Weigeren met opgaaf van reden</li>
+    <li>Automatische herinneringen, vervaltermijn en opnieuw versturen</li>
+    <li>Gekwalificeerd ondertekenen door de accountant, met bevestiging per pincode</li>
+    <li>Een ondertekencertificaat als extra pagina in het document</li>
+    <li>Een ondertekend document controleren</li>
+    <li>Cli&euml;nten beheren en importeren uit Excel of CSV</li>
+    <li>Gebruikersbeheer met rollen en tweefactorauthenticatie</li>
+    <li>Berichtsjablonen per documenttype beheren</li>
+  </ul>
+  </div>
+
+  <h3>1.4 Omvang van de codebase</h3>
+  <table class="kv">
+    <tr><td>TypeScript/React</td><td>150 bestanden, ongeveer 17.500 regels</td></tr>
+    <tr><td>Python (de sealer)</td><td>ongeveer 790 regels</td></tr>
+    <tr><td>Databasemigraties</td><td>22</td></tr>
+    <tr><td>Datamodellen</td><td>14, met 11 opsommingstypen</td></tr>
+    <tr><td>Soorten auditgebeurtenissen</td><td>37</td></tr>
+    <tr><td>Omgevingsvariabelen</td><td>88, allemaal gevalideerd bij het opstarten</td></tr>
+    <tr><td>Automatische controles</td><td>293 (234 applicatie, 13 paginarooktest, 26 sealer, 16 certificering, 4 validatormodus)</td></tr>
+  </table>
+</section>
+
+<!-- ============================================================ 2 -->
+<section class="chapter">
+  <p class="kicker">Hoofdstuk 2</p>
+  <h2>De architectuur</h2>
+  <p class="lead">Vijf containers op &eacute;&eacute;n VPS. Elke scheiding heeft een reden;
+  containers die er niets toe deden zijn er weer uit gehaald.</p>
+
+<pre class="wide">                        internet
+                            |
+                         :443  TLS 1.2+/1.3, HSTS, Let's Encrypt
+                            |
+                    +-------v--------+
+                    |     caddy      |  reverse proxy, enige publieke poort
+                    +-------+--------+
+                            |
+        +-------------------v--------------------+
+        |                  web                  |  Next.js 14 (App Router)
+        |   pagina's, server actions, API        |  pdf-lib, pdfjs, LibreOffice,
+        |                                        |  tesseract
+        +---+----------------+---------------+---+
+            |                |               |
+            |                |               +-----> SMTP / Postmark / Resend
+            |                |                        (uit; webhooks komen terug)
+            |          +-----v------+
+            |          |   sealer   |  Python + pyHanko
+            |          |  PAdES-B-LT|  GEEN ports:, GEEN Caddy-route
+            |          +-----+------+  shared secret in X-Sealer-Secret
+            |                |
+            |                +-----> TSA (tijdstempel) + provider (cloud-HSM)
+            |
+     +------v------+      +----------+
+     |     db      |<-----|  worker  |  wachtrij, FOR UPDATE SKIP LOCKED
+     | PostgreSQL16|      +----------+
+     +------+------+
+            |
+            +-- volume "documents" (elk bestand AES-256-GCM) + volume "pgdata"</pre>
+
+  <h3>2.1 Waarom deze verdeling</h3>
+  <h4>De sealer apart</h4>
+  <p>pyHanko is Python en heeft de LT-laag ingebouwd: revocatiegegevens in de
+  DSS-dictionary, een document-timestamp, en correcte incrementele updates. In pdf-lib
+  is dat handwerk en foutgevoelig. Bijkomend voordeel: de container die bij de
+  ondertekengegevens kan, is niet publiek bereikbaar &mdash; geen <code>ports:</code>-blok
+  en geen route in Caddy.</p>
+
+  <h4>De worker apart</h4>
+  <p>Een verzegeling die faalt moet opnieuw kunnen zonder dat er een HTTP-verzoek open
+  staat. Ook herinneringen, vervaltermijnen en opruimtaken horen niet in een
+  webverzoek. E&eacute;n instance: de wachtrij kan meer aan, maar de
+  volgorde-garanties zijn daar niet op ontworpen.</p>
+
+  <h4>De database niet publiek</h4>
+  <p>Alleen bereikbaar op het interne Docker-netwerk. De firewall op de host laat
+  alleen 22, 80 en 443 door.</p>
+
+  <h3>2.2 Wat er niet is, en waarom niet</h3>
+  <p>Er was een zesde container gebouwd: een aparte <em>validator</em> voor de
+  controlepagina, omdat een publieke upload die door een PDF-parser gaat niet in
+  dezelfde container hoort als de ondertekengegevens. Die is er weer uit. De pagina
+  staat nu achter de login, en daarmee is er geen onbeauthenticeerde uploadingang meer.
+  Dat is dezelfde bescherming voor minder techniek, en het scheelt geheugen op een
+  machine van 4&nbsp;GB.</p>
+  <p>De rol bestaat nog in de image: met <code>VALIDATOR_ONLY=true</code> weigert het
+  sealer-proces te starten als er ondertekengegevens in zijn omgeving staan, en geven
+  <code>/seal</code>, <code>/prepare</code> en <code>/inject</code> een 403. Wordt de
+  pagina ooit publiek, dan is dat de weg terug; de compose-snippet staat in de
+  hostinghandleiding.</p>
+
+  <div class="note"><strong>Een grendel in het verkeerde proces is geen grendel.</strong>
+  Die controle stond eerst in de omgevingsvalidatie van Next.js. De validator-container
+  draait het Python-proces, dus die code liep daar nooit. Nu staat hij in
+  <code>sealer/main.py</code>, waar hij thuishoort.</div>
+</section>
+
+<!-- ============================================================ 3 -->
+<section class="chapter">
+  <p class="kicker">Hoofdstuk 3</p>
+  <h2>Technische stack</h2>
+
+  <h3>3.1 Applicatie</h3>
+  <table>
+    <tr><th>Onderdeel</th><th>Versie</th><th>Waarvoor</th></tr>
+    <tr><td>Next.js</td><td>14.2</td><td>App Router, Node-runtime (nodig voor pdf-lib, LibreOffice, nodemailer)</td></tr>
+    <tr><td>React</td><td>18.3</td><td>server components met losse client-eilanden</td></tr>
+    <tr><td>TypeScript</td><td>5.x</td><td>strikt; <code>tsc --noEmit</code> is een poort in de CI</td></tr>
+    <tr><td>Tailwind</td><td>3.4</td><td>opmaak</td></tr>
+    <tr><td>PostgreSQL</td><td>16</td><td>database, wachtrij, rate-limiting, advisory locks</td></tr>
+    <tr><td>Prisma</td><td>5.22</td><td>schema, migraties, typeveilige queries</td></tr>
+    <tr><td>@cantoo/pdf-lib</td><td>2.7</td><td>stempelen, auditcertificaat, plat slaan</td></tr>
+    <tr><td>pdfjs-dist</td><td>4.8</td><td>pagina's tonen bij het plaatsen van velden; tekst uitlezen</td></tr>
+    <tr><td>@node-rs/argon2</td><td>2.0</td><td>wachtwoorden met argon2id</td></tr>
+    <tr><td>otpauth + qrcode</td><td>9.3 / 1.5</td><td>tweefactorauthenticatie (TOTP)</td></tr>
+    <tr><td>nodemailer</td><td>9.0</td><td>SMTP; Postmark en Resend via hun REST-API</td></tr>
+    <tr><td>zod</td><td>3.23</td><td>validatie op elke grens, ook op de omgeving</td></tr>
+    <tr><td>rate-limiter-flexible</td><td>5.0</td><td>limieten, met de tellers in Postgres</td></tr>
+    <tr><td>mammoth</td><td>1.12</td><td>terugval voor .docx als LibreOffice ontbreekt</td></tr>
+    <tr><td>@e965/xlsx</td><td>0.20</td><td>cli&euml;nten importeren uit Excel</td></tr>
+    <tr><td>nanoid</td><td>5.1</td><td>opslagsleutels die nooit botsen</td></tr>
+    <tr><td>pg</td><td>8.22</td><td>directe SQL voor rate-limiting en advisory locks</td></tr>
+  </table>
+
+  <h3>3.2 De sealer</h3>
+  <table>
+    <tr><th>Onderdeel</th><th>Versie</th><th>Waarvoor</th></tr>
+    <tr><td>FastAPI + uvicorn</td><td>0.115 / 0.34</td><td>vijf eindpunten, geen documentatieroutes</td></tr>
+    <tr><td>pyHanko</td><td>0.25.3</td><td>PAdES-B-LT: handtekening, tijdstempel, revocatiegegevens</td></tr>
+    <tr><td>pyhanko-certvalidator</td><td>0.26.5</td><td>validatie van ketens en revocatie</td></tr>
+    <tr><td>requests</td><td>2.32</td><td>naar de signing-API en de TSA</td></tr>
+  </table>
+
+  <h3>3.3 Buiten de containers</h3>
+  <ul>
+    <li><strong>LibreOffice headless</strong> in de web-image: Word en Excel naar PDF.</li>
+    <li><strong>tesseract</strong> met Nederlandse taaldata plus <strong>poppler</strong>: OCR als een PDF geen tekstlaag heeft.</li>
+    <li><strong>Caddy 2</strong>: automatische HTTPS met Let's Encrypt.</li>
+    <li><strong>restic</strong> op de host: versleutelde back-up naar externe opslag.</li>
+  </ul>
+
+  <h3>3.4 Wat de applicatie niet nodig heeft</h3>
+  <p>Geen Redis (de wachtrij en de limieten staan in Postgres), geen aparte
+  broker, geen zoekmachine, geen S3 (de opslagabstractie staat er wel klaar voor),
+  geen externe authenticatiedienst. Dat is bewust: elk extra onderdeel is een extra
+  ding dat kan omvallen en dat iemand moet bijhouden.</p>
+</section>
+
+<!-- ============================================================ 4 -->
+<section class="chapter">
+  <p class="kicker">Hoofdstuk 4</p>
+  <h2>Het datamodel</h2>
+  <p class="lead">Veertien modellen. De interessante velden zijn niet de namen en
+  adressen, maar de velden die bewijs vastleggen.</p>
+
+  <h3>4.1 De modellen</h3>
+  <table>
+    <tr><th>Model</th><th>Rol</th></tr>
+    <tr><td><code>Accountant</code></td><td>medewerker van het kantoor, met rol, tweefactor en eventueel een beroepscertificaat</td></tr>
+    <tr><td><code>Session</code></td><td>intrekbare serversessie; alleen de hash van het token</td></tr>
+    <tr><td><code>Client</code></td><td>cli&euml;ntendatabase, met klantnummer en archiefmap</td></tr>
+    <tr><td><code>Dossier</code></td><td>&eacute;&eacute;n ondertekenverzoek met een of meer documenten</td></tr>
+    <tr><td><code>Document</code></td><td>&eacute;&eacute;n te ondertekenen stuk, met vijf opslagsleutels en hun hashes</td></tr>
+    <tr><td><code>Recipient</code></td><td>&eacute;&eacute;n ondertekenaar, intern of extern, met alle bewijsvelden</td></tr>
+    <tr><td><code>SignatureField</code></td><td>een tekenvak: pagina en co&ouml;rdinaten in PDF-punten</td></tr>
+    <tr><td><code>AuditEvent</code></td><td>append-only gebeurtenis, met hashketen per dossier</td></tr>
+    <tr><td><code>AuditAnchor</code></td><td>de kop van een keten, buiten de database vastgelegd</td></tr>
+    <tr><td><code>CscSigningSession</code></td><td>ondertekensessie die een browserredirect moet overleven</td></tr>
+    <tr><td><code>MailEvent</code></td><td>ruwe bezorggebeurtenis van de mailprovider, idempotent</td></tr>
+    <tr><td><code>Job</code></td><td>de wachtrij</td></tr>
+    <tr><td><code>MessageTemplate</code></td><td>berichtsjablonen per documenttype</td></tr>
+    <tr><td><code>RateLimit</code></td><td>tellers van de rate-limiter (beheerd door de bibliotheek zelf)</td></tr>
+  </table>
+
+  <h3>4.2 De opsommingstypen</h3>
+  <table>
+    <tr><th>Type</th><th>Waarden</th></tr>
+    <tr><td><code>DossierStatus</code></td><td>CONCEPT, VERZONDEN, GEDEELTELIJK, ONDERTEKEND, WACHT_OP_WAARMERK, SEALING_FAILED, GEWEIGERD, VERLOPEN</td></tr>
+    <tr><td><code>SealStage</code></td><td>NONE, PRESEAL, QUALIFIED, SEALED</td></tr>
+    <tr><td><code>PartyStatus</code></td><td>PENDING, SIGNED, DECLINED</td></tr>
+    <tr><td><code>SigningMode</code></td><td>PARALLEL, SEQUENTIAL</td></tr>
+    <tr><td><code>MailStatus</code></td><td>QUEUED, SENT, DELIVERED, BOUNCED, COMPLAINED, FAILED</td></tr>
+    <tr><td><code>DocumentKind</code></td><td>JAARREKENING, NOTULEN_AVA, BEVESTIGING_JAARREKENING, AKKOORD_IB, AKKOORD_VPB, OPDRACHTBEVESTIGING, OVERIG</td></tr>
+    <tr><td><code>VerificationMethod</code></td><td>EMAIL, SMS</td></tr>
+    <tr><td><code>Role</code></td><td>MEDEWERKER, BEHEERDER</td></tr>
+    <tr><td><code>PartyRole</code></td><td>ZELF (kantoor), EXTERN (cli&euml;nt)</td></tr>
+    <tr><td><code>FieldKind</code></td><td>SIGNATURE, DATE, INITIALS</td></tr>
+  </table>
+
+  <h3>4.3 De velden die bewijs vastleggen</h3>
+  <h4>Op <code>Recipient</code></h4>
+  <table class="kv">
+    <tr><td><code>tokenHash</code></td><td>SHA-256 van de tekenlink. De link zelf staat nergens; hij is niet opnieuw te versturen, alleen te vervangen.</td></tr>
+    <tr><td><code>otpHash</code>, <code>otpAttempts</code>, <code>otpVerifiedAt</code></td><td>de verificatiecode, alleen gehasht, met pogingenteller</td></tr>
+    <tr><td><code>consentTextSnapshot</code> + hash + <code>consentShownAt</code></td><td>de <em>letterlijke</em> tekst die deze persoon op het scherm zag, op dat moment. Niet de huidige tekst.</td></tr>
+    <tr><td><code>presentedHashes</code></td><td>per document de SHA-256 van de bytes die d&eacute;ze persoon te zien kreeg</td></tr>
+    <tr><td><code>mailStatus</code>, <code>mailBounceReason</code></td><td>of de uitnodiging is aangekomen</td></tr>
+  </table>
+
+  <h4>Op <code>Document</code></h4>
+  <p>Vijf opslagsleutels, elk met een eigen hash. Dat zijn geen versies van het gemak
+  maar herstartpunten:</p>
+  <table class="kv">
+    <tr><td><code>originalKey</code></td><td>zoals ge&uuml;pload (na eventuele conversie naar PDF)</td></tr>
+    <tr><td><code>workingKey</code></td><td>met de zichtbare stempels tot nu toe</td></tr>
+    <tr><td><code>preSealKey</code> + <code>preSealSha256</code></td><td>na het auditcertificaat en het plat slaan &mdash; herstartpunt 1</td></tr>
+    <tr><td><code>postQualifiedKey</code> + hash</td><td>na de gekwalificeerde handtekening &mdash; herstartpunt 2</td></tr>
+    <tr><td><code>sealedKey</code> + <code>sealedSha256</code></td><td>het definitieve stuk &mdash; herstartpunt 3</td></tr>
+    <tr><td><code>timestampedAt</code>, <code>sealCertSerial</code>, <code>sealTsaUrl</code></td><td>de bewijstijd uit de tijdstempeldienst en welk certificaat is gebruikt</td></tr>
+    <tr><td><code>sealStage</code></td><td>hoe ver het is, expliciet en niet afgeleid uit gevulde sleutels</td></tr>
+  </table>
+  <div class="note"><code>sealStage</code> is er gekomen omdat "afleiden uit welke
+  sleutels gevuld zijn" precies de fout is die twee keer verzegelen mogelijk maakte.
+  Valt het proces om tussen het wegschrijven van de bytes en het committen van de rij,
+  dan is het bestand verzegeld en weet de database dat niet.</div>
+
+  <h4>Op <code>AuditEvent</code></h4>
+  <p><code>prevHash</code> en <code>hash</code> vormen de keten, <code>seq</code> is een
+  oplopend nummer, <code>metadata</code> is JSON die wordt
+  <em>gecanonicaliseerd</em> voordat hij in de hash gaat &mdash; Postgres bewaart de
+  sleutelvolgorde van JSONB niet, dus zonder canonicalisatie zou de keten na
+  teruglezen onterecht gebroken lijken.</p>
+</section>
+
+<!-- ============================================================ 5 -->
+<section class="chapter">
+  <p class="kicker">Hoofdstuk 5</p>
+  <h2>De ondertekenpipeline</h2>
+  <p class="lead">Dit is de kern. De volgorde is strikt, en de reden is
+  onvermijdelijk: zodra er een cryptografische handtekening in een PDF zit, mag het
+  bestand niet meer worden bewerkt.</p>
+
+<pre class="wide"> CONCEPT
+   |  importeren: PDF of Word -> LibreOffice -> PDF
+   |  herkennen: tekstlaag -> trefwoorden -> boekjaar -> titel + bericht
+   |  velden plaatsen (pixels -> PDF-punten), ontvangers kiezen
+   v
+ VERZONDEN ------> per ontvanger: eenmalig token (alleen de hash bewaard)
+   |              + uitnodigingsmail met de link
+   |
+   |  cliënt opent -> verificatiecode -> tekent in de browser
+   v
+ GEDEELTELIJK ---> stempel per ondertekenaar, binnen een rijvergrendeling
+   |
+   |  ALLE PARTIJEN KLAAR
+   v
+ 1. zichtbare handtekeningen en stempels staan erop
+ 2. label "Digitaal ondertekend door: <naam>, <datum/tijd>"
+ 3. ondertekencertificaat als extra pagina erachter
+ 4. plat slaan
+ 5. preSealSha256 vastleggen, artefact apart opslaan  --> sealStage = PRESEAL
+   |
+   v
+ WACHT_OP_WAARMERK
+   |  de accountant selecteert de stukken en bevestigt ÉÉN keer met zijn pincode
+   |  (tot 50 hashes onder één bevestiging)
+   v
+ 6. gekwalificeerde handtekening injecteren                  --> sealStage = SEALED
+    sealedKey, sealedSha256, timestampedAt, sealCertSerial
+   |
+   v
+ ONDERTEKEND ---> voltooiingsmail met bijlage, en het archiveervinkje verschijnt</pre>
+
+  <h3>5.1 Waarom het certificaat v&oacute;&oacute;r de handtekening komt</h3>
+  <p>Het ondertekencertificaat en het plat slaan zijn bewerkingen. Die moeten dus
+  gebeuren voordat er een handtekening in het bestand zit. Maar ze kunnen pas als alle
+  partijen hebben getekend &mdash; en op dat moment is de accountant er niet
+  noodzakelijk bij om een pincode in te voeren. Vandaar de wachtstand
+  <code>WACHT_OP_WAARMERK</code>: geen fout, een normale stap.</p>
+
+  <h3>5.2 Fail-closed</h3>
+  <p>Lukt de verzegeling niet, dan komt het dossier op <code>SEALING_FAILED</code>. Er
+  gaat <strong>geen voltooiingsmail</strong> uit, er staat een melding op het dashboard
+  met de laatste foutmelding, en een taak probeert het opnieuw na 1, 5, 15 en 60
+  minuten en daarna elk uur, maximaal twaalf keer. Na drie mislukte pogingen krijgt de
+  eigenaar een e-mail. Een fout die pyHanko structureel weigert (een 400 in plaats van
+  een 502) stopt direct met een melding, in plaats van eeuwig rond te draaien.</p>
+  <p>Voor de cli&euml;nt verandert er niets: die heeft geldig ondertekend, alleen de
+  afronding wacht.</p>
+
+  <h3>5.3 Wat er per ondertekenaar wordt vastgelegd</h3>
+  <p>Op het moment dat iemand tekent, staat vast: het IP-adres, de user-agent, het
+  tijdstip van de geverifieerde code, het tijdstip van ondertekenen, de letterlijke
+  instemmingstekst die op het scherm stond, en de hash van de bytes die
+  d&eacute;ze persoon te zien kreeg. Dat laatste is belangrijk bij ondertekenen op
+  volgorde: de tweede ondertekenaar ziet een ander bestand dan de eerste, en dat is
+  geen aanwijzing dat er is gerommeld. Het ondertekencertificaat legt dat ook uit,
+  zodat niemand die hashes met het eindbestand gaat vergelijken en de verkeerde
+  conclusie trekt.</p>
+
+  <h3>5.4 De accountant is een gewone ontvanger</h3>
+  <p>Een kantoorondertekenaar heeft net als een cli&euml;nt een positie in de volgorde.
+  Het afronden begint zodra <em>alle</em> ontvangers hebben getekend, ongeacht rol.
+  Het verschil zit alleen in de authenticatie: een cli&euml;nt komt binnen via een
+  magic link plus een code per e-mail, een medewerker via inloggen op
+  <code>/te-ondertekenen</code>.</p>
+  <p>Dat kan omdat <strong>iedere handtekening van iedere partij een visuele stempel
+  is</strong>. Alleen het zegel aan het eind is cryptografisch. De volgorde is daarom
+  vrij configureerbaar zonder cryptografische gevolgen &mdash; geen toeval, maar de
+  reden dat deze opzet werkt.</p>
+  <div class="warn"><strong>De zwakke plek, en wat eraan is gedaan.</strong> Een
+  sessie leeft uren. Wie langsloopt bij een onvergrendelde laptop zou kunnen
+  ondertekenen namens degene die is ingelogd. Daarom vraagt het indienen van een
+  kantoorondertekening om een <strong>verse code uit de authenticatie-app</strong>.
+  Bewust niet om het wachtwoord: dat vullen browsers in, en dan bewijs je niets over
+  het moment.</p>
+  <p style="margin-top:8px">Het detail dat hierbij het vaakst wordt overgeslagen: een
+  TOTP-code blijft binnen zijn tijdvenster geldig en is dus tot anderhalve minuut
+  herbruikbaar. De laatst geaccepteerde tijdstap wordt daarom vastgelegd en niet
+  nogmaals geaccepteerd &mdash; ook niet als hij bij het inloggen is gebruikt. Dat is
+  het verschil tussen een bewijs van bezit en een bewijs van kopi&euml;ren.</p></div>
+  <p>Vijf misslagen blokkeren d&iacute;e ondertekening, niet het account: anders sluit een
+  accountant zich met een typefout uit de hele applicatie. Vakantiedekking gaat via
+  een expliciete <strong>overdracht</strong> aan een collega, met een auditregel die
+  vastlegt van wie naar wie en door wie &mdash; niet via &ldquo;iedereen mag elk
+  kantoorveld invullen&rdquo;.</p>
+
+  <h3>5.5 Het getekende exemplaar</h3>
+  <p>De voltooiingsmail is meer dan een bevestiging; hij is het eigen exemplaar van
+  de cli&euml;nt. Daarom staat de SHA-256 van het verzegelde bestand als leesbare tekst
+  in de body. Die belandt zo in zijn mailbox, met z&iacute;jn ontvangstdatum, buiten ons
+  beheer &mdash; en dat dekt precies het sc&eacute;nario waarin een onafhankelijk zegel
+  telt: dat iemand <em>ons</em> verdenkt. Wij kunnen die mail niet aanpassen.</p>
+  <p>Daarnaast zit er een downloadlink bij, met een eigen token. Bewust gescheiden
+  van het tekentoken: dat is eenmalig en verbruikt na ondertekening, en dat moet zo
+  blijven. Het downloadtoken is herbruikbaar binnen zijn termijn (90 dagen, gelijk
+  aan hoelang de bestanden in het portaal staan), en kan niet worden gebruikt om te
+  ondertekenen &mdash; andere route, andere validatie. Elke download komt als
+  <code>GEDOWNLOAD</code> in het auditspoor. Zodra de bestanden worden opgeruimd,
+  wordt het token gewist en geeft de link een uitgelegde melding in plaats van een
+  blanco foutpagina.</p>
+
+  <h3>5.6 Het losse auditrapport</h3>
+  <p>Naast het ondertekencertificaat &iacute;n het document komt er een apart
+  PDF-bestand met de volledige vastlegging. Het uitgangspunt is precies omgekeerd:
+  het certificaat is een samenvatting die met het stuk meereist, dit is de complete
+  administratie. Bij niveau <strong>Auditspoor</strong> is dit h&eacute;t bewijsstuk;
+  bij de andere niveaus de leesbare onderbouwing naast het zegel.</p>
+  <p>Erin: het verzoek en het gekozen niveau, per document alle vingerafdrukken en
+  zegelgegevens, per ondertekenaar het hele verloop met bezorgstatus, verificatie&shy;kanaal,
+  de letterlijke verklaring met zijn hash en de vingerafdruk van de getoonde versie.
+  Daarna het complete chronologische auditspoor met volgnummers, IP, apparaat en
+  metadata, en de hashketen met de uitkomst van de ketencontrole.</p>
+  <div class="note"><strong>Twee dingen expres niet weggepoetst.</strong> Een bounce
+  staat er gewoon in &mdash; daar komt de discussie &ldquo;ik heb het nooit
+  gekregen&rdquo; nu juist op aan, en een nette samenvatting waarin die ontbreekt is
+  minder waard dan een rommelige lijst waarin hij staat. En het rapport zegt z&eacute;lf
+  wat het niet aantoont: het komt uit onze eigen database, dus wie het kantoor
+  verdenkt heeft er niets aan. Die heeft de vingerafdruk uit de voltooiingsmail
+  nodig, of een echt zegel.</div>
+  <p>De ketencontrole in het rapport kijkt naar de keten van <em>dit</em> dossier en
+  niet naar alle ketens. Een breuk elders zegt niets over dit stuk en zou hier
+  alleen ten onrechte alarm slaan.</p>
+
+  <h3>5.7 Het ondertekencertificaat</h3>
+  <p>Een extra pagina achter het document, in het Nederlands. Het uitgangspunt: iemand
+  die over vijf jaar <em>alleen dit PDF-bestand</em> in handen krijgt, zonder toegang tot
+  het portaal, moet het hele verloop kunnen nalopen. Alles wat daarvoor nodig is staat
+  dus op het blad en niet alleen in de database.</p>
+  <table>
+    <tr><th>Blok</th><th>Wat er staat</th></tr>
+    <tr><td>Document</td><td>titel, dossierkenmerk, omvang in pagina&rsquo;s en het aantal handtekening-, paraaf- en datumvelden. Zo beschrijft het certificaat aantoonbaar het stuk waar het aan vastzit.</td></tr>
+    <tr><td>Per ondertekenaar</td><td>naam en e-mail, wanneer de uitnodiging is verstuurd, wanneer het stuk voor het eerst is geopend, wanneer de verificatiecode is ingevoerd en wanneer er is getekend &mdash; plus IP-adres, een leesbare samenvatting van het apparaat en de volledige user-agent.</td></tr>
+    <tr><td>Identiteitscontrole</td><td>in gewone taal welke controle is uitgevoerd: e-mailcode, sms-code, of ingelogde kantoormedewerker met tweefactorauthenticatie.</td></tr>
+    <tr><td>Instemming</td><td>de letterlijke tekst die deze persoon op het scherm las, met het tijdstip. Een later gewijzigd sjabloon verandert niet wat er is gelezen.</td></tr>
+    <tr><td>Integriteit</td><td>de SHA-256 van de ondertekende inhoud, plus per ondertekenaar de hash van de versie die d&iacute;e persoon zag.</td></tr>
+  </table>
+  <p>Alle tijden staan in <code>Europe/Amsterdam</code>, met de zomer- of wintertijd zoals
+  die op dat moment gold. Dat staat er met zoveel woorden bij: een kaal &ldquo;12:24:59&rdquo;
+  is onbruikbaar zodra iemand het naast een logregel uit een ander systeem legt.</p>
+  <p>Staat de verzegeling uit, dan staat er <strong>&ldquo;Dit document is niet
+  verzegeld.&rdquo;</strong> Die regel is niet te onderdrukken, en het opmaken reserveert
+  bewust ruimte zodat hij nooit los op een volgende pagina belandt, weg van de
+  vingerafdruk waar hij over gaat.</p>
+  <div class="note"><strong>Wat hier fout ging.</strong> Het certificaat dr&uacute;kte
+  IP-adres en apparaat al af, maar kreeg ze nooit aangeleverd: er stond bij iedere
+  ondertekenaar een streepje. De gegevens zaten w&eacute;l in het auditspoor. Het viel
+  niemand op, want er stond gewoon i&eacute;ts. Ze worden nu bij het opmaken uit het
+  auditspoor gehaald &mdash; &eacute;&eacute;n bron van waarheid &mdash; en een
+  regressietest controleert de inhoud van het certificaat, niet alleen het bestaan ervan.</div>
+</section>
+
+<!-- ============================================================ 6 -->
+<section class="chapter">
+  <p class="kicker">Hoofdstuk 6</p>
+  <h2>Digitale handtekening en tijdstempel</h2>
+  <p class="lead">In een gewoon dossier is er &eacute;&eacute;n cryptografische handtekening: het
+  organisatiezegel. Het beroepscertificaat is de uitzondering.</p>
+
+  <h3>6.1 Twee knoppen, niet één</h3>
+  <p><code>SEAL_MODE</code> zegt wat de <strong>server kan</strong>. Per verzoek
+  kiest de afzender met <code>assuranceLevel</code> wat er <strong>wordt
+  gebruikt</strong>. Een akkoordbrief bij een IB-aangifte en een jaarrekening vragen
+  niet hetzelfde, en het zou onhandig zijn als dat een herconfiguratie van de server
+  vroeg.</p>
+  <table>
+    <tr><th>Niveau</th><th>Wat de ontvanger krijgt</th></tr>
+    <tr><td><strong>Auditspoor</strong></td><td>Verificatiecode per e-mail of sms, IP, apparaat, tijdstippen, de gelezen verklaring en de vingerafdruk van wat elke partij zag &mdash; plus een los auditrapport met het volledige verloop. Geen digitaal zegel.</td></tr>
+    <tr><td><strong>Organisatiezegel</strong></td><td>Alles hierboven, plus een certificerend zegel met gekwalificeerde tijdstempel. De PDF-lezer van de ontvanger controleert de echtheid zelf.</td></tr>
+    <tr><td><strong>Beroepscertificaat</strong></td><td>Alles hierboven, met de gekwalificeerde handtekening van de accountant op persoonlijke titel.</td></tr>
+  </table>
+  <p>Auditspoor staat er <strong>altijd</strong> bij, en dat is bewust: het vraagt
+  geen certificaat, geen provider en geen netwerk naar buiten. Er is dus altijd een
+  niveau dat werkt, ook als een aanbieder eruit ligt. Het niveau is te wijzigen tot
+  het moment van versturen en daarna niet meer &mdash; anders hebben de
+  ondertekenaars iets anders gekregen dan waar het rapport over gaat.</p>
+
+  <h3>6.2 De drie standen van SEAL_MODE</h3>
+  <table>
+    <tr><th><code>SEAL_MODE</code></th><th>Betekenis</th></tr>
+    <tr><td><code>none</code></td><td>geen cryptografische handtekening. Banner in het portaal, een niet-onderdrukbare regel op het certificaat, en <code>VERZEGELING_OVERGESLAGEN</code> in het auditspoor. In productie ook <code>ALLOW_UNSEALED=true</code> nodig: &eacute;&eacute;n vlag zet iemand per ongeluk, twee niet.</td></tr>
+    <tr><td><code>organisation</code></td><td><strong>route A, de normale route.</strong> Het organisatiezegel is de enige cryptografische handtekening: certificerend met DocMDP P=1, onbeheerd en onzichtbaar. Zet <code>sealStage = SEALED</code>.</td></tr>
+    <tr><td><code>qualified</code></td><td><strong>route B, de uitzondering.</strong> Alleen voor documentsoorten waar een beroepscertificaat vereist is: een SBR-accountantsverklaring of het waarmerken van een SBR-jaarrekening. De accountant autoriseert zelf.</td></tr>
+  </table>
+  <div class="stop"><strong>De opstartgrendel.</strong> Met
+  <code>SEAL_MODE=qualified</code> en <code>PROFESSIONAL_SIGNING_DRIVER=none</code>
+  weigert de applicatie te starten. Dat is de gevaarlijkste stille toestand die er is:
+  er wordt dan niets verzegeld terwijl de configuratie zegt van wel, en niets in de
+  status verraadt het.</div>
+
+  <h3>6.3 Wat het certificerende zegel wel en niet doet</h3>
+  <p>Het zegel certificeert met <strong>DocMDP P=1</strong> (<code>NO_CHANGES</code>).
+  Dat is sterker dan een gewone handtekening: die zegt alleen &ldquo;dit was de inhoud&rdquo;,
+  terwijl een certificerende handtekening ook zegt wat er daarna n&oacute;g mag. Bij P=1
+  is dat niets.</p>
+  <p>De ene echte onzekerheid vooraf was of de revocatiegegevens van de LT-laag de
+  eigen permissie zouden schenden: die DSS-dictionary komt namelijk in een l&aacute;tere
+  revisie dan de handtekening. Nagemeten in
+  <code>scripts/regressie/certificering.py</code>:</p>
+  <ul>
+    <li>Ja, de DSS komt in een latere revisie &mdash; en dat kan niet anders. De DSS
+    bevat validatie-informatie <em>over</em> de handtekening, dus die moet er al zijn.
+    Er is geen variant van PAdES B-LT waarin het anders ligt.</li>
+    <li>Nee, dat schendt de permissie niet. De PAdES-regels zonderen DSS-updates
+    expliciet uit, en pyHanko meldt <code>docmdp_ok=true</code> met
+    &ldquo;acceptable modifications&rdquo;.</li>
+    <li>Een echte inhoudelijke wijziging w&oacute;rdt gemeld, en niet als &ldquo;er is iets
+    veranderd&rdquo; maar als permissieschending. Dat onderscheid is precies wat
+    certificeren toevoegt.</li>
+    <li>Sterker dan verwacht: onder P=1 <em>weigert</em> pyHanko een tweede
+    handtekening te zetten. Niet &ldquo;het mag maar het wordt gemeld&rdquo; &mdash; het
+    gereedschap doet het niet.</li>
+  </ul>
+  <div class="warn"><strong>Wat we hierover niet beweren.</strong> Geen enkel
+  PDF-mechanisme verhindert f&iacute;siek dat iemand bytes achter een bestand plakt; dat
+  is in dezelfde test aangetoond en geldt bij elke leverancier. En het gedrag
+  verschilt per viewer. De formulering is daarom niet &ldquo;het document kan niet
+  worden gewijzigd&rdquo; maar <strong>&ldquo;wijzigen wordt geblokkeerd en elke
+  wijziging is aantoonbaar&rdquo;</strong>. Wat niet is getest: Adobe Acrobat zelf &mdash;
+  daar bestaat geen headless variant van. Dat hoort met de hand te gebeuren zodra
+  er een echt certificaat is.</div>
+  <p><code>PADES_LEVEL=lt</code> is hierbij een eis en geen voorkeur. Bij LTA komt er
+  een losse document-timestamp als incrementele update bovenop, en dat is precies de
+  combinatie die met certificeren wringt. De sealer weigert die combinatie.</p>
+
+  <h3>6.4 Waarom geen tweede zegel er&oacute;verheen</h3>
+  <p>Dat stond er wel, met een eigen driver voor GlobalSign. Het is eruit. Het
+  beroepscertificaat doet hetzelfde werk: het beschermt de integriteit &eacute;n het
+  vervangt de natte handtekening. Twee mechanismen naast elkaar betekent een tweede
+  certificaat (&euro;450&ndash;650 per jaar), een tweede storingsbron, en de vraag welke
+  van de twee er nu eigenlijk toe doet.</p>
+
+  <h3>6.5 En waarom er ook geen tweede ondertekendriver meer is</h3>
+  <p>Er was een driver (<code>digidentity</code>) die t&iacute;jdens het ondertekenen
+  namens de accountant tekende, zonder handeling van hem. Prettig in gebruik, maar hij
+  tekende <strong>best-effort</strong>: viel de provider weg, dan bleef het zichtbare
+  stempel staan, kwam er een auditregel &ldquo;mislukt: &hellip;&rdquo; en liep het
+  dossier door naar ONDERTEKEND. Het resultaat was een stuk dat ondertekend oogt zonder
+  gekwalificeerde handtekening, en niemand kreeg bericht.</p>
+  <p>Dat is de verkeerde faalrichting op precies het punt waar je op vertrouwt. De
+  Cleverbase-route faalt juist dicht: kan er niet gewaarmerkt worden, dan gaat het
+  dossier naar <code>SEALING_FAILED</code> en de deur niet uit. De driver is verwijderd
+  en de applicatie weigert te starten als hij nog in het <code>.env</code>-bestand staat,
+  met een melding die zegt wat er in de plaats moet.</p>
+  <div class="note"><strong>Waarom niet gewoon de fout doorgeven.</strong> Dat was de
+  andere optie: het ondertekenen laten klappen als de provider wegvalt. Maar dan
+  verliest de cli&euml;nt zijn handtekening door een storing bij een derde partij, terwijl
+  hij er zelf niets aan kan doen. Het waarmerken h&oacute;ort dus niet in die stap thuis
+  &mdash; het gebeurt later, apart, waar mislukken alleen het kantoor raakt en het
+  dossier netjes blijft wachten.</div>
+
+  <h3>6.6 De vijf eindpunten van de sealer</h3>
+  <table>
+    <tr><th>Eindpunt</th><th>Wat het doet</th></tr>
+    <tr><td><code>/health</code></td><td>kan de driver worden gebouwd, is de TSA bereikbaar</td></tr>
+    <tr><td><code>/seal</code></td><td>&eacute;&eacute;n PAdES-handtekening in &eacute;&eacute;n keer (nu ongebruikt: het pad zonder gebruikersautorisatie)</td></tr>
+    <tr><td><code>/prepare</code></td><td>fase 1: placeholder met correcte ByteRange, geeft de te ondertekenen hash terug</td></tr>
+    <tr><td><code>/inject</code></td><td>fase 2: bouwt de CMS met de handtekening van de provider en zet die in de voorbereide PDF</td></tr>
+    <tr><td><code>/validate</code></td><td>controleert de handtekening(en); slaat niets op</td></tr>
+  </table>
+
+  <h3>6.7 Tweefasig ondertekenen, en waarom dat nodig is</h3>
+  <p>Bij Cleverbase autoriseert de <em>accountant</em>, niet de server: hij bevestigt
+  met een pincode in de app van de provider, na een browserredirect. Daardoor moet het
+  ondertekenen in twee delen:</p>
+  <ol>
+    <li><strong>Voorbereiden.</strong> Voor <em>alle</em> geselecteerde documenten
+    wordt een placeholder gezet en de hash berekend. Dat moet v&oacute;&oacute;r de
+    autorisatie, want het autorisatietoken (de SAD) leeft maar 300 seconden en dekt de
+    hele verzameling in &eacute;&eacute;n keer.</li>
+    <li><strong>Injecteren.</strong> Na de bevestiging komen de handtekeningen terug en
+    worden ze in de voorbereide bestanden gezet.</li>
+  </ol>
+  <p>De sessie moet die redirect overleven. Daarvoor is <code>CscSigningSession</code>:
+  een <code>state</code> van 32 willekeurige bytes (de CSRF-bescherming op de
+  callback), de voorbereide bestanden versleuteld op schijf, en de hashes zoals ze zijn
+  verstuurd.</p>
+
+  <h4>De invariant die een hele klasse fouten vangt</h4>
+  <p>Tussen voorbereiden en injecteren zit een menselijke pauze van minuten. Zit er ook
+  maar &eacute;&eacute;n tijdsafhankelijk gegeven in de te ondertekenen structuur, dan
+  verandert de hash en is de handtekening stil ongeldig. Daarom worden de verstuurde
+  hashes apart bewaard en v&oacute;&oacute;r het injecteren byte-voor-byte vergeleken.
+  Wijken ze af, dan is dat een programmeerfout en geen storing: de sessie gaat op
+  <code>FAILED</code>, er komt geen nieuwe poging, en de beheerder krijgt bericht. Een
+  retry zou de fout alleen maskeren.</p>
+
+  <h4>Drie soorten fouten</h4>
+  <table>
+    <tr><th>Categorie</th><th>Voorbeelden</th><th>Gedrag</th></tr>
+    <tr><td>opnieuw zonder pincode</td><td>injectiefout, opslagfout na een geslaagde ondertekening</td><td>automatische nieuwe poging</td></tr>
+    <tr><td>opnieuw met pincode</td><td>autorisatietimeout, gebruiker weigert, token verlopen</td><td>sessie <code>EXPIRED</code>, accountant begint opnieuw</td></tr>
+    <tr><td>nooit opnieuw</td><td>hash-mismatch, verkeerd aantal handtekeningen, onbekend credential</td><td>sessie <code>FAILED</code>, melding</td></tr>
+  </table>
+  <p>De verzameling is <strong>atomair</strong>: mislukt er &eacute;&eacute;n, dan wordt
+  er niets ge&iuml;njecteerd. Een half ondertekende verzameling is erger dan geen.</p>
+
+  <h3>6.8 De PDF bepaalt of er al ondertekend is, nooit de database</h3>
+  <p>Tussen het wegschrijven van de bytes en het committen van de databaserij kan het
+  proces omvallen. De rij weet dan niet dat er al is ondertekend, een nieuwe poging
+  ondertekent opnieuw, en er staan twee handtekeningen in &eacute;&eacute;n document.
+  Niet ongeldig, maar onuitlegbaar op een auditcertificaat.</p>
+  <p>Daarom inspecteren <code>/seal</code>, <code>/prepare</code> en <code>/inject</code>
+  het aangeleverde bestand op een bestaande handtekening in het gevraagde veld. Is die
+  er, dan geeft de sealer een <code>409</code> met serienummer en tijdstip, en tekent
+  hij niet. De aanroeper behandelt dat als succes en werkt alleen de administratie bij.</p>
+  <div class="note">Bij <code>/inject</code> was de vraag of dit zin heeft: die krijgt
+  per definitie een bestand met een <em>lege</em> placeholder. Nagemeten: pyHanko ziet
+  een placeholder niet als handtekening, dus de controle is wel zinvol. Dat is precies
+  het soort ding dat je niet moet beredeneren maar meten.</div>
+
+  <h3>6.9 De zichtbare tekst per documentsoort</h3>
+  <table>
+    <tr><th>Documentsoort</th><th>Wat er in de handtekening staat</th></tr>
+    <tr><td><code>JAARREKENING</code></td><td>Ondertekend door &lt;naam&gt;, AA of RA</td></tr>
+    <tr><td>notulen, bevestiging, opdrachtbevestiging, overig</td><td>Verzegeld door Otto Visser &amp; Partners Accountants</td></tr>
+    <tr><td>akkoordverklaringen IB en VPB</td><td>nu &ldquo;verzegeld&rdquo;; instelbaar</td></tr>
+  </table>
+  <p>De reden voor de splitsing: een gekwalificeerde handtekening draagt juridisch
+  gewicht. Op een akkoordbrief waarin de <em>cli&euml;nt</em> iets verklaart, wil je
+  niet de indruk wekken dat de accountant die verklaring mede onderschrijft. Daar is de
+  handtekening alleen het slot op het document. Dit is een instelling
+  (<code>SIGN_AS_AUTHOR_KINDS</code>) en geen code, zodat het antwoord op de vraag
+  &ldquo;tekenen we op het aangiftestuk zelf of alleen op de akkoordbrief?&rdquo; later
+  kan komen.</p>
+
+  <h3>6.10 De controlepagina</h3>
+  <p>Onder <strong>Document controleren</strong> kan een medewerker een ondertekend
+  stuk uploaden. De pagina geeft <strong>&eacute;&eacute;n eindoordeel</strong> met drie
+  toestanden:</p>
+  <table>
+    <tr><th>Toestand</th><th>Wat er staat</th></tr>
+    <tr><td>groen</td><td>Geldig en uitgever bevestigd</td></tr>
+    <tr><td>oranje</td><td>Ongewijzigd, maar uitgever niet te verifi&euml;ren &mdash; met de waarschuwing dat dit ook past bij een document dat door iemand anders opnieuw is ondertekend</td></tr>
+    <tr><td>rood</td><td>Gewijzigd of ongeldig</td></tr>
+  </table>
+  <p>Waarom &eacute;&eacute;n oordeel en niet twee vinkjes: zonder vertrouwensketen
+  staat alleen vast dat de bytes niet zijn gewijzigd en dat de ondertekenaar de sleutel
+  had bij het certificaat dat <em>in het document zelf</em> zit. Iemand kan een
+  jaarrekening pakken, een bedrag wijzigen en opnieuw ondertekenen met een zelfgemaakt
+  certificaat waarin &ldquo;Otto Visser &amp; Partners&rdquo; als naam staat. De
+  integriteitscontrole zegt dan groen. Met twee losse vinkjes leest een medewerker van
+  een bank het vinkje en stopt. Daarom staan subject &eacute;n issuer letterlijk op de
+  pagina, met een label als het certificaat zelfondertekend is.</p>
+  <p>De pagina haalt <strong>niets van internet</strong>. Zou zij revocatiegegevens
+  ophalen, dan bepaalt de ge&uuml;ploade PDF welke adressen de server benadert &mdash;
+  een aanvaller kan dan naar interne adressen laten bellen. Voor een document met
+  ingebedde revocatiegegevens is dat ook geen verlies: die zitten er al in.</p>
+</section>
+
+<!-- ============================================================ 7 -->
+<section class="chapter">
+  <p class="kicker">Hoofdstuk 7</p>
+  <h2>Bewaartermijn en archivering</h2>
+  <p class="lead">Twee termijnen, en &eacute;&eacute;n regel die het veilig maakt.</p>
+
+  <table>
+    <tr><th>Wat</th><th>Termijn</th></tr>
+    <tr><td>Documentbestanden (alle vijf de opslagsleutels)</td><td><strong>90 dagen na het archiveervinkje</strong></td></tr>
+    <tr><td>Auditspoor, hashketen, metadata, bewijsvelden van ontvangers</td><td><strong>7 jaar na afronding</strong></td></tr>
+  </table>
+
+  <div class="stop"><strong>Nooit op de klok verwijderen, altijd op de vlag.</strong>
+  Automatisch verwijderen naast handmatig archiveren is de enige echt gevaarlijke
+  combinatie in dit ontwerp. Vergeet iemand af te vinken en verwijdert de klok toch,
+  dan is het stuk nergens meer. Daarom verdwijnt er van een afgerond dossier
+  <em>niets</em> zolang het vinkje uit staat &mdash; desnoods voor altijd. Vollopen is
+  een acceptabel probleem, verlies niet.</div>
+
+  <h3>7.1 De werkwijze</h3>
+  <ol>
+    <li>De medewerker downloadt het ondertekende stuk op de dossierpagina.</li>
+    <li>Hij zet het in de klantmap in SharePoint.</li>
+    <li>Hij vinkt het af in het portaal, met de map erbij. Dat komt in het auditspoor:
+    wie, wanneer, waar.</li>
+    <li>Negentig dagen later verdwijnen de bestanden. De administratie blijft.</li>
+  </ol>
+  <p>Zonder signalering zou dit een geheugenspel zijn. Daarom: een teller
+  <strong>&ldquo;wacht op archivering&rdquo;</strong> op het dashboard met de oudste
+  bovenaan, een bericht naar de eigenaar op dag 60, en op dag 80 naar de eigenaar
+  &eacute;n de beheerders &mdash; met de eerlijke tekst dat er niets automatisch
+  gebeurt, maar dat het daarna handmatig moet worden opgeschoond.</p>
+
+  <h3>7.2 Wat er w&eacute;l zonder vinkje weggaat</h3>
+  <p>Dossiers die nooit zijn afgerond: verlopen, geweigerd, en concepten die nooit zijn
+  verstuurd. Na 90 dagen gaan daar de bestanden weg zonder vinkje. Er is geen
+  ondertekend stuk om te bewaren. Het auditspoor blijft ook daar zeven jaar.</p>
+
+  <h3>7.3 Wat er precies gebeurt bij het opruimen</h3>
+  <p>Eerst de administratie: de vijf sleutelvelden worden leeggemaakt. Daarna de
+  bestanden. Die volgorde is niet willekeurig. Blijft er een bestand staan waar niets
+  meer naar wijst, dan is dat een wees en die wordt later opgeruimd &mdash; hinderlijk,
+  niet gevaarlijk. Andersom (bestand weg, sleutel nog gevuld) is dataverlies.</p>
+  <p>Er komt een grafsteen in het auditspoor met het aantal gewiste bestanden per
+  sleuteltype, en met de vermelding dat het bewijs blijft. Na zeven jaar verdwijnt het
+  hele dossier inclusief auditspoor, met een tweede grafsteen in de dossierloze reeks
+  die het aantal regels en de laatste hash van de opgeruimde keten vastlegt.</p>
+
+  <h3>7.4 Twee afspraken buiten de applicatie</h3>
+  <ul>
+    <li><strong>Bewerk het PDF niet in SharePoint.</strong> Uploaden laat de bytes
+    intact, maar wie in de ingebouwde editor een aantekening maakt en opslaat, breekt
+    de handtekening. Richt de bibliotheek zo in dat bewerken niet de gewone route is.</li>
+    <li><strong>Vraag na of er back-up op SharePoint zit.</strong> De prullenbak is 93
+    dagen en versiebeheer is geen back-up. Ligt hier zeven jaar aan ondertekende
+    jaarrekeningen als enige kopie, dan hoort daar iets als M365 Backup bij.</li>
+  </ul>
+  <p>Steekproef: haal af en toe een gearchiveerd stuk uit SharePoint en gooi het door
+  de eigen controlepagina. Blijft dat groen, dan klopt de keten.</p>
+</section>
+
+<!-- ============================================================ 8 -->
+<section class="chapter">
+  <p class="kicker">Hoofdstuk 8</p>
+  <h2>Het auditspoor</h2>
+  <p class="lead">36 soorten gebeurtenissen, append-only afgedwongen door de database,
+  met een hashketen per dossier.</p>
+
+  <h3>8.1 Wat er wordt vastgelegd</h3>
+  <p>Aanmaken, versturen, openen, code verstuurd, code geverifieerd, code mislukt, code
+  geblokkeerd, ondertekend, gekwalificeerd ondertekend, geweigerd, herinnerd, opnieuw
+  verstuurd, verlopen, verzegeld, verzegeling mislukt, verzegeling overgeslagen,
+  integriteitsafwijking, gedownload, gearchiveerd, ingetrokken, ingelogd, certificaat
+  ingetrokken, de vier stappen van de ondertekensessie, de vier mailstatussen, en de
+  grafsteen van de bewaartermijn.</p>
+
+  <h3>8.2 Append-only, en wat dat wel en niet betekent</h3>
+  <p>Een trigger in de database weigert elke <code>UPDATE</code> en
+  <code>DELETE</code> op de tabel. Niet als afspraak, maar als mechanisme. Alleen de
+  geplande opruiming zet die kortstondig uit, binnen &eacute;&eacute;n transactie.</p>
+  <div class="warn"><strong>De grens, expliciet.</strong> Die trigger beschermt tegen
+  een fout in de applicatie en tegen iemand die alleen databasetoegang heeft en niet
+  van de noodschakelaar weet. Hij beschermt <em>niet</em> tegen een beheerder met
+  volledige rechten: die kan dezelfde schakelaar zetten. Het auditspoor is dus
+  aantoonbaar onaangetast tegenover <em>de applicatie</em>, niet tegenover <em>de
+  databasebeheerder</em>.</div>
+
+  <h3>8.3 De hashketen loopt per dossier</h3>
+  <p>Elke regel bevat de hash van de vorige. Niet &eacute;&eacute;n globale keten, en
+  dat is bewust: de bewaartermijn ruimt een compleet dossier op, en bij een globale
+  keten zou zo'n legitieme opruiming de keten van alle andere dossiers breken. Een
+  keten die altijd &ldquo;gebroken&rdquo; is, wordt genegeerd en beschermt dus niets.
+  Regels zonder dossier (inloggen, grafstenen) vormen samen &eacute;&eacute;n eigen
+  keten.</p>
+
+  <h4>Wat de controle aantoont</h4>
+  <ul>
+    <li>elke wijziging van een bestaande regel;</li>
+    <li>het verwijderen van een regel middenin een keten;</li>
+    <li>het afknippen van de kop van een keten &mdash; via &eacute;&eacute;n
+    invariant: de eerste regel van een keten heeft geen voorganger. Knipt iemand de
+    kop eraf, dan begint de keten met een regel die naar een hash verwijst die niet
+    meer bestaat.</li>
+  </ul>
+  <h4>Wat zij niet aantoont</h4>
+  <p>Het verwijderen van een compleet dossier m&eacute;t zijn hele keten. Daarvoor is
+  een anker buiten de database nodig.</p>
+
+  <h3>8.4 De ankers</h3>
+  <p>Bij het afronden van een dossier, en dagelijks voor de lopende zaken, wordt de kop
+  van de keten buiten de database vastgelegd: dossiernummer, laatste volgnummer,
+  laatste hash, tijdstip. Naar twee bestemmingen &mdash; het archief &eacute;n een
+  postbus van het kantoor &mdash; want het archief is best-effort en mail kan stil
+  falen. Met &eacute;&eacute;n bestemming heb je geen anker maar de illusie ervan. Komt
+  er drie dagen achter elkaar niets aan, dan krijgen de beheerders bericht.</p>
+  <p>Wat een anker <em>niet</em> dekt: een herschrijving van gebeurtenissen
+  <em>tussen</em> twee ankers blijft onzichtbaar. Dat venster sluit alleen een
+  sleutelgebaseerde keten (HMAC). Het anker bij afronding sluit het venster wel voor
+  het bewijs dat telt, want op dat moment is het dossier definitief.</p>
+
+  <h3>8.5 Twee standen bij het schrijven</h3>
+  <p>Voor de meeste soorten mag het auditspoor de flow niet blokkeren: een mislukte
+  &ldquo;gedownload&rdquo;-regel is hinderlijk, geen ramp. Voor vijf soorten geldt het
+  omgekeerde &mdash; ondertekend, gekwalificeerd ondertekend, code geverifieerd,
+  verzegeld, geweigerd. Daar is de auditregel het bewijs zelf, en een handtekening
+  zonder spoor is precies het scenario waarvoor het auditspoor bestaat. Die regels
+  gooien door en rollen de hele indiening terug: liever een mislukte indiening die de
+  cli&euml;nt kan herhalen dan een handtekening zonder bewijs.</p>
+  <p>De lijst blijft kort. Elke toevoeging maakt het ondertekenen afhankelijk van het
+  auditpad, en dat is een beschikbaarheidsrisico.</p>
+</section>
+
+<!-- ============================================================ 9 -->
+<section class="chapter">
+  <p class="kicker">Hoofdstuk 9</p>
+  <h2>Beveiliging</h2>
+  <p class="lead">In lagen, met bij elke laag de grens erbij. Een maatregel waarvan je
+  denkt dat hij meer doet dan hij doet, is gevaarlijker dan geen maatregel.</p>
+
+  <h3>9.1 Onderweg</h3>
+  <p>TLS 1.2+ via Caddy met automatische certificaatvernieuwing, HSTS, HTTP naar HTTPS.
+  Cookies met <code>HttpOnly</code>, <code>Secure</code> en <code>SameSite</code>. Een
+  Content-Security-Policy met een nonce per verzoek, plus <code>nosniff</code>,
+  <code>frame-ancestors 'none'</code>, en een restrictief referrer- en
+  permissionsbeleid. E-mail naar Microsoft 365 met STARTTLS afgedwongen.</p>
+
+  <h3>9.2 In rust</h3>
+  <p>Elk document is met <strong>AES-256-GCM</strong> versleuteld voordat het het volume
+  raakt, met envelope-encryptie: per bestand een eigen datasleutel en een eigen IV,
+  ingepakt onder een mastersleutel die alleen via de omgeving in het geheugen komt. De
+  GCM-authenticatietag detecteert manipulatie. Tweefactorsleutels zijn
+  kolom-versleuteld. Wachtwoorden zijn argon2id-hashes; codes en tekenlinks worden
+  <em>alleen</em> gehasht bewaard.</p>
+
+  <h4>Sleutelrotatie</h4>
+  <p>De sleutelversie staat <strong>in de data zelf</strong> (een header in het bestand,
+  een prefix in een versleutelde string), niet in een kolom. Ontsleutelen gebeurt met de
+  versie uit de data, versleutelen met de huidige. Oude data blijft dus leesbaar terwijl
+  nieuwe data een nieuwe sleutel gebruikt, en roteren kan zonder downtime. Ontbreekt een
+  sleutel waar nog data naar verwijst, dan komt er een expliciete melding met het
+  versienummer in plaats van een cryptische fout.</p>
+
+  <h3>9.3 Toegang</h3>
+  <table class="kv">
+    <tr><td>Kantoorgebruikers</td><td>wachtwoord (argon2id) + verplichte TOTP met herstelcodes</td></tr>
+    <tr><td>Sessies</td><td>server-side en intrekbaar, met inactiviteits- en absolute limiet</td></tr>
+    <tr><td>Brute force</td><td>oplopende blokkade: 5 pogingen &rarr; 5 min, 8 &rarr; 30 min, 12 &rarr; 2 uur; gehard tegen het aftasten van bestaande e-mailadressen</td></tr>
+    <tr><td>Autorisatie</td><td>server-side op elke route; ondoorzichtige id's plus eigenaarscontrole</td></tr>
+    <tr><td>Cli&euml;nten</td><td>geen account: een eenmalige, kortlevende, gehashte tekenlink plus een verificatiecode per e-mail of sms</td></tr>
+    <tr><td>Limieten</td><td>op inloggen, codes, tekenlinks, wachtwoordherstel en de controlepagina; tellers in Postgres met een in-memory achtervang, zodat een databasestoring geen brute-force-venster opent</td></tr>
+  </table>
+  <div class="warn"><strong>De erkende beperking.</strong> De tweede factor gaat naar
+  hetzelfde e-mailadres als de link. De koppeling tussen handtekening en persoon rust
+  dus op de mailbox van de ondertekenaar. Een aparte toegangscode als tweede kanaal is
+  voorbereid in het schema maar niet in gebruik. Wat er w&eacute;l is als
+  detectiemaatregel: de cli&euml;nt krijgt standaard een kopie van het ondertekende
+  stuk, dus bij een vervalsing ziet de echte cli&euml;nt dat in zijn mailbox.</div>
+
+  <h3>9.4 Bestandsverwerking</h3>
+  <p>Uploads worden gecontroleerd op type en grootte. De conversie draait in een eigen
+  tijdelijke map met een priv&eacute;-profiel, een uitgeklede omgeving (geen
+  proxyvariabelen, geen tokens, geen databasewachtwoord, geen sleutels), een harde
+  tijdslimiet en een limiet op de uitvoer. Downloads gaan met
+  <code>Content-Disposition: attachment</code> en <code>nosniff</code>.</p>
+  <div class="warn"><strong>Preciezer dan hier eerder stond.</strong> Netwerktoegang
+  voor die conversieprocessen wordt <em>niet</em> afgedwongen. Ze draaien in de
+  webcontainer, en die heeft netwerk nodig voor de sealer, SMTP en de provider-API's.
+  Wat er is: geen proxyvariabelen en niets uit de omgeving. Wie het echt dicht wil, zet
+  de conversie in een eigen container met <code>network_mode: none</code>. Dat is een
+  bewuste openstaande keuze.</div>
+  <p>Een virusscan is beschikbaar maar staat uit: een residente scanner vraagt 1,5 tot
+  2&nbsp;GB voor de virusdefinities, de helft van deze machine. Uploads komen alleen van
+  ingelogde medewerkers vanaf kantoormachines met eigen bescherming.</p>
+
+  <h3>9.5 Integriteit bij downloaden</h3>
+  <p>Bij elke download wordt de vastgelegde hash opnieuw berekend over de bytes die
+  eruit gaan. Wijkt die af, dan wordt de download geblokkeerd en komt er een
+  <code>INTEGRITEIT_AFWIJKING</code> in het auditspoor.</p>
+
+  <h3>9.6 Opstartregels</h3>
+  <p>Alle 88 omgevingsvariabelen worden bij het opstarten gevalideerd; een ontbrekend of
+  te zwak geheim laat de applicatie niet starten. Daarnaast drie harde weigeringen:</p>
+  <ul>
+    <li>de openbare teststub van de ondertekenprovider in productie &mdash; op de
+    omgevingsvlag <em>en</em> op het bekende client-id, met witruimte eraf;</li>
+    <li><code>SEAL_MODE=none</code> in productie zonder de tweede vlag
+    <code>ALLOW_UNSEALED</code>;</li>
+    <li><code>SEAL_MODE=qualified</code> zonder werkende ondertekenprovider.</li>
+  </ul>
+
+  <h3>9.7 Privacy</h3>
+  <p>Alle gegevens in de EU. Dataminimalisatie: van tekenlinks en codes alleen hashes,
+  van het openen van mail bewust g&eacute;&eacute;n bewijsvoering (geblokkeerde
+  afbeeldingen missen een opening, en vooraf-ophalende privacybescherming meldt er
+  &eacute;&eacute;n die niet plaatsvond). Bewaartermijnen zoals in hoofdstuk 7.
+  Back-ups versleuteld, met de sleutels bewust buiten dezelfde back-up.</p>
+</section>
+
+<!-- ============================================================ 10 -->
+<section class="chapter">
+  <p class="kicker">Hoofdstuk 10</p>
+  <h2>E-mail en bezorging</h2>
+
+  <h3>10.1 Drie transporten</h3>
+  <p><code>MAIL_TRANSPORT</code> is <code>smtp</code>, <code>postmark</code> of
+  <code>resend</code>. Bij SMTP weet je alleen dat je de mail aan de server hebt
+  aangeboden. Of hij is afgeleverd, gebounced of in de spamfolder belandde, weet je
+  niet. In een bewijsdossier is &ldquo;verzonden&rdquo; daarmee de zwakste schakel; bij
+  de andere twee komt het message-id terug en wordt de bezorgstatus verwerkt.</p>
+
+  <h3>10.2 Het webhook-eindpunt</h3>
+  <table class="kv">
+    <tr><td>Postmark</td><td>HTTP-basicauth op de URL, met een optionele lijst toegestane IP-adressen</td></tr>
+    <tr><td>Resend</td><td>Svix-signatuur (HMAC-SHA256 over id, tijdstempel en body) met een tijdvenster van 5 minuten tegen replay</td></tr>
+    <tr><td>Zonder instellingen</td><td>alles wordt geweigerd &mdash; geen open eindpunt</td></tr>
+    <tr><td>Herhaling</td><td>idempotent op het gebeurtenis-id van de provider</td></tr>
+  </table>
+
+  <h3>10.3 Bounces</h3>
+  <p>Een <em>harde</em> bounce is definitief: de eigenaar krijgt bericht, herinneren
+  wordt geblokkeerd, en het dossier krijgt een melding op het dashboard. Zonder dat
+  signaal bloedt zo'n dossier stil dood. Een <em>tijdelijke</em> bounce levert
+  &eacute;&eacute;n nieuwe poging na een uur op; daarna geldt hij als hard. Een
+  &ldquo;tijdelijke&rdquo; bounce op een uitgezet adres geldt direct als hard.</p>
+  <p>Omdat van de tekenlink alleen de hash is bewaard, kan de oorspronkelijke link niet
+  opnieuw worden verstuurd. De ontvanger krijgt een nieuwe uitnodiging met een nieuwe
+  link.</p>
+
+  <h3>10.4 Herinneringen en vervaltermijn</h3>
+  <p>Herinneringen op <strong>dag 5 en dag 12</strong> na verzending, maar alleen als de
+  link daarna nog minstens een etmaal bruikbaar is. Bij een korte geldigheidsduur valt
+  de tweede dus weg: een link die niet werkt is erger dan stilte. Wie al heeft getekend
+  of een onbezorgbaar adres heeft, krijgt niets.</p>
+  <p>Mislukt het versturen (mailserver even weg), dan blijft de teller staan en probeert
+  de volgende ronde het opnieuw. Zou de teller altijd oplopen, dan is een uur storing
+  genoeg om een herinnering definitief te laten verdwijnen.</p>
+  <p>Bij het verstrijken van de geldigheidsduur gaat het dossier op
+  <code>VERLOPEN</code>: ongebruikte links worden ingetrokken, de eigenaar krijgt
+  bericht met wie nog niet had getekend, en de al gezette handtekeningen blijven staan
+  als bewijs van wat er is gebeurd. Er wordt niets verzegeld en er gaat geen
+  voltooiingsmail uit.</p>
+
+  <h3>10.5 Opnieuw versturen &mdash; en het verschil met weigeren</h3>
+  <table>
+    <tr><th>Situatie</th><th>Wat er kan</th></tr>
+    <tr><td><code>VERLOPEN</code></td><td>opnieuw te versturen in hetzelfde dossier: nieuwe links, nieuwe vervaldatum, herinneringen weer op nul. Alleen wie nog niet had getekend krijgt een nieuwe link.</td></tr>
+    <tr><td><code>GEWEIGERD</code></td><td>onherroepelijk. Weigeren is een besluit; opnieuw aanbieden betekent een nieuw dossier.</td></tr>
+  </table>
+  <p>Dat onderscheid is er niet voor de netheid. Zou een verlopen verzoek een nieuw
+  dossier vereisen &mdash; documenten opnieuw uploaden, velden opnieuw plaatsen &mdash;
+  dan zet iemand binnen een maand de geldigheidsduur op een jaar, en is de
+  vervaltermijn feitelijk weg. De praktijk is &ldquo;de cli&euml;nt was op
+  vakantie&rdquo;.</p>
+</section>
+
+<!-- ============================================================ 11 -->
+<section class="chapter">
+  <p class="kicker">Hoofdstuk 11</p>
+  <h2>Achtergrondtaken</h2>
+  <p class="lead">Een wachtrij in Postgres. Geen Redis, geen aparte broker.</p>
+
+  <h3>11.1 Hoe de wachtrij werkt</h3>
+  <p>Taken staan in een tabel. Een worker claimt ze met
+  <code>SELECT &hellip; FOR UPDATE SKIP LOCKED</code>, waardoor meerdere workers naast
+  elkaar kunnen draaien zonder dezelfde taak twee keer te pakken. Mislukt een taak, dan
+  komt hij terug met een oplopende tussentijd: 1, 5, 15 en 60 minuten, daarna elk uur.
+  Bij het bereiken van het maximum blijft de taak staan met de laatste foutmelding
+  &mdash; hij verdwijnt niet stil.</p>
+  <p>Terugkerende taken plannen zichzelf opnieuw in, in een <code>finally</code>: ook na
+  een fout mag de reeks niet stilvallen. Er is geen aparte cron nodig.</p>
+
+  <h3>11.2 De taken</h3>
+  <table>
+    <tr><th>Taak</th><th>Wanneer</th><th>Wat</th></tr>
+    <tr><td><code>SEAL_RETRY</code></td><td>na een mislukte verzegeling</td><td>opnieuw proberen, max 12 keer, met mail na de derde</td></tr>
+    <tr><td><code>REMINDER</code></td><td>elk uur</td><td>herinneringen die aan de beurt zijn</td></tr>
+    <tr><td><code>EXPIRE</code></td><td>elk uur</td><td>verlopen dossiers afsluiten en melden</td></tr>
+    <tr><td><code>WAARMERK_NUDGE</code></td><td>elk uur</td><td>eigenaar porren na 3 dagen wachten op zijn waarmerk</td></tr>
+    <tr><td><code>ARCHIVE_NUDGE</code></td><td>elk uur</td><td>porren over afgeronde stukken die nog niet in SharePoint staan (dag 60 en 80)</td></tr>
+    <tr><td><code>MAIL_RESEND</code></td><td>een uur na een tijdelijke bounce</td><td>&eacute;&eacute;n nieuwe uitnodiging</td></tr>
+    <tr><td><code>CSC_SESSION_CLEANUP</code></td><td>elke 5 minuten</td><td>verlopen ondertekensessies opruimen</td></tr>
+    <tr><td><code>ORPHAN_CLEANUP</code></td><td>elke 6 uur</td><td>bestanden opruimen waar geen rij naar wijst, ouder dan 24 uur</td></tr>
+    <tr><td><code>AUDIT_ANCHOR</code></td><td>dagelijks + per afgerond dossier</td><td>de kop van de keten buiten de database vastleggen</td></tr>
+    <tr><td><code>RETENTION_CLEANUP</code></td><td>dagelijks</td><td>bestanden na 90 dagen, dossiers na 7 jaar</td></tr>
+  </table>
+
+  <h3>11.3 Waarom die opruimtaak een marge van 24 uur heeft</h3>
+  <p>Elke bewerking schrijft een <em>nieuw</em> bestand; de database verplaatst alleen
+  de verwijzing. Daardoor blijft er af en toe een bestand achter waar niets naar wijst:
+  een transactie die terugrolde, een verlopen ondertekensessie, een verwijdering die na
+  de commit mislukte. Die zijn veilig te verwijderen, met &eacute;&eacute;n harde
+  voorwaarde: alleen als ze ouder zijn dan 24 uur. Zonder marge ruimt de taak precies
+  het bestand op dat net is geschreven en waarvan de commit nog loopt. De taak logt
+  eerst wat hij zou verwijderen en doet het daarna.</p>
+</section>
+
+<!-- ============================================================ 12 -->
+<section class="chapter">
+  <p class="kicker">Hoofdstuk 12</p>
+  <h2>Documentherkenning</h2>
+  <p class="lead">Bedoeld om typewerk te schelen, niet om beslissingen te nemen. Alles
+  wat de herkenning voorstelt, is te overschrijven.</p>
+
+  <h3>12.1 De keten</h3>
+  <ol>
+    <li><strong>Tekstlaag.</strong> Snel en foutloos voor digitale PDF's, bijvoorbeeld
+    uit Visionplanner.</li>
+    <li><strong>OCR als terugval.</strong> Is de tekstlaag (vrijwel) leeg, dan gaat het
+    document via poppler naar afbeeldingen en via tesseract met Nederlandse taaldata
+    naar tekst. Alleen de eerste paar pagina's: meer is voor classificatie onnodig.</li>
+    <li><strong>Trefwoorden</strong> bepalen het type, een reguliere expressie het
+    boekjaar.</li>
+    <li><strong>Sjabloon.</strong> Op basis van type en jaar wordt een titel en een
+    begeleidend bericht voorgesteld, met invulvelden voor de voornaam van de
+    cli&euml;nt, de bedrijfsnaam, het boekjaar en de afzender.</li>
+  </ol>
+  <p>Worden een jaarrekening, notulen en een bevestiging samen ge&uuml;pload, dan stelt
+  de applicatie &eacute;&eacute;n gecombineerd verzoek voor &mdash; dat is in de
+  praktijk vrijwel altijd wat er moet gebeuren.</p>
+  <p>Er gaat geen data naar buiten: zowel de tekstextractie als de OCR gebeuren lokaal.</p>
+
+  <h3>12.2 Velden plaatsen</h3>
+  <p>De pagina's worden in de browser gerenderd met pdfjs. De medewerker tekent
+  rechthoeken; die worden van pixels omgerekend naar PDF-punten met de oorsprong
+  linksonder, precies zoals de stempelfunctie ze verwacht. Per vak staat vast voor wie
+  het is: een eigen veld (direct te stempelen met de opgeslagen handtekening) of een
+  veld voor een ontvanger.</p>
+</section>
+
+<!-- ============================================================ 13 -->
+<section class="chapter">
+  <p class="kicker">Hoofdstuk 13</p>
+  <h2>Gelijktijdigheid en vergrendeling</h2>
+  <p class="lead">Dit hoofdstuk bestaat omdat hier de ernstigste fouten zaten. Ze gaven
+  geen van alle een foutmelding.</p>
+
+  <h3>13.1 Twee ondertekenaars tegelijk</h3>
+  <p>Bij gelijktijdig ondertekenen kunnen twee cli&euml;nten op hetzelfde moment
+  indienen. Het stempelen was een lees-bewerk-schrijf op hetzelfde document: beiden
+  lazen dezelfde versie, stempelden hun eigen handtekening erop, en de laatste schreef
+  de ander weg. De database zei dat beide velden waren gevuld en beide ondertekenaars
+  stonden op &ldquo;ondertekend&rdquo;, maar in het bestand stond &eacute;&eacute;n
+  handtekening.</p>
+  <p>Nu zit de hele bewerking &mdash; alle documenten, de status, de tekenlink
+  &eacute;n de auditregel &mdash; in &eacute;&eacute;n transactie met een
+  rijvergrendeling per document. Gelijktijdige indieningen wachten netjes op elkaar en
+  elke stempel komt op het resultaat van de vorige.</p>
+
+  <h3>13.2 Dezelfde fout in het auditspoor</h3>
+  <p>Bij het testen van het bovenstaande bleek de hashketen te vorken: twee
+  gelijktijdige schrijvers lazen dezelfde laatste regel en verwezen beide naar dezelfde
+  voorganger. Dat is <strong>niet te herstellen</strong> (de regels zijn append-only) en
+  de controle zou daarna voor altijd een breuk melden die niemand had veroorzaakt. Een
+  controle die altijd rood staat, wordt genegeerd &mdash; en dan beschermt de hele keten
+  niets meer.</p>
+  <p>Opgelost met een advisory lock per keten: &eacute;&eacute;n schrijver tegelijk.</p>
+
+  <h3>13.3 De globale vergrendelingsvolgorde</h3>
+  <p>Meerdere vergrendelingen in verschillende ordes leidt tot deadlock. Daarom staat de
+  volgorde op &eacute;&eacute;n plek vastgelegd, met de paden die er meer dan
+  &eacute;&eacute;n nemen erbij:</p>
+  <ol>
+    <li>de dossierrij;</li>
+    <li>de documentrijen, oplopend op id;</li>
+    <li>de advisory ketenlocks, en daarbinnen: dossierketens oplopend, de dossierloze
+    keten altijd als laatste.</li>
+  </ol>
+  <p>Dat derde niveau heeft een subvolgorde nodig omdat het opruimen na de
+  bewaartermijn er twee kan raken. In de implementatie wordt de grafsteen na de commit
+  geschreven, dus die twee worden nooit tegelijk vastgehouden.</p>
+
+  <h3>13.4 Wachten met een grens</h3>
+  <p>Er wordt een rijvergrendeling vastgehouden terwijl er een PDF wordt geladen,
+  gestempeld, versleuteld en weggeschreven. Bij een jaarrekening met veel afbeeldingen
+  zijn dat seconden. Zonder grens hangt het verzoek tot de proxy het afkapt, en dan weet
+  de ondertekenaar niet of het is gelukt.</p>
+  <p>Daarom een limiet van tien seconden op het wachten en een ruimere grens op de
+  bewerking zelf. Loopt die af, dan krijgt de ondertekenaar een nette, herhaalbare
+  melding en is zijn tekenlink nog geldig &mdash; die zit in dezelfde transactie, dus een
+  terugrol geeft hem terug.</p>
+
+  <h3>13.5 Nooit een opslagsleutel overschrijven</h3>
+  <p>Elke schrijfactie maakt een <em>nieuw</em> bestand met een willekeurige naam; de
+  transactie verplaatst alleen de verwijzing, en het opruimen van de oude versie gebeurt
+  <em>na</em> de commit. Zou dat ervoor gebeuren, dan is bij een terugrol de oude versie
+  weg terwijl de database er nog naar wijst: dataverlies, de kant die niet mag.</p>
+
+  <h3>13.6 E&eacute;n zware bewerking tegelijk</h3>
+  <p>LibreOffice en tesseract vragen elk honderden megabytes. Op 4&nbsp;GB is twee van
+  die twee tegelijk de manier waarop de server omvalt. Ze draaien daarom onder
+  &eacute;&eacute;n advisory lock in Postgres: nooit meer dan &eacute;&eacute;n tegelijk,
+  <em>over containergrenzen heen</em>. Een semafoor in het geheugen zou hier niet
+  volstaan &mdash; web en worker zijn aparte processen.</p>
+  <p>De tweede medewerker wacht dus even; bij deze volumes gaat dat om seconden, en na
+  twee minuten volgt een leesbare melding in plaats van een omgevallen server.</p>
+</section>
+
+<!-- ============================================================ 14 -->
+<section class="chapter">
+  <p class="kicker">Hoofdstuk 14</p>
+  <h2>Back-up en herstel</h2>
+
+  <h3>14.1 Wat het kroonjuweel is</h3>
+  <p>Dat is met het nieuwe bewaarmodel verschoven. De documentbestanden staan er maar 90
+  dagen en het archief is SharePoint. De <strong>database</strong> is nu het belangrijkst:
+  daar staat zeven jaar auditspoor met alle hashes en metadata.</p>
+  <table>
+    <tr><th>Wat</th><th>Hoe</th><th>Waarom</th></tr>
+    <tr><td>Postgres</td><td>dagelijks volledig, versleuteld</td><td>zeven jaar bewijs</td></tr>
+    <tr><td>Documentenvolume</td><td>wekelijks incrementeel</td><td>staat er maar 90 dagen</td></tr>
+    <tr><td>Sleutels en <code>.env</code></td><td>apart, buiten dezelfde back-up</td><td>anders back-up je het slot met de sleutel erin</td></tr>
+  </table>
+
+  <h3>14.2 Naar buiten de server</h3>
+  <p>Een back-up die op dezelfde machine staat is geen back-up. Er is een script voor
+  restic: gededupliceerd, incrementeel, versleuteld naar externe opslag (bijvoorbeeld
+  een Storage Box). Versleutelen gebeurt v&oacute;&oacute;r het uploaden, dus de
+  jurisdictie van de opslagpartij doet praktisch niet mee &mdash; die ziet onleesbare
+  blokken. Bewaard worden 14 dagelijkse, 8 wekelijkse, 24 maandelijkse en 7 jaarlijkse
+  momentopnamen; elke run controleert de structuur plus 5% van de blokken.</p>
+
+  <h3>14.3 De restoretest</h3>
+  <p>Een back-up die je nooit hebt teruggezet, is geen back-up. Er is een script dat de
+  back-up in een weggooi-omgeving terugzet en daarna controleert of er echt iets
+  bruikbaars uit komt:</p>
+  <ul>
+    <li>staan er dossiers en een auditspoor in?</li>
+    <li>is de hashketen intact?</li>
+    <li>zijn de documenten te ontsleutelen en klopt hun hash?</li>
+    <li>valideert een ondertekend document nog?</li>
+    <li><strong>zijn alle sleutelversies waar data naar verwijst nog beschikbaar?</strong></li>
+  </ul>
+  <p>Dat laatste is de controle die de rest waardeloos maakt als hij ontbreekt. Een
+  restore van drie jaar oud is versleuteld met de sleutel van toen. Staat die niet meer
+  in de omgeving, dan komt er wel een database uit de back-up maar geen leesbaar
+  document &mdash; en dat merk je zonder deze controle pas terwijl een cli&euml;nt
+  wacht.</p>
+  <p>De productieomgeving wordt niet aangeraakt en alles wordt aan het eind opgeruimd.
+  Leg de uitkomst vast in het kwaliteitshandboek: datum, wie het deed, en of het
+  slaagde.</p>
+</section>
+
+<!-- ============================================================ 15 -->
+<section class="chapter">
+  <p class="kicker">Hoofdstuk 15</p>
+  <h2>Kwaliteit en tests</h2>
+
+  <h3>15.1 293 automatische controles</h3>
+  <table>
+    <tr><th>Pakket</th><th>Aantal</th><th>Wat het dekt</th></tr>
+    <tr><td>Opstartregels</td><td>11</td><td>de harde weigeringen bij het opstarten</td></tr>
+    <tr><td>Labels en modus</td><td>13</td><td>ondertekenen versus verzegelen per documentsoort</td></tr>
+    <tr><td>Auditspoor</td><td>18</td><td>hashketen, append-only trigger, certificaat, opslagversleuteling</td></tr>
+    <tr><td>Gelijktijdig ondertekenen</td><td>23</td><td>twee indieningen op hetzelfde moment, en de inhoud van het ondertekencertificaat</td></tr>
+    <tr><td>Ondertekensessie</td><td>8</td><td>versleuteld bewaren en wissen, eigenaarscontrole</td></tr>
+    <tr><td>Levensloop</td><td>32</td><td>herinneren, verlopen, opnieuw verzenden, nudge</td></tr>
+    <tr><td>Opslag en bewaartermijn</td><td>45</td><td>nieuwe sleutels, weesbestanden, het bewaarmodel, de grendel</td></tr>
+    <tr><td>Sealer</td><td>26</td><td>verzegelen, idempotentie, manipulatiedetectie, validatie</td></tr>
+    <tr><td>Certificering</td><td>16</td><td>DocMDP P=1, de DSS-vraag, en wat een viewer wél en niet blokkeert</td></tr>
+    <tr><td>Herverificatie en download</td><td>24</td><td>verse TOTP-code, replaybescherming, gescheiden downloadtoken</td></tr>
+    <tr><td>Niveaus en auditrapport</td><td>56</td><td>de keuze per dossier, en de inhoud van het rapport zelf</td></tr>
+    <tr><td>Paginarooktest</td><td>13</td><td>rendert elke kernpagina zonder serverfout, tegen een echte server</td></tr>
+    <tr><td>Validatormodus</td><td>4</td><td>de omgekeerde grendel in het juiste proces</td></tr>
+  </table>
+  <p>Ze draaien tegen een echte PostgreSQL en een echte pyHanko, niet tegen nagemaakte
+  onderdelen. De sealertests gebruiken een zelf aangemaakt testcertificaat.</p>
+
+  <div class="warn"><strong>Wat een groene build niet zegt.</strong> Tijdens het
+  maken van de handleiding bleken de drie schermen met een documentvoorbeeld onder
+  <code>next dev</code> een 500 te geven &mdash; velden plaatsen, ondertekenen door
+  de cli&euml;nt, en ondertekenen vanuit kantoor &mdash; terwijl de build en de
+  typecontrole volledig groen stonden. Die pagina&rsquo;s staan op
+  <code>force-dynamic</code> en worden bij het bouwen dus nooit gerenderd. In een
+  schone productiebuild werkte het w&eacute;l; het was een ontwikkelfout en geen
+  productiefout, maar niets in de gereedschapskist wees erop. Vandaar de
+  paginarooktest: die start de echte server en haalt elke route op.</div>
+
+  <h3>15.2 Van de reparaties is bewezen dat de test ze vangt</h3>
+  <p>Een test die groen staat bewijst niets als hij ook groen zou staan zonder de
+  reparatie. Van beide vergrendelingen is de code tijdelijk uitgeschakeld en is
+  vastgesteld dat de test dan faalt &mdash; bij het stempelen verdwijnt dan de eerste
+  handtekening, bij het auditspoor vorkt de keten. Daarna weer aan, en groen.</p>
+  <p>Hetzelfde is gedaan met het ondertekencertificaat: door het IP en de user-agent
+  weer op <code>null</code> te zetten, precies zoals de oorspronkelijke fout, vallen er
+  vier controles om. Juist bij die fout is dat belangrijk, want het certificaat z&aacute;g
+  er correct uit &mdash; er stond alleen een streepje waar een IP-adres hoorde.</p>
+
+  <h3>15.3 Wat er verder is aangetoond</h3>
+  <ul>
+    <li>Een verzegeld document is intact, geldig, dekt het hele bestand, en
+    &eacute;&eacute;n omgeklapte byte wordt afgekeurd.</li>
+    <li>Hetzelfde bestand twee keer aanbieden levert &eacute;&eacute;n handtekening en
+    een <code>409</code>.</li>
+    <li>Een document dat is gewijzigd en opnieuw ondertekend met een zelfgemaakt
+    certificaat komt op de controlepagina uit als &ldquo;ongewijzigd, uitgever niet te
+    verifi&euml;ren&rdquo; &mdash; nergens groen.</li>
+    <li>Een kapotte PDF geeft een nette 400, geen onbehandelde serverfout.</li>
+    <li>Het bewaarmodel: 200 dagen zonder vinkje houdt alles; vinkje plus 91 dagen wist
+    de bestanden terwijl de hashketen intact blijft.</li>
+    <li>Een verplichte auditregel rolt de hele transactie terug.</li>
+  </ul>
+
+  <h3>15.4 De pijplijn</h3>
+  <p>Er is een CI-workflow die op een schone database de migraties toepast, alle
+  controles draait en de productiebuild maakt. Die start voorlopig alleen handmatig:
+  in dit account is geen uitvoeromgeving beschikbaar, en met automatische triggers zou
+  elke wijziging een faalmail opleveren. Een pijplijn die altijd rood staat wordt
+  genegeerd. Zodra er een runner is, zijn het twee regels commentaar die weg moeten.</p>
+  <div class="warn"><strong>Het eerlijke gat.</strong> Er draait dus nog niets
+  automatisch bij een wijziging. En van de dekking mist &eacute;&eacute;n saai maar
+  belangrijk stuk: autorisatie per route (niet ingelogd, ingelogd maar niet de eigenaar,
+  eigenaar). Dat is precies het gat waar na een verbouwing een lek terugkomt.</div>
+</section>
+
+<!-- ============================================================ 16 -->
+<section class="chapter">
+  <p class="kicker">Hoofdstuk 16</p>
+  <h2>Hosting en beheer</h2>
+
+  <h3>16.1 De machine</h3>
+  <p>E&eacute;n VPS in de EU: 2 vCPU, 4&nbsp;GB RAM, 40&nbsp;GB SSD. Dat is genoeg voor
+  dit volume, maar niet met marge voor onzorgvuldigheid. Drie maatregelen maken het
+  veilig door ontwerp in plaats van door geluk:</p>
+  <ul>
+    <li>zware documentbewerkingen &eacute;&eacute;n tegelijk (hoofdstuk 13.6);</li>
+    <li>geen residente virusscanner (die zou de helft van het geheugen vragen);</li>
+    <li>images bij voorkeur in de CI bouwen, niet op de server &mdash; een frontendbuild
+    vraagt 2 tot 4&nbsp;GB n&aacute;ast de draaiende containers.</li>
+  </ul>
+
+  <h3>16.2 Uitrollen</h3>
+  <p>Er is een deployscript dat de code bijwerkt, images ophaalt (of bouwt, met
+  waarschuwing), de containers herstart, controleert of de migraties zijn gelopen, en
+  <strong>oude images opruimt met behoud van twee generaties</strong>. Dat laatste is bij
+  40&nbsp;GB het enige dat de schijf realistisch laat vollopen, en een volle schijf
+  betekent geen uploads en geen back-up meer. Het script waarschuwt ook als er minder
+  dan 5&nbsp;GB vrij is.</p>
+
+  <h3>16.3 Wat een beheerder moet weten</h3>
+  <table class="kv">
+    <tr><td>Auditspoor controleren</td><td>&eacute;&eacute;n commando; meldt of de keten intact is en anders precies waar hij breekt</td></tr>
+    <tr><td>Bewaartermijn</td><td>eerst een droogloop, dan uitvoeren</td></tr>
+    <tr><td>Sleutelrotatie</td><td>drie stappen zonder downtime; oude sleutel pas weg als het script meldt dat niets er meer naar verwijst</td></tr>
+    <tr><td>Volle schijf</td><td>hoe je het herkent en wat je dan doet</td></tr>
+    <tr><td>Regressietests</td><td>&eacute;&eacute;n commando, tegen een testdatabase &mdash; nooit tegen productie</td></tr>
+  </table>
+  <p>Dat staat allemaal in <code>docs/beheer.md</code>, met bij elke maatregel de grens
+  erbij in plaats van alleen de belofte.</p>
+
+  <h3>16.4 Kosten per jaar</h3>
+  <table>
+    <tr><th>Post</th><th>Bedrag</th></tr>
+    <tr><td>VPS (2 vCPU, 4 GB, 40 GB) in een Nederlands datacenter</td><td>&plusmn; &euro;102</td></tr>
+    <tr><td>Externe back-upopslag, 1 TB</td><td>&plusmn; &euro;38</td></tr>
+    <tr><td>Beroepscertificaat, &eacute;&eacute;n gebruiker</td><td>&plusmn; &euro;50</td></tr>
+    <tr><td>Transactionele mail</td><td>&euro;0 tot &euro;60</td></tr>
+    <tr><td><strong>Totaal</strong></td><td><strong>&plusmn; &euro;190 tot &euro;250</strong></td></tr>
+  </table>
+  <p class="small">Ter vergelijking: een commercieel platform met drie gebruikers zit
+  rond de &euro;950 per jaar, en per-ondertekening-modellen komen bij enkele duizenden
+  stukken hoger uit. Maar de echte kosten zitten niet in de rekening: patchen,
+  monitoren, en meebewegen als de ondertekenprovider of Microsoft iets wijzigt. Dat is
+  de reden om de functielijst gesloten te houden.</p>
+</section>
+
+<!-- ============================================================ 17 -->
+<section class="chapter">
+  <p class="kicker">Hoofdstuk 17</p>
+  <h2>Wat bewust niet is gebouwd</h2>
+  <p class="lead">Dit is geen vergeetlijst. Bij elk punt staat de reden, want een keuze
+  zonder reden is over een jaar niet meer te verdedigen.</p>
+
+  <table>
+    <tr><th>Niet gebouwd</th><th>Waarom niet</th></tr>
+    <tr><td><strong>Een apart organisatiecertificaat</strong> en de bijbehorende driver</td><td>Het beroepscertificaat doet hetzelfde werk. E&eacute;n mechanisme, en enkele honderden euro's per jaar minder.</td></tr>
+    <tr><td><strong>Een sleutelgebaseerde auditketen (HMAC)</strong></td><td>Het gat is echt: met een kale hash kan iemand met alleen databasetoegang de keten consistent herschrijven. Maar het primaire bewijs is de ondertekende PDF, en die kan diegene niet aanraken. Een sleutelversie per regel, sleutels die zeven jaar bewaard moeten blijven en buiten de back-up, plus een controleur die per regel de juiste sleutel kiest &mdash; dat is te veel machinerie om aanvullend detail te beschermen. Wat er in plaats daarvan is: de ankers uit hoofdstuk 8.4.</td></tr>
+    <tr><td><strong>Een aparte container voor de controlepagina</strong></td><td>Vervangen door die pagina achter de login te zetten. Geen onbeauthenticeerde ingang meer, en een container minder op 4 GB. De rol bestaat nog in de image als de pagina ooit publiek moet worden.</td></tr>
+    <tr><td><strong>Automatisch archiveren naar SharePoint</strong></td><td>De driver staat er, maar staat uit. Handmatig uploaden plus een vinkje is voor tien stukken per dag eenvoudiger dan een koppeling die kan falen. Zodra het stapje gaat irriteren, kan hij aan.</td></tr>
+    <tr><td><strong>Een aparte toegangscode als tweede kanaal</strong></td><td>Besluit van het kantoor. De velden staan klaar in het schema, er is geen gebruikersinterface en geen handhaving. De erkende beperking staat in hoofdstuk 9.3.</td></tr>
+    <tr><td><strong>Koppelingen met Visionplanner, AFAS of Exact</strong></td><td>Documenten komen via upload binnen.</td></tr>
+    <tr><td><strong>Een aparte status &ldquo;verzegeld&rdquo;</strong></td><td>&ldquo;Ondertekend&rdquo; blijft de eindstatus; het onderscheid zit in <code>sealStage</code> per document. Een extra status zou &ldquo;klaar&rdquo; over twee waarden splitsen.</td></tr>
+    <tr><td><strong>Periodiek hervernieuwen van tijdstempels</strong></td><td>Bij zeven jaar bewaartermijn en ingebedde revocatiegegevens is het document self-contained. Hervernieuwen beschermt tegen cryptografische verzwakking over decennia.</td></tr>
+    <tr><td><strong>Netwerkisolatie voor de conversieprocessen</strong></td><td>Zou een eigen container vragen. Wat er is, staat in hoofdstuk 9.4; de bewering is bijgesteld naar wat er werkelijk wordt afgedwongen.</td></tr>
+    <tr><td><strong>Juridische kwalificaties in de interface</strong></td><td>Er staat &ldquo;digitaal ondertekend&rdquo; en &ldquo;verzegeld&rdquo;, niet &ldquo;eIDAS-niveau X&rdquo; &mdash; behalve bij een echte gekwalificeerde handtekening. Bewust geen overclaim.</td></tr>
+    <tr><td><strong>Een tweede ondertekendriver die namens de accountant tekent</strong></td><td>Was er (<code>digidentity</code>), is verwijderd. Hij tekende best-effort en liet een dossier doorlopen naar ONDERTEKEND zonder gekwalificeerde handtekening als de provider wegviel. Zie 6.3.</td></tr>
+    <tr><td><strong>Een geavanceerde handtekening (AES) voor de cli&euml;nt</strong></td><td>Zou per ondertekenaar een certificaat op naam bij een TSP vragen, met identificatie via iDIN of een ID-scan v&oacute;&oacute;r elke handtekening &mdash; kosten en wrijving per stuk. Voor akkoordbrieven en opdrachtbevestigingen volstaat de huidige methode. Pas bouwen als een tegenpartij het concreet eist, en dan voor dat ene documenttype.</td></tr>
+  </table>
+</section>
+
+<!-- ============================================================ 18 -->
+<section class="chapter">
+  <p class="kicker">Hoofdstuk 18</p>
+  <h2>Wat nog niet bewezen is</h2>
+  <p class="lead">Het verschil tussen &ldquo;gebouwd en getest&rdquo; en &ldquo;in
+  gebruik bewezen&rdquo;. Dit hoofdstuk hoort in dit verslag omdat de rest anders
+  sterker klinkt dan het is.</p>
+
+  <h3>18.1 De ondertekenprovider is nog nooit echt gesproken</h3>
+  <p>Alle netwerkaanroepen naar de ondertekenprovider zijn gebouwd volgens hun
+  documentatie en zijn niet tegen de echte dienst uitgevoerd &mdash; de
+  ontwikkelomgeving mag daar niet bij. Twee punten waarover hun documentatie niet
+  eenduidig is, staan open: hoe precies het servicetoken wordt opgehaald, en hoe een
+  verlopen autorisatietoken eruitziet. De PDF-kant van het tweefasige ondertekenen is
+  w&eacute;l end-to-end bewezen, met een zelf aangemaakt testcertificaat.</p>
+
+  <h3>18.2 Er is nog geen certificaat en geen tijdstempeldienst</h3>
+  <p>De applicatie draait daarom met de verzegeling uit. Dat is een geldige stand voor
+  een pilot &mdash; de banner, de certificaatregel en de auditregel maken het zichtbaar
+  &mdash; maar het betekent dat de kern van hoofdstuk 6 alleen met een testcertificaat
+  is aangetoond.</p>
+
+  <h3>18.3 De volledige stapel is nooit als geheel opgestart</h3>
+  <p>Alle onderdelen zijn apart getest en de applicatie is los gedraaid, maar
+  <code>docker compose up</code> met alle vijf de services samen is niet uitgevoerd. Dat
+  is het grootste onbekende: &eacute;&eacute;n verkeerde variabele, een healthcheck die
+  niet slaagt, of Caddy dat geen certificaat krijgt. Ook is de volledige cli&euml;ntreis
+  na de laatste wijzigingen niet als mens doorlopen.</p>
+  <div class="note"><strong>De aanbeveling.</strong> Een generale repetitie op de echte
+  server met eigen mensen als &ldquo;cli&euml;nt&rdquo;: &eacute;&eacute;n dossier met
+  twee ondertekenaars, &eacute;&eacute;n weigering, en &eacute;&eacute;n dat je laat
+  verlopen en opnieuw verstuurt. Daarna &eacute;&eacute;n keer back-up maken en
+  terugzetten, v&oacute;&oacute;rdat er echte cli&euml;ntgegevens in staan.</div>
+
+  <h3>18.4 De mailprovider is nog niet gekozen</h3>
+  <p>SMTP werkt. De verwerking van bezorgstatussen is getest met nagemaakte berichten
+  van beide providers, niet met echte. Zolang er SMTP wordt gebruikt, is
+  &ldquo;verzonden&rdquo; de zwakste schakel in het bewijsdossier.</p>
+
+  <h3>18.5 Er draait geen pijplijn</h3>
+  <p>De 293 controles draaien handmatig. Dat is het grootste procesgat: handmatige
+  tests verlopen binnen enkele maanden zonder dat iemand het merkt.</p>
+
+  <h3>18.6 Eén openstaande vraag voor het kantoor</h3>
+  <p>Wordt er met de pen op het aangiftestuk zelf ondertekend, of alleen op de
+  akkoordbrief daarbij? Dat bepaalt of de akkoordverklaringen &ldquo;Ondertekend door
+  &lt;naam&gt;, RA&rdquo; of &ldquo;Verzegeld door Otto Visser &amp; Partners
+  Accountants&rdquo; krijgen. Het antwoord is een instelling, geen wijziging in de code,
+  dus het kan later komen.</p>
+
+  <h3>18.7 Tot slot</h3>
+  <p>Wat hier staat is met opzet uitgesplitst tussen wat werkt, wat is aangetoond, en
+  wat nog moet blijken. Bij elke maatregel in dit verslag staat de grens erbij, omdat
+  een maatregel waarvan iemand denkt dat hij meer doet dan hij doet gevaarlijker is dan
+  geen maatregel. Dat geldt voor de append-only trigger, voor de sandbox rond de
+  conversie, voor de ankers, en voor de controlepagina.</p>
+</section>
+
+</body>
+</html>

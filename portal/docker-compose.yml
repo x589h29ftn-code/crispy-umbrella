@@ -1,0 +1,151 @@
+# Zelf-hosten op een EU-server. Start met:  docker compose up -d --build
+# Vul eerst .env in (kopie van .env.example) met sterke geheimen.
+
+services:
+  db:
+    image: postgres:16
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-ovp}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?zet POSTGRES_PASSWORD in .env}
+      POSTGRES_DB: ${POSTGRES_DB:-ovp_portaal}
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ['CMD-SHELL', 'pg_isready -U ${POSTGRES_USER:-ovp}']
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    # Niet publiek: alleen bereikbaar binnen het Docker-netwerk.
+    expose:
+      - '5432'
+
+  web:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    env_file: .env
+    environment:
+      # Overschrijft DATABASE_URL zodat hij naar de db-service wijst.
+      DATABASE_URL: postgresql://${POSTGRES_USER:-ovp}:${POSTGRES_PASSWORD}@db:5432/${POSTGRES_DB:-ovp_portaal}?schema=public
+      STORAGE_DIR: /data/documents
+      # Ondertekenen gaat naar de sealer, valideren naar de validator. Zonder deze
+      # scheiding zou de publieke controlepagina de container met de
+      # ondertekengegevens aanspreken.
+      SEALER_URL: ${SEALER_URL:-http://sealer:8000}
+      # Leeg: validatie gaat naar de sealer zelf. Alleen zetten als er een aparte
+      # validator-service draait (nodig zodra /valideren publiek zou worden).
+      SEALER_VALIDATE_URL: ${SEALER_VALIDATE_URL:-}
+    depends_on:
+      db:
+        condition: service_healthy
+    volumes:
+      - documents:/data/documents
+    expose:
+      - '3000'
+
+  # Achtergrondwerker: verzegeling opnieuw proberen, herinneringen, opruimen.
+  # Zelfde image als web, andere opdracht. Houd het op één instance.
+  worker:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    env_file: .env
+    environment:
+      DATABASE_URL: postgresql://${POSTGRES_USER:-ovp}:${POSTGRES_PASSWORD}@db:5432/${POSTGRES_DB:-ovp_portaal}?schema=public
+      STORAGE_DIR: /data/documents
+    depends_on:
+      db:
+        condition: service_healthy
+    volumes:
+      - documents:/data/documents
+    # --conditions react-server: laat de 'server-only'-markering buiten Next
+    # oplossen naar een lege module in plaats van te gooien.
+    command: ['node_modules/.bin/tsx', '--conditions', 'react-server', 'scripts/worker.ts']
+
+  # Cryptografische verzegeling (PAdES) met pyHanko. BEWUST NIET publiek:
+  # geen ports-blok en geen Caddy-route, alleen bereikbaar op het interne
+  # compose-netwerk. Zet SEAL_MODE=qualified in .env om hem te gebruiken.
+  #
+  # Er is één ondertekenmechanisme: het beroepscertificaat van de accountant. Deze
+  # container voert daarvoor /prepare en /inject uit. Een apart organisatiezegel
+  # (en de bijbehorende GlobalSign-driver) is met v1.4 van de lijst gehaald.
+  sealer:
+    build:
+      context: ./sealer
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    environment:
+      SEALER_SHARED_SECRET: ${SEALER_SHARED_SECRET:?zet SEALER_SHARED_SECRET in .env}
+      SEAL_DRIVER: ${SEAL_DRIVER:-csc}
+      PADES_LEVEL: ${PADES_LEVEL:-lt}
+      TSA_URL: ${TSA_URL:-}
+      TSA_AUTH_MODE: ${TSA_AUTH_MODE:-none}
+      TSA_USERNAME: ${TSA_USERNAME:-}
+      TSA_PASSWORD: ${TSA_PASSWORD:-}
+      TSA_TIMEOUT_MS: ${TSA_TIMEOUT_MS:-10000}
+      # CSC-driver (Digidentity/Cleverbase):
+      SEAL_CSC_BASE_URL: ${SEAL_CSC_BASE_URL:-}
+      SEAL_CSC_CREDENTIAL_ID: ${SEAL_CSC_CREDENTIAL_ID:-}
+      SEAL_CSC_OAUTH_TOKEN: ${SEAL_CSC_OAUTH_TOKEN:-}
+      SEAL_CSC_SAD: ${SEAL_CSC_SAD:-}
+    healthcheck:
+      test:
+        - CMD-SHELL
+        - >-
+          curl -fsS -H "X-Sealer-Secret: $${SEALER_SHARED_SECRET}"
+          http://localhost:8000/health || exit 1
+      interval: 60s
+      timeout: 15s
+      retries: 3
+      start_period: 30s
+    expose:
+      - '8000'
+
+  # GEEN aparte validator-service (meer). Changeset v1.2 punt 5.2 en v1.3 punt 10
+  # vroegen om een tweede container voor /validate, omdat een publieke,
+  # onbeauthenticeerde PDF-upload uitkwam bij de component met de ondertekengegevens.
+  # Sinds v1.4 staat /valideren achter de login: er is geen onbeauthenticeerde
+  # uploadingang meer, en dan is een zesde container geen bescherming maar alleen
+  # extra geheugengebruik op een machine van 4 GB.
+  #
+  # Wil het kantoor die pagina ooit toch publiek maken, dan komt de container terug.
+  # De rol bestaat nog in de image (VALIDATOR_ONLY=true in sealer/main.py, met de
+  # omgekeerde grendel en 403 op de ondertekenpaden) en de webapp kan hem aanspreken
+  # via SEALER_VALIDATE_URL. Zie docs/hosting-handleiding.md.
+
+  caddy:
+    image: caddy:2
+    restart: unless-stopped
+    depends_on:
+      - web
+    ports:
+      - '80:80'
+      - '443:443'
+    environment:
+      # Zet PORTAL_DOMAIN in .env, bv. portaal.ottovisseraccountants.nl
+      PORTAL_DOMAIN: ${PORTAL_DOMAIN:?zet PORTAL_DOMAIN in .env}
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+      - caddy_config:/config
+
+  # Optionele virusscan op uploads. Zet VIRUS_SCAN=clamav in .env om dit te
+  # gebruiken en verwijder dan het commentaar hieronder. clamd vraagt ~1-2 GB
+  # geheugen (voor de virusdefinities).
+  # clamav:
+  #   image: clamav/clamav:latest
+  #   restart: unless-stopped
+  #   volumes:
+  #     - clamav_db:/var/lib/clamav
+  #   expose:
+  #     - '3310'
+
+volumes:
+  # clamav_db:
+  pgdata:
+  documents:
+  caddy_data:
+  caddy_config:

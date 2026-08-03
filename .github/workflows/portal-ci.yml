@@ -1,0 +1,118 @@
+name: Portal CI
+
+# Typecheck, build, migraties en de regressietests van het ondertekenportaal.
+# Los van de desktop-pipeline.
+#
+# LET OP — waarom dit (nog) alleen handmatig start. In dit account is geen GitHub
+# Actions-runner beschikbaar. Met push-/pull_request-triggers blijft elke run in de
+# wachtrij staan en komt hij er uiteindelijk als "mislukt" uit, inclusief faalmail.
+# Dat is erger dan handmatig: een pijplijn die altijd rood staat wordt genegeerd.
+#
+# Zodra er een runner is (GitHub-hosted of self-hosted) haal je het commentaar van
+# de twee triggers hieronder weg. Meer is er niet voor nodig; de jobs zelf zijn af.
+#
+#   push:
+#     branches: ['**']
+#     paths: ['portal/**', '.github/workflows/portal-ci.yml']
+#   pull_request:
+#     paths: ['portal/**', '.github/workflows/portal-ci.yml']
+on:
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: portal
+
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: ovp
+          POSTGRES_PASSWORD: ovp
+          POSTGRES_DB: ovp_portaal_ci
+        ports: ['5432:5432']
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+
+    env:
+      DATABASE_URL: postgresql://ovp:ovp@localhost:5432/ovp_portaal_ci?schema=public
+      APP_URL: http://localhost:3000
+      NEXT_TELEMETRY_DISABLED: '1'
+      # Testwaarden. Nooit echte geheimen in CI: deze database en opslag zijn na de
+      # run weg.
+      SESSION_SECRET: ci-session-secret-0123456789abcdefghijklmnop
+      SIGNING_TOKEN_SECRET: ci-signing-secret-0123456789abcdefghijklmnop
+      STORAGE_ENCRYPTION_KEY: ci-storage-key-0123456789abcdefghijklmnopqr
+      TOTP_ENCRYPTION_KEY: ci-totp-key-0123456789abcdefghijklmnopqrstu
+      STORAGE_DIR: /tmp/ci-documents
+      MAIL_TRANSPORT: smtp
+      SMTP_HOST: 127.0.0.1
+      SMTP_PORT: '1025'
+      SMTP_REQUIRE_TLS: 'false'
+      SEAL_MODE: none
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+          cache-dependency-path: portal/package-lock.json
+
+      - run: npm ci
+
+      - name: Typecheck
+        run: npm run typecheck
+
+      # Op een schone database, zodat de migraties zelf ook worden getest en niet
+      # alleen de code die ervan uitgaat.
+      - name: Migraties toepassen
+        run: npx prisma migrate deploy
+
+      - name: Regressietests
+        run: npm run test:regressie
+
+      - name: Build
+        run: npm run build
+
+      # Ná de build, want deze test start de echte server. Hij vangt de klasse
+      # fouten waar een groene build niets over zegt: pagina's op force-dynamic
+      # worden bij het bouwen nooit gerenderd, dus een module die bij het
+      # server-renderen omvalt blijft anders onopgemerkt.
+      - name: Paginarooktest
+        run: npm run test:paginas
+
+  sealer:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: portal
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Afhankelijkheden sealer
+        run: |
+          python -m venv .venv-sealer
+          .venv-sealer/bin/pip install --quiet -r sealer/requirements.txt
+      # Verzegelt met een zelfondertekend testcertificaat en controleert onder meer
+      # dat manipulatie wordt afgekeurd, dat een tweede poging 409 geeft en dat de
+      # publieke controle niets van internet ophaalt.
+      - name: Sealertests
+        run: .venv-sealer/bin/python scripts/regressie/sealer.py
+      # Het certificerende organisatiezegel (DocMDP P=1). Legt vast dat de
+      # DSS-update de eigen NO_CHANGES-permissie niet schendt, dat een echte
+      # wijziging dat wél doet, en dat pyHanko onder P=1 weigert een tweede
+      # handtekening te zetten.
+      - name: Certificering
+        run: .venv-sealer/bin/python scripts/regressie/certificering.py
+      - name: Validatormodus
+        run: .venv-sealer/bin/python scripts/regressie/validatormodus.py

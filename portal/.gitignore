@@ -1,0 +1,26 @@
+node_modules
+.next
+out
+dist
+*.tsbuildinfo
+next-env.d.ts
+
+# lokale omgeving & geheimen
+.env
+.env.local
+.env.*.local
+
+# opslag & data (nooit committen)
+/data
+/documents
+storage/
+
+# pdf.js worker wordt bij postinstall gekopieerd
+public/pdf.worker.min.mjs
+
+.DS_Store
+
+# Python (sealer)
+__pycache__/
+*.pyc
+.venv-sealer/

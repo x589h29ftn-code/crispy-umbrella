@@ -1,0 +1,273 @@
+import Link from 'next/link'
+import { notFound } from 'next/navigation'
+import { Download, PencilRuler, CheckCircle2, Clock, XCircle, FileText } from 'lucide-react'
+import { prisma } from '@/lib/db'
+import { requireOnboarded } from '@/lib/auth/session'
+import { StatusBadge } from '@/components/StatusBadge'
+import { UnsealedBanner } from '@/components/UnsealedBanner'
+import { DossierActions } from './DossierActions'
+import { ArchiveFolderCard } from './ArchiveFolderCard'
+import { ArchiveCheck } from './ArchiveCheck'
+import { blobBewaardagen } from '@/lib/retention'
+import { PARTY_LABEL } from '@/lib/status'
+import { TransferSigner } from './TransferSigner'
+import { AssurancePicker } from './AssurancePicker'
+import { beschikbareNiveaus, ASSURANCE_LABEL, ASSURANCE_UITLEG } from '@/lib/assurance'
+import { currentSigners } from '@/lib/signflow'
+import { archiveEnabled, buildDefaultFolder } from '@/lib/archive'
+import { formatDateTime } from '@/lib/utils'
+
+const AUDIT_LABEL: Record<string, string> = {
+  AANGEMAAKT: 'Dossier aangemaakt',
+  VERZONDEN: 'Verzonden naar ontvanger',
+  GEOPEND: 'Ontvanger opende het document',
+  OTP_VERSTUURD: 'Verificatiecode verstuurd',
+  OTP_GEVERIFIEERD: 'Identiteit geverifieerd',
+  OTP_MISLUKT: 'Onjuiste verificatiecode',
+  OTP_GEBLOKKEERD: 'Verificatie geblokkeerd na te veel pogingen',
+  ONDERTEKEND: 'Ondertekend',
+  GEKWALIFICEERD_ONDERTEKEND: 'Gekwalificeerd ondertekend (beroepscertificaat)',
+  GEWEIGERD: 'Ondertekening geweigerd',
+  HERINNERD: 'Herinnering verstuurd',
+  VERLOPEN: 'Verlopen',
+  VERZEGELD: 'Definitief verzegeld',
+  VERZEGELING_MISLUKT: 'Verzegeling mislukt',
+  VERZEGELING_OVERGESLAGEN: 'Verzegeling overgeslagen (staat uit)',
+  INTEGRITEIT_AFWIJKING: 'Integriteitscontrole afgewezen',
+  GEARCHIVEERD: 'Gearchiveerd',
+  GEDOWNLOAD: 'Gedownload',
+  INGETROKKEN: 'Ingetrokken'
+}
+
+export default async function DossierDetailPage({ params }: { params: { id: string } }) {
+  const acc = await requireOnboarded()
+  const dossier = await prisma.dossier.findUnique({
+    where: { id: params.id },
+    include: {
+      recipients: { orderBy: { order: 'asc' }, include: { client: true } },
+      auditEvents: { orderBy: { createdAt: 'asc' } },
+      documents: { orderBy: { order: 'asc' } },
+      owner: { select: { name: true } },
+      archivedBy: { select: { name: true } }
+    }
+  })
+  if (!dossier) notFound()
+  if (dossier.ownerId !== acc.id && acc.role !== 'BEHEERDER') notFound()
+
+  const active = currentSigners(dossier, dossier.recipients)
+  const activeIds = new Set(active.map((a) => a.id))
+  const showWaiting = ['VERZONDEN', 'GEDEELTELIJK'].includes(dossier.status) && active.length > 0
+
+  // Standaard-archiefbestemming (klantmap + boekjaar) voor het overzicht.
+  const showArchive = archiveEnabled()
+  const niveaus = beschikbareNiveaus()
+
+  // Collega's aan wie een kantoorondertekenaar kan worden overgedragen. Alleen
+  // nodig als er nog een kantoorondertekenaar openstaat.
+  const heeftOpenKantoortekenaar = dossier.recipients.some((r) => r.role === 'ZELF' && r.status === 'PENDING')
+  const collegas = heeftOpenKantoortekenaar
+    ? await prisma.accountant.findMany({
+        where: { active: true, id: { notIn: dossier.recipients.map((r) => r.accountantId).filter((x): x is string => !!x) } },
+        orderBy: { name: 'asc' },
+        select: { id: true, name: true, totpEnabled: true }
+      })
+    : []
+  const clientRec = dossier.recipients.find((r) => r.client)
+  const archiveYear = dossier.documents.map((d) => d.detectedYear).find((y) => y != null) ?? null
+  const defaultArchiveFolder = buildDefaultFolder({
+    clientBaseFolder: clientRec?.client?.archiveFolder ?? null,
+    clientName: clientRec?.client?.displayName ?? clientRec?.name ?? dossier.title,
+    clientNumber: clientRec?.client?.clientNumber ?? null,
+    year: archiveYear
+  })
+
+  return (
+    <div className="space-y-6">
+      <header className="flex flex-wrap items-start justify-between gap-3">
+        <div>
+          <div className="mb-1 flex items-center gap-3">
+            <h1 className="text-2xl font-semibold">{dossier.title}</h1>
+            <StatusBadge status={dossier.status} />
+          </div>
+          <p className="text-slate-500">
+            Aangemaakt {formatDateTime(dossier.createdAt)} door {dossier.owner.name}
+          </p>
+        </div>
+        <div className="flex gap-2">
+          {dossier.status === 'CONCEPT' && (
+            <Link href={`/dossiers/${dossier.id}/voorbereiden`} className="btn-secondary">
+              <PencilRuler className="h-4 w-4" /> Velden bewerken
+            </Link>
+          )}
+        </div>
+      </header>
+
+      <UnsealedBanner scope="dossier" niveau={dossier.assuranceLevel} />
+
+      <div className="grid gap-6 lg:grid-cols-3">
+        <div className="space-y-6 lg:col-span-2">
+          <section className="card p-6">
+            <h2 className="mb-4 text-lg font-semibold">Acties</h2>
+            {dossier.status === 'CONCEPT' && dossier.recipients.length === 0 ? (
+              <p className="text-sm text-slate-500">
+                Nog geen ontvangers.{' '}
+                <Link href={`/dossiers/${dossier.id}/voorbereiden`} className="font-medium text-brand-700 underline">
+                  Plaats eerst tekenvelden en ontvangers
+                </Link>
+                .
+              </p>
+            ) : (
+              <DossierActions dossierId={dossier.id} status={dossier.status} />
+            )}
+          </section>
+
+          {showWaiting && (
+            <div className="rounded-lg border border-blue-200 bg-blue-50 p-4 text-sm text-blue-800">
+              <span className="font-medium">Wacht op handtekening van:</span>{' '}
+              {active.map((a) => a.name).join(', ')}
+              {dossier.signingMode === 'SEQUENTIAL' && ' (één voor één)'}
+            </div>
+          )}
+
+          <section className="card p-6">
+            <h2 className="mb-4 text-lg font-semibold">Documenten</h2>
+            <ul className="divide-y divide-slate-100">
+              {dossier.documents.map((doc) => (
+                <li key={doc.id} className="flex items-center justify-between py-3">
+                  <div className="flex items-center gap-2">
+                    <FileText className="h-4 w-4 text-slate-400" />
+                    <div>
+                      <div className="font-medium">{doc.title}</div>
+                      {doc.documentSha256 && (
+                        <div className="text-xs text-slate-500">SHA-256: {doc.documentSha256.slice(0, 16)}…</div>
+                      )}
+                    </div>
+                  </div>
+                  {(doc.sealedKey || doc.workingKey) && (
+                    <a href={`/api/dossiers/${dossier.id}/download?documentId=${doc.id}`} className="btn-ghost text-sm">
+                      <Download className="h-4 w-4" /> Download
+                    </a>
+                  )}
+                </li>
+              ))}
+            </ul>
+          </section>
+
+          {dossier.status === 'ONDERTEKEND' && (
+            <ArchiveCheck
+              dossierId={dossier.id}
+              archivedAt={dossier.archivedAt?.toISOString() ?? null}
+              archivedBy={dossier.archivedBy?.name ?? null}
+              archivedNote={dossier.archivedNote}
+              bewaardagen={blobBewaardagen()}
+              suggestie={defaultArchiveFolder}
+            />
+          )}
+
+          {showArchive && (
+            <ArchiveFolderCard
+              dossierId={dossier.id}
+              defaultFolder={defaultArchiveFolder}
+              current={dossier.archiveFolder}
+              locked={dossier.status === 'ONDERTEKEND'}
+            />
+          )}
+
+          <section className="card p-6">
+            <div className="mb-3">
+              <h2 className="text-lg font-semibold">Betrouwbaarheid</h2>
+              <p className="text-xs text-slate-500">
+                Hoeveel bewijskracht dit verzoek krijgt.{' '}
+                {dossier.status === 'CONCEPT'
+                  ? 'Nog te wijzigen tot het moment van versturen.'
+                  : 'Vastgelegd bij het versturen.'}
+              </p>
+            </div>
+            <AssurancePicker
+              dossierId={dossier.id}
+              huidig={dossier.assuranceLevel}
+              beschikbaar={niveaus}
+              labels={ASSURANCE_LABEL}
+              uitleg={ASSURANCE_UITLEG}
+              wijzigbaar={dossier.status === 'CONCEPT'}
+            />
+          </section>
+
+          <section className="card p-6">
+            <div className="mb-4 flex items-center justify-between">
+              <h2 className="text-lg font-semibold">Ondertekenaars</h2>
+              <span className="text-xs text-slate-500">
+                {dossier.signingMode === 'SEQUENTIAL' ? 'Op volgorde' : 'Iedereen tegelijk'}
+              </span>
+            </div>
+            {dossier.recipients.length === 0 ? (
+              <p className="text-sm text-slate-500">Nog geen ontvangers ingesteld.</p>
+            ) : (
+              <ul className="divide-y divide-slate-100">
+                {dossier.recipients.map((r, i) => (
+                  <li key={r.id} className="flex items-center justify-between py-3">
+                    <div className="flex items-center gap-3">
+                      {dossier.signingMode === 'SEQUENTIAL' && (
+                        <span className="flex h-6 w-6 items-center justify-center rounded-full bg-slate-100 text-xs font-semibold text-slate-600">
+                          {i + 1}
+                        </span>
+                      )}
+                      <div>
+                        <div className="flex items-center gap-2 font-medium">
+                          {r.name}
+                          {r.role === 'ZELF' && (
+                            <span className="badge bg-slate-100 text-slate-600 ring-slate-200">kantoor</span>
+                          )}
+                          {activeIds.has(r.id) && r.status === 'PENDING' && (
+                            <span className="badge bg-blue-50 text-blue-700 ring-blue-200">aan de beurt</span>
+                          )}
+                        </div>
+                        <div className="text-xs text-slate-500">{r.email}</div>
+                        {r.role === 'ZELF' && r.status === 'PENDING' && (
+                          <div className="mt-1">
+                            <TransferSigner recipientId={r.id} huidigeNaam={r.name} collegas={collegas} />
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                    <div className="flex items-center gap-2 text-sm">
+                      {r.status === 'SIGNED' ? (
+                        <span className="inline-flex items-center gap-1 text-emerald-600">
+                          <CheckCircle2 className="h-4 w-4" /> {PARTY_LABEL.SIGNED}
+                          {r.signedAt && <span className="text-xs text-slate-500"> · {formatDateTime(r.signedAt)}</span>}
+                        </span>
+                      ) : r.status === 'DECLINED' ? (
+                        <span className="inline-flex items-center gap-1 text-rose-600">
+                          <XCircle className="h-4 w-4" /> {PARTY_LABEL.DECLINED}
+                        </span>
+                      ) : (
+                        <span className="inline-flex items-center gap-1 text-amber-600">
+                          <Clock className="h-4 w-4" /> {PARTY_LABEL.PENDING}
+                        </span>
+                      )}
+                    </div>
+                  </li>
+                ))}
+              </ul>
+            )}
+          </section>
+        </div>
+
+        <section className="card p-6">
+          <h2 className="mb-4 text-lg font-semibold">Tijdlijn</h2>
+          <ol className="relative space-y-4 border-l border-slate-200 pl-4">
+            {dossier.auditEvents.map((e) => (
+              <li key={e.id} className="relative">
+                <span className="absolute -left-[21px] top-1 h-2.5 w-2.5 rounded-full bg-brand-500" />
+                <div className="text-sm font-medium">{AUDIT_LABEL[e.type] ?? e.type}</div>
+                {e.message && <div className="text-xs text-slate-500">{e.message}</div>}
+                <div className="text-xs text-slate-500">{formatDateTime(e.createdAt)}</div>
+              </li>
+            ))}
+            {dossier.auditEvents.length === 0 && <li className="text-sm text-slate-400">Nog geen gebeurtenissen.</li>}
+          </ol>
+        </section>
+      </div>
+    </div>
+  )
+}

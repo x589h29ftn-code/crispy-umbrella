@@ -1,0 +1,594 @@
+// Datamodel van het ondertekenportaal. PostgreSQL. Alle tijdstempels in UTC.
+
+generator client {
+  provider      = "prisma-client-js"
+  binaryTargets = ["native", "debian-openssl-3.0.x"]
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum Role {
+  MEDEWERKER
+  BEHEERDER
+}
+
+enum PartyRole {
+  ZELF
+  EXTERN
+}
+
+enum PartyStatus {
+  PENDING
+  SIGNED
+  DECLINED
+}
+
+enum FieldKind {
+  SIGNATURE
+  DATE
+  INITIALS
+}
+
+enum DossierStatus {
+  CONCEPT
+  VERZONDEN
+  GEDEELTELIJK
+  ONDERTEKEND
+  // Alle partijen hebben getekend; het stuk wacht op de gekwalificeerde
+  // handtekening van de accountant, die daarvoor zelf moet autoriseren (pincode
+  // in de app van de provider). Geen fout: een normale wachtstand.
+  WACHT_OP_WAARMERK
+  // Alle partijen hebben getekend, maar het cryptografische zegel ontbreekt nog
+  // (signing-API of TSA onbereikbaar). Fail-closed: er gaat geen voltooiingsmail
+  // uit zolang dit de status is; een job probeert het opnieuw.
+  SEALING_FAILED
+  GEWEIGERD
+  VERLOPEN
+}
+
+// Hoe ver het verzegelen van een document is. Expliciet, zodat een retry weet
+// waar hij moet beginnen en niet werk weggooit dat al klaar was.
+enum SealStage {
+  NONE // niets voorbereid
+  PRESEAL // auditcertificaat erop, platgeslagen, hash vastgelegd
+  // VEROUDERD sinds v1.7 (deel F): hoorde bij de omgekeerde volgorde waarin de
+  // accountant vóór het organisatiezegel waarmerkte. Wordt niet meer gezet.
+  // Blijft staan omdat een enumwaarde weghalen een migratie is.
+  QUALIFIED
+  SEALED // definitief; organisatiezegel gezet of niet van toepassing
+}
+
+// Bezorgstatus van een verstuurde mail, zoals de provider die terugkoppelt.
+enum MailStatus {
+  QUEUED // aangeboden aan de provider
+  SENT // provider heeft hem verstuurd
+  DELIVERED // aangekomen bij de ontvangende server
+  BOUNCED // definitief geweigerd
+  COMPLAINED // als spam gemarkeerd door de ontvanger
+  FAILED // versturen mislukt aan onze kant
+}
+
+enum VerificationMethod {
+  EMAIL
+  SMS
+}
+
+/// Hoeveel bewijskracht de afzender voor dít dossier wil.
+///
+/// SEAL_MODE bepaalt wat de server KAN; dit bepaalt wat er voor dit dossier
+/// wordt GEBRUIKT. Zo kan een akkoordbrief met alleen een auditspoor de deur uit
+/// terwijl een jaarrekening een zegel krijgt, zonder de server te herconfigureren.
+enum AssuranceLevel {
+  /// Geen cryptografisch zegel. De bewijskracht zit in het auditspoor: de
+  /// tweefactorverificatie per e-mail of sms, IP, apparaat, tijdstippen, de
+  /// gelezen verklaring, de hashes van wat elke partij zag, en een los
+  /// auditrapport met het volledige verloop.
+  AUDITSPOOR
+  /// Route A: certificerend organisatiezegel (DocMDP P=1) bovenop het auditspoor.
+  ZEGEL
+  /// Route B: gekwalificeerde handtekening met het beroepscertificaat van de
+  /// accountant. Alleen waar dat vereist is.
+  BEROEPS
+}
+
+enum SigningMode {
+  PARALLEL // iedereen tegelijk
+  SEQUENTIAL // één voor één, op volgorde
+}
+
+/// Herkend documenttype (voor automatische titel/berichtsuggestie).
+enum DocumentKind {
+  JAARREKENING // jaarrekening (wordt in de jaarrekening zelf getekend)
+  NOTULEN_AVA // notulen algemene vergadering van aandeelhouders
+  BEVESTIGING_JAARREKENING // bevestiging bij de jaarrekening
+  AKKOORD_IB // akkoordverklaring aangifte inkomstenbelasting
+  AKKOORD_VPB // akkoordverklaring aangifte vennootschapsbelasting
+  OPDRACHTBEVESTIGING // opdrachtbevestiging (nieuwe klanten)
+  OVERIG // niet herkend
+}
+
+/// Medewerker/accountant van het kantoor.
+model Accountant {
+  id           String   @id @default(cuid())
+  email        String   @unique
+  name         String
+  passwordHash String
+  role         Role     @default(MEDEWERKER)
+  totpSecret   String? // versleuteld opgeslagen (AES-256-GCM)
+  totpEnabled  Boolean  @default(false)
+  // Laatst geaccepteerde TOTP-tijdstap (unixtijd / 30). Een code blijft binnen
+  // zijn venster herbruikbaar; door de stap te onthouden en niet nogmaals te
+  // accepteren bewijst een code bezit van het apparaat nú, en niet dat iemand
+  // hem heeft gekopieerd. Geldt voor inloggen én voor herverificatie bij het
+  // ondertekenen, want anders is een bij het inloggen gebruikte code daarna nog
+  // te hergebruiken.
+  lastTotpStep Int?
+  totpBackupCodes String[] @default([]) // SHA-256-hashes van eenmalige herstelcodes
+  // Wachtwoord-vergeten: eenmalige, kortlevende herstellink (alleen hash bewaard).
+  passwordResetTokenHash String?
+  passwordResetExpiresAt DateTime?
+  signaturePng String? // opgeslagen handtekening (data-URL of opslagsleutel)
+  mustChangePassword Boolean @default(false) // nieuw aangemaakt account
+  // Beroepscertificaat (gekwalificeerd ondertekenen op persoonlijke titel).
+  // Per accountant in te stellen; standaard uit. Het geheim/token van de
+  // provider staat NOOIT hier - alleen de verwijzing (credential-id).
+  professionalTitle   String? // 'AA' of 'RA' (leeg = geen)
+  nbaNumber           String? // inschrijvingsnummer accountantsregister
+  signingCertProvider String? // bv. 'cleverbase'
+  // Het certificaat is persoonsgebonden: één credential hoort bij precies één
+  // accountant en mag nooit worden gedeeld. Daarom uniek.
+  signingCredentialId String? @unique
+  signingCertEnabled  Boolean @default(false)
+  // Zet de provider het certificaat op 'disabled' (bijv. bij het eindigen of
+  // schorsen van de NBA-inschrijving), dan leggen we dat hier vast.
+  signingCertDisabledAt DateTime?
+  signingCertStatus     String? // laatst gerapporteerde status bij de provider
+  active       Boolean  @default(true)
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  sessions        Session[]
+  dossiers        Dossier[]
+  gearchiveerde   Dossier[]  @relation("DossierArchivedBy")
+  auditEvents     AuditEvent[]
+  signerFor       Recipient[] // dossiers waarin deze medewerker een ondertekenaar is
+  cscSessions     CscSigningSession[]
+}
+
+/// Intrekbare serversessie. Alleen de hash van het sessietoken wordt bewaard.
+model Session {
+  id           String     @id @default(cuid())
+  accountantId String
+  accountant   Accountant @relation(fields: [accountantId], references: [id], onDelete: Cascade)
+  tokenHash    String     @unique
+  expiresAt    DateTime
+  createdAt    DateTime   @default(now())
+  lastSeenAt   DateTime   @default(now())
+  ip           String?
+  userAgent    String?
+
+  @@index([accountantId])
+}
+
+/// Cliëntendatabase van het kantoor (voor automatisch invullen van ontvangers).
+model Client {
+  id          String   @id @default(cuid())
+  clientNumber String? // intern klantnummer (bijv. voor de mapstructuur in het archief)
+  displayName String
+  companyName String?
+  contactName String?
+  firstName   String? // voornaam, voor een nette aanhef in berichten
+  email       String?
+  phone       String?
+  kvk         String?
+  address     String?
+  postalCode  String?
+  city        String?
+  country     String   @default("Nederland")
+  notes       String?
+  // Basismap voor deze klant in het archief (leeg = "<klantnummer> - <naam>").
+  archiveFolder String?
+  // Voorkeur voor identiteitsverificatie bij ondertekenen (standaard e-mail).
+  verificationMethod VerificationMethod @default(EMAIL)
+  // Voorbereiding losse toegangscode (zie Recipient); schema alleen.
+  accessCodeHash  String?
+  accessCodeSetAt DateTime?
+  active      Boolean  @default(true)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  recipients Recipient[]
+
+  @@index([displayName])
+  @@index([email])
+}
+
+/// Eén ondertekenverzoek/-workflow. Kan meerdere documenten bevatten die de
+/// ontvanger(s) in één keer ondertekenen (bijv. akkoordverklaring IB én VPB).
+model Dossier {
+  id             String        @id @default(cuid())
+  title          String
+  status         DossierStatus @default(CONCEPT)
+  ownerId        String
+  owner          Accountant    @relation(fields: [ownerId], references: [id])
+  message        String? // optioneel begeleidend bericht in de e-mail
+  archiveFolder  String? // overschrijft de archiefbestemming voor dit dossier
+  // Ontvanger na afronding ook een kopie mailen (standaard aan).
+  sendCopyToRecipient Boolean @default(true)
+  // Volgorde van ondertekenen: iedereen tegelijk of één voor één.
+  signingMode         SigningMode @default(PARALLEL)
+  // Gekozen bewijskracht voor dit dossier. De applicatie zet dit bij het aanmaken
+  // expliciet op het hoogste niveau dat de server kan (zie standaardNiveau), zodat
+  // een kantoor mét certificaat niet per ongeluk onbeschermde stukken verstuurt.
+  // De databasestandaard hieronder is alleen een achtervang voor rijen die buiten
+  // de applicatie om zijn gemaakt; AUDITSPOOR omdat dat altijd werkt.
+  assuranceLevel      AssuranceLevel @default(AUDITSPOOR)
+  // Los auditrapport (PDF) met het volledige verloop, gemaakt bij het afronden.
+  auditReportKey      String?
+  auditReportSha256   String?
+  // Geldigheidsduur van de tekenlink in dagen (instelbaar bij verzenden).
+  linkTtlDays         Int         @default(10)
+  expiresAt      DateTime?
+  sentAt         DateTime?
+  lastReminderAt DateTime?
+  // Welke herinneringen al zijn verstuurd (1 = eerste, 2 = tweede). Bewust een
+  // teller en geen booleans: bij het opnieuw verzenden van een verlopen dossier
+  // begint de reeks weer bij nul.
+  remindersSent  Int           @default(0)
+  // Hoe vaak dit dossier na verlopen opnieuw is verstuurd. Alleen bij VERLOPEN;
+  // GEWEIGERD blijft onherroepelijk.
+  resendCount    Int           @default(0)
+  // Wanneer de eigenaar voor het laatst is gepord over een dossier dat op zijn
+  // waarmerk wacht. Zonder dit blijft zo'n dossier stil liggen.
+  lastWaarmerkNudgeAt DateTime?
+  completedAt    DateTime?
+  // Handmatig gearchiveerd in SharePoint: wie zette het vinkje en wanneer.
+  //
+  // Dit is de sleutel van het hele bewaarmodel. Het portaal is een doorvoerstation,
+  // niet het archief: het ondertekende stuk gaat naar SharePoint en daar ligt de
+  // bewaarplicht. Documenten in het portaal verdwijnen 90 dagen NA dit vinkje.
+  //
+  // Nooit op de klok verwijderen, altijd op de vlag. Automatisch verwijderen naast
+  // handmatig archiveren is de enige echt gevaarlijke combinatie in dit ontwerp:
+  // zonder vinkje blijft een ondertekend dossier staan, voor altijd als het moet.
+  // Vollopen is een acceptabel probleem, verlies niet.
+  archivedAt     DateTime?
+  archivedById   String?
+  archivedBy     Accountant? @relation("DossierArchivedBy", fields: [archivedById], references: [id], onDelete: SetNull)
+  // Waar het naartoe is gegaan, zoals de medewerker het opgaf. Vrije tekst, want
+  // het archief zit buiten de app.
+  archivedNote   String?
+  // Bewaartermijn van het BEWIJS (auditspoor en metadata): zeven jaar na afronding.
+  // De documentbestanden zelf hebben een eigen, veel kortere termijn; zie
+  // archivedAt hierboven en lib/retention.ts.
+  retentionUntil DateTime?
+  createdAt      DateTime      @default(now())
+  updatedAt      DateTime      @updatedAt
+
+  documents   Document[]
+  recipients  Recipient[]
+  fields      SignatureField[]
+  auditEvents AuditEvent[]
+
+  @@index([ownerId, status])
+}
+
+/// Eén te ondertekenen document binnen een dossier, met eigen titel.
+model Document {
+  id             String   @id @default(cuid())
+  dossierId      String
+  dossier        Dossier  @relation(fields: [dossierId], references: [id], onDelete: Cascade)
+  title          String
+  fileName       String
+  order          Int      @default(0)
+  originalKey    String? // opslagsleutel: bron-PDF (na eventuele Word-conversie)
+  workingKey     String? // opslagsleutel: PDF met reeds gezette handtekeningen
+  sealedKey      String? // opslagsleutel: definitieve, verzegelde PDF
+  documentSha256 String?
+  // Afgeronde PDF inclusief auditcertificaat, platgeslagen, vlak vóór het zegel.
+  // Apart bewaard zodat een mislukte verzegeling opnieuw kan zonder de
+  // auditpagina een tweede keer toe te voegen.
+  preSealKey     String?
+  // VEROUDERD sinds changeset v1.7 (deel F). Stamt uit de opzet waarin eerst de
+  // accountant waarmerkte en daarná het organisatiezegel kwam. Die volgorde is
+  // omgedraaid: in route B zegelt de organisatie eerst (P=2) en vult het
+  // beroepscertificaat daarna het vooraf geplaatste veld. Er wordt niet meer
+  // naar geschreven.
+  //
+  // Niet verwijderd, en dat is bewust: een kolom weghalen is een migratie op
+  // bestaande dossiers, en die is de opruiming niet waard. Hetzelfde geldt voor
+  // SealStage.QUALIFIED.
+  postQualifiedKey    String?
+  postQualifiedSha256 String?
+  // Expliciet vastleggen hoe ver het verzegelen is, in plaats van het af te leiden
+  // uit gevulde sleutels. Dat afleiden was precies waar de idempotentie op stuk liep.
+  sealStage      SealStage @default(NONE)
+  // Hash over de afgeronde inhoud vlak vóór het cryptografische zegel...
+  preSealSha256  String?
+  // ...en over de uiteindelijke, verzegelde bytes (integriteitscontrole bij download).
+  sealedSha256   String?
+  // Gegevens van het cryptografische zegel (PAdES). sealedAt = serverklok,
+  // timestampedAt = tijd van de TSA en daarmee de bewijstijd.
+  sealedAt       DateTime?
+  timestampedAt  DateTime?
+  sealCertSerial String?
+  sealTsaUrl     String?
+  // Automatische herkenning bij upload (suggestie; door de gebruiker aanpasbaar).
+  detectedKind   DocumentKind?
+  detectedYear   Int?
+  ocrUsed        Boolean       @default(false)
+  createdAt      DateTime @default(now())
+
+  fields SignatureField[]
+
+  @@index([dossierId])
+}
+
+/// Een partij die moet tekenen (accountant zelf of externe ontvanger).
+model Recipient {
+  id             String      @id @default(cuid())
+  dossierId      String
+  dossier        Dossier     @relation(fields: [dossierId], references: [id], onDelete: Cascade)
+  clientId       String?
+  client         Client?     @relation(fields: [clientId], references: [id])
+  // Kantoorgebruiker die tekent (role = ZELF); leeg voor externe cliënten.
+  accountantId   String?
+  accountant     Accountant? @relation(fields: [accountantId], references: [id])
+  role           PartyRole   @default(EXTERN)
+  name           String
+  email          String
+  phone          String?
+  verificationMethod VerificationMethod @default(EMAIL)
+  order          Int         @default(0)
+  status         PartyStatus @default(PENDING)
+  signedAt       DateTime?
+  declinedReason String?
+
+  // E-mail-OTP (2e factor voor de ondertekenaar) — gehasht opgeslagen.
+  otpHash       String?
+  otpExpiresAt  DateTime?
+  otpAttempts   Int       @default(0)
+  otpVerifiedAt DateTime?
+
+  // Herverificatie bij ondertekenen door een kantoorgebruiker (rol ZELF). Eigen
+  // teller: vijf misslagen blokkeren déze ondertekening, niet het account —
+  // anders sluit een accountant zich met een typefout uit de hele app.
+  reauthAttempts   Int       @default(0)
+  reauthVerifiedAt DateTime?
+
+  // Eenmalige, kortlevende tekentoken — alleen de hash bewaren.
+  tokenHash      String?   @unique
+  tokenExpiresAt DateTime?
+  tokenUsedAt    DateTime?
+
+  // Downloadtoken voor het getekende exemplaar. Bewust GESCHEIDEN van het
+  // tekentoken: dat is eenmalig en verbruikt na ondertekening, en dat moet zo
+  // blijven. Dit token is herbruikbaar binnen zijn termijn (een download is een
+  // download, geen handeling) en kan niet worden gebruikt om te ondertekenen.
+  // Geldigheid gelijk aan hoelang de bestanden in het portaal blijven staan.
+  downloadTokenHash      String?   @unique
+  downloadTokenExpiresAt DateTime?
+
+  // Momentopname van de instemmingstekst zoals die op het scherm stond. Een
+  // later gewijzigd sjabloon mag niet veranderen wat er is gelezen.
+  consentTextSnapshot String?
+  consentTextHash     String?
+  consentShownAt      DateTime?
+
+  // Welke documentbytes deze ondertekenaar te zien kreeg (bij SEQUENTIAL ziet de
+  // tweede ondertekenaar andere bytes dan de eerste). { "<documentId>": "<sha256>" }
+  presentedHashes Json?
+  presentedAt     DateTime?
+
+  // Voorbereiding losse toegangscode als extra kanaal. Schema alleen: er is
+  // (nog) geen UI en geen handhaving.
+  accessCodeHash       String?
+  accessCodeSetAt      DateTime?
+  accessCodeVerifiedAt DateTime?
+
+  // Bezorging van de uitnodigingsmail. Bij SMTP weet je alleen dat de mail is
+  // aangeboden; met een transactionele provider koppelen we de status terug.
+  mailMessageId  String? // message-id van de provider, om webhooks te matchen
+  mailStatus     MailStatus?
+  mailStatusAt   DateTime?
+  mailBounceType String? // 'hard' | 'soft' | providerspecifiek
+  mailBounceReason String?
+  // Alleen procesindicatie: openen is onbetrouwbaar in twee richtingen en komt
+  // daarom NIET op het ondertekencertificaat.
+  mailOpenedAt   DateTime?
+  // Aantal keren automatisch opnieuw verzonden na een tijdelijke bounce.
+  mailResendCount Int @default(0)
+
+  @@index([mailMessageId])
+
+  createdAt DateTime         @default(now())
+  fields    SignatureField[]
+
+  @@index([dossierId])
+}
+
+/// Een geplaatst tekenvak (PDF-punten, pivot linksonder) op één document.
+model SignatureField {
+  id          String     @id @default(cuid())
+  dossierId   String
+  dossier     Dossier    @relation(fields: [dossierId], references: [id], onDelete: Cascade)
+  documentId  String
+  document    Document   @relation(fields: [documentId], references: [id], onDelete: Cascade)
+  recipientId String? // null = eigen veld van de accountant
+  recipient   Recipient? @relation(fields: [recipientId], references: [id], onDelete: Cascade)
+  kind        FieldKind  @default(SIGNATURE)
+  page        Int
+  x           Float
+  y           Float
+  width       Float
+  height      Float
+  filled      Boolean    @default(false)
+
+  @@index([dossierId])
+  @@index([documentId])
+}
+
+/// Append-only auditspoor.
+model AuditEvent {
+  id           String      @id @default(cuid())
+  dossierId    String?
+  dossier      Dossier?    @relation(fields: [dossierId], references: [id], onDelete: Cascade)
+  accountantId String?
+  accountant   Accountant? @relation(fields: [accountantId], references: [id])
+  recipientId  String?
+  type         String
+  message      String?
+  ipAddress    String?
+  userAgent    String?
+  metadata     Json?
+  createdAt    DateTime    @default(now())
+  // Hashketen: maakt manipulatie in de database aantoonbaar. hash = sha256 over
+  // (prevHash + type + dossierId + recipientId + message + metadata + createdAt).
+  prevHash     String?
+  hash         String?
+  // Doorlopend volgnummer. De hashketen alleen laat het verwijderen van de
+  // OUDSTE regels ongemerkt (er is dan geen volgende regel die niet meer
+  // aansluit); een gat in de nummering wel.
+  seq          BigInt   @unique @default(autoincrement())
+
+  @@index([dossierId])
+  @@index([createdAt])
+}
+
+// Ondertekensessie voor providers waarbij de ACCOUNTANT zelf autoriseert
+// (Cleverbase). Tussen het voorbereiden en het injecteren van de handtekening
+// verlaat de gebruiker de applicatie via een browserredirect; de voorbereide
+// PDF's met placeholder moeten die reis overleven.
+//
+// Eén bevestiging in de app dekt tot 50 hashes, dus een sessie kan meerdere
+// documenten omvatten. De batch is atomair: gedeeltelijk mislukt = geheel mislukt.
+model CscSigningSession {
+  id           String @id @default(cuid())
+  // OAuth2 state: minimaal 32 random bytes. Dit is de CSRF-bescherming op de
+  // redirect en wordt op de callback gevalideerd.
+  state        String @unique
+  accountantId String
+  accountant   Accountant @relation(fields: [accountantId], references: [id], onDelete: Cascade)
+  credentialId String
+  dossierId    String? // waar de accountant vandaan kwam, voor de terugkeer
+  documentIds  String[] // volgorde is bindend: signHash geeft dezelfde orde terug
+  preparedKeys Json // { documentId: opslagsleutel van de PDF met placeholder }
+  hashes       Json // { documentId: sha256 (base64) }
+  serviceToken String? // versleuteld (AES-256-GCM), nooit in leesbare vorm
+  // De handtekeningen van de provider, versleuteld. Bewust vastgelegd vóór het
+  // injecteren: valt het proces halverwege een batch van vijftig om, dan is het
+  // cryptografische werk niet verloren en hoeft de accountant niet opnieuw met
+  // zijn pincode te bevestigen. Wordt gewist zodra alles is geïnjecteerd.
+  //
+  // Beperkte gevoeligheid: een handtekening over hash H past alleen in een PDF
+  // waarvan de signedAttrs-digest exact H is. Het is geen sleutel en geen
+  // herbruikbaar token voor andere documenten.
+  signatureValues Json?
+  // De hashes exact zoals ze naar /oauth2/authorize zijn gestuurd, zodat vóór
+  // injectie te controleren is of ze nog kloppen (zie 4.2).
+  sentHashes   Json?
+  status       String // PREPARED | AUTHORIZING | SIGNED | FAILED | EXPIRED
+  expiresAt    DateTime
+  lastError    String?
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  @@index([state])
+  @@index([status, expiresAt])
+  @@index([accountantId])
+}
+
+// Ruwe webhook-gebeurtenissen van de mailprovider. Bestaat vooral voor
+// idempotentie: dezelfde gebeurtenis twee keer aangeboden mag niets extra doen.
+// De volledige payload blijft bewaard als bewijsmateriaal.
+model MailEvent {
+  id              String   @id @default(cuid())
+  provider        String // 'postmark' | 'resend'
+  providerEventId String   @unique
+  type            String // Delivery | Bounce | SpamComplaint | Open | ...
+  messageId       String?
+  recipientId     String?
+  payload         Json
+  createdAt       DateTime @default(now())
+
+  @@index([messageId])
+  @@index([recipientId])
+}
+
+/// Tellers voor de rate-limiting. Wordt gelezen en geschreven door
+/// rate-limiter-flexible met eigen SQL, niet via Prisma. Staat hier alleen zodat
+/// Prisma de tabel kent en een volgende `migrate dev` hem niet wil weggooien.
+/// De veldnamen zijn kleine letters omdat de bibliotheek die zo verwacht.
+model RateLimit {
+  key    String  @id @db.VarChar(255)
+  points Int     @default(0)
+  expire BigInt?
+}
+
+/// Anker van de auditketen op een moment in de tijd, buiten de database gezet.
+///
+/// Waarom dit bestaat: de hashketen maakt elke wijziging zichtbaar, maar wie de
+/// hele database kan herschrijven kan ook de keten consistent opnieuw uitrekenen.
+/// Dat is het realistische scenario: een gelekte DATABASE_URL, een gestolen dump,
+/// een gecompromitteerde db-container. Een anker dat buiten de database is
+/// vastgelegd (in het archief én per mail) legt de kop van de keten op moment T
+/// vast, en dan valt een herschrijving op.
+///
+/// Wat een anker NIET dekt: een herschrijving van gebeurtenissen tussen twee
+/// ankers blijft onzichtbaar. Dat venster sluit alleen een HMAC-keten. Het anker
+/// bij afronding sluit het venster voor het bewijs dat telt, want op dat moment is
+/// het dossier definitief.
+model AuditAnchor {
+  id        String   @id @default(cuid())
+  /// 'dossier' bij afronding, 'dagelijks' voor de roll-up van lopende zaken.
+  kind      String
+  /// Gevuld bij kind = 'dossier'. Geen relatie: het anker moet het opruimen van
+  /// het dossier overleven, dat is het hele punt.
+  dossierId String?
+  /// Laatste seq en hash per keten op het moment van ankeren.
+  payload   Json
+  /// Hash over de payload, zodat het anker zelf ook te controleren is.
+  hash      String
+  /// Waar het naartoe is gegaan, en of dat lukte.
+  deliveries Json
+  /// Is minstens één bestemming gelukt?
+  delivered Boolean  @default(false)
+  createdAt DateTime @default(now())
+
+  @@index([kind, createdAt])
+  @@index([dossierId])
+}
+
+// Durable job queue op Postgres (geen extra broker nodig). Wordt gebruikt voor
+// o.a. het opnieuw proberen van de verzegeling, herinneringen, verlopen en
+// opruimen. Claimen gebeurt met SELECT ... FOR UPDATE SKIP LOCKED.
+model Job {
+  id          String    @id @default(cuid())
+  kind        String // SEAL_RETRY | REMINDER | EXPIRE | ARCHIVE | RETENTION_CLEANUP
+  payload     Json
+  runAt       DateTime  @default(now())
+  attempts    Int       @default(0)
+  maxAttempts Int       @default(10)
+  lockedAt    DateTime?
+  lockedBy    String?
+  lastError   String?
+  completedAt DateTime?
+  createdAt   DateTime  @default(now())
+
+  @@index([kind, runAt, completedAt])
+  @@index([lockedAt])
+}
+
+/// Aanpasbaar tekstsjabloon per documenttype (titel + begeleidend bericht).
+/// Ontbreekt er een rij voor een type, dan geldt de standaardtekst uit de code.
+model MessageTemplate {
+  id            String       @id @default(cuid())
+  kind          DocumentKind @unique
+  titleTemplate String
+  bodyTemplate  String
+  updatedAt     DateTime     @updatedAt
+  updatedById   String?
+}
