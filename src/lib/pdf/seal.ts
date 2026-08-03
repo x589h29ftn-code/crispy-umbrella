@@ -163,38 +163,78 @@ export async function sealDocument(input: SealInput): Promise<SealResult> {
     y = height - margin
   }
 
+  /**
+   * Breekt tekst op woordgrenzen binnen de beschikbare breedte, zonder te
+   * tekenen. Apart van `paragraph` zodat de hoogte van een blok vooraf te meten
+   * is; zie de reservering bij "Integriteit".
+   *
+   * Woorden die zelf al te breed zijn (een lang e-mailadres, een user-agent
+   * zonder spaties) worden hard doorgeknipt. Anders zou zo'n woord alsnog van de
+   * pagina aflopen, en `drawText` kapt niets af: het verdwijnt gewoon buiten het
+   * blad zonder dat er iets van te zien is.
+   */
+  const wrapLines = (text: string, size: number, indent = 0, f: typeof font = font): string[] => {
+    const maxWidth = width - 2 * margin - indent
+    const out: string[] = []
+    const woorden: string[] = []
+    for (const woord of text.split(/\s+/).filter(Boolean)) {
+      if (f.widthOfTextAtSize(woord, size) <= maxWidth) {
+        woorden.push(woord)
+        continue
+      }
+      let rest = woord
+      while (rest && f.widthOfTextAtSize(rest, size) > maxWidth) {
+        let n = rest.length
+        while (n > 1 && f.widthOfTextAtSize(rest.slice(0, n), size) > maxWidth) n--
+        woorden.push(rest.slice(0, n))
+        rest = rest.slice(n)
+      }
+      if (rest) woorden.push(rest)
+    }
+    let current = ''
+    for (const word of woorden) {
+      const candidate = current ? `${current} ${word}` : word
+      if (f.widthOfTextAtSize(candidate, size) > maxWidth && current) {
+        out.push(current)
+        current = word
+      } else {
+        current = candidate
+      }
+    }
+    if (current) out.push(current)
+    return out
+  }
+
+  /**
+   * Eén regel, of meer als hij niet past. Ook hier moet worden afgebroken: een
+   * lange dossiertitel of een lange naam-met-e-mailadres liep anders van de
+   * pagina af, en dan mist er tekst op het bewijsstuk zonder dat dat opvalt.
+   */
   const line = (text: string, opts?: { size?: number; f?: typeof font; color?: typeof grey; gap?: number }) => {
     const size = opts?.size ?? 10
     const gap = opts?.gap ?? size + 6
-    ensure(gap)
-    page.drawText(text, { x: margin, y, size, font: opts?.f ?? font, color: opts?.color ?? rgb(0.1, 0.1, 0.12) })
-    y -= gap
+    const f = opts?.f ?? font
+    for (const regel of wrapLines(text, size, 0, f)) {
+      ensure(gap)
+      page.drawText(regel, { x: margin, y, size, font: f, color: opts?.color ?? rgb(0.1, 0.1, 0.12) })
+      y -= gap
+    }
   }
 
   /** Breekt lange tekst af op woordgrenzen binnen de beschikbare breedte. */
   const paragraph = (text: string, opts?: { size?: number; indent?: number }) => {
     const size = opts?.size ?? 9
     const indent = opts?.indent ?? 0
-    const maxWidth = width - 2 * margin - indent
-    const words = text.split(/\s+/).filter(Boolean)
-    let current = ''
-    for (const word of words) {
-      const candidate = current ? `${current} ${word}` : word
-      if (font.widthOfTextAtSize(candidate, size) > maxWidth && current) {
-        ensure(size + 3)
-        page.drawText(current, { x: margin + indent, y, size, font, color: grey })
-        y -= size + 3
-        current = word
-      } else {
-        current = candidate
-      }
-    }
-    if (current) {
+    for (const regel of wrapLines(text, size, indent)) {
       ensure(size + 3)
-      page.drawText(current, { x: margin + indent, y, size, font, color: grey })
+      page.drawText(regel, { x: margin + indent, y, size, font, color: grey })
       y -= size + 3
     }
   }
+
+  /** Hoogte van een paragraaf, om vooraf ruimte te kunnen reserveren. */
+  const paragraphHeight = (text: string, size = 9, indent = 0) =>
+    wrapLines(text, size, indent).length * (size + 3)
 
   page.drawRectangle({ x: 0, y: height - 8, width, height: 8, color: accent })
   line('Ondertekencertificaat', { size: 20, f: bold, gap: 30 })
@@ -236,7 +276,11 @@ export async function sealDocument(input: SealInput): Promise<SealResult> {
       line(`    Verificatiecode ingevoerd: ${fmt(s.otpVerifiedAt)}`, { size: 9, color: grey })
     }
     line(`    Ondertekend: ${fmt(s.signedAt)}`, { size: 9, color: grey })
-    line(`    Identiteitscontrole: ${verificationText(s.verification)}`, { size: 8, color: grey })
+    // Afgebroken op woordgrenzen: de omschrijving voor een kantoorondertekening
+    // is langer dan één regel en werd anders bij de paginarand afgekapt
+    // ("... op het moment van"), precies midden in wat er is gecontroleerd.
+    line('    Identiteitscontrole:', { size: 8, color: grey, gap: 11 })
+    paragraph(verificationText(s.verification), { size: 8, indent: 16 })
     line(`    IP-adres bij ondertekenen: ${s.ip ?? '-'}`, { size: 9, color: grey })
     line(`    Apparaat: ${deviceSummary(s.userAgent)}`, { size: 9, color: grey })
     // Voluit en afgebroken op woordgrenzen. Een harde afkap op tekenlengte sneed
@@ -260,35 +304,53 @@ export async function sealDocument(input: SealInput): Promise<SealResult> {
   })
 
   y -= 8
-  line('Integriteit', { size: 12, f: bold, gap: 18 })
-  paragraph(
+
+  const integriteitUitleg =
     'Onderstaande SHA-256-vingerafdruk is berekend over de ondertekende documentinhoud ' +
-      '(vóór dit certificaat). Elke wijziging maakt deze ongeldig. Staat er een digitaal ' +
-      'zegel in dit document, dan controleert uw PDF-lezer de integriteit automatisch en ' +
-      'geldt het tijdstip uit de tijdstempeldienst als het moment van verzegeling.'
-  )
-  y -= 4
-  paragraph(
+    '(vóór dit certificaat). Elke wijziging maakt deze ongeldig. Staat er een digitaal ' +
+    'zegel in dit document, dan controleert uw PDF-lezer de integriteit automatisch en ' +
+    'geldt het tijdstip uit de tijdstempeldienst als het moment van verzegeling.'
+  const hashUitleg =
     'Let op: de vingerafdruk die per ondertekenaar is vermeld, hoort bij de versie die ' +
-      'díe persoon op het scherm zag. Bij ondertekenen op volgorde verschilt die per ' +
-      'persoon en wijkt hij dus af van de vingerafdruk van dit eindbestand. Dat is geen ' +
-      'aanwijzing dat er iets is gewijzigd.'
-  )
+    'díe persoon op het scherm zag. Bij ondertekenen op volgorde verschilt die per ' +
+    'persoon en wijkt hij dus af van de vingerafdruk van dit eindbestand. Dat is geen ' +
+    'aanwijzing dat er iets is gewijzigd.'
+  const geenZegelUitleg =
+    'Er staat geen digitaal zegel in dit bestand. De echtheid is daarom niet automatisch ' +
+    'door uw PDF-lezer te controleren; alleen bovenstaande vingerafdruk en dit certificaat ' +
+    'leggen de inhoud vast.'
+
+  // Het hele integriteitsblok hoort bij elkaar: de kop, de uitleg, de
+  // vingerafdruk, het moment van opmaak en de eventuele waarschuwing. Eerder
+  // stond hier alleen een reservering vóór de vingerafdruk; dan bleven kop en
+  // uitleg op de vorige pagina achter en begon de nieuwe pagina met een kale
+  // hash. Daarom wordt de hoogte van het complete blok vooraf gemeten. Het blok
+  // is ruim kleiner dan een lege pagina, dus het past er altijd op.
+  const integriteitHoogte =
+    18 +
+    paragraphHeight(integriteitUitleg) +
+    4 +
+    paragraphHeight(hashUitleg) +
+    6 +
+    14 +
+    26 +
+    13 +
+    (input.sealed === false ? 7 + 13 + paragraphHeight(geenZegelUitleg) : 0)
+  ensure(integriteitHoogte)
+
+  line('Integriteit', { size: 12, f: bold, gap: 18 })
+  paragraph(integriteitUitleg)
+  y -= 4
+  paragraph(hashUitleg)
   y -= 6
 
   const hashLine1 = sha256.slice(0, 32)
   const hashLine2 = sha256.slice(32)
-  // De vingerafdruk, het moment van opmaak en de eventuele waarschuwing horen
-  // bij elkaar. Zonder deze reservering belandde "Dit document is niet
-  // verzegeld." alleen op een volgende pagina, losgekoppeld van de hash waar
-  // hij over gaat — juist die regel mag niet verweesd raken.
-  ensure(input.sealed === false ? 140 : 60)
   page.drawText(hashLine1, { x: margin, y, size: 10, font: bold, color: accent })
   y -= 14
   page.drawText(hashLine2, { x: margin, y, size: 10, font: bold, color: accent })
   y -= 26
   const opgemaakt = new Date()
-  ensure(20)
   page.drawText(`Certificaat opgemaakt op ${fmt(opgemaakt)} (${utcOffset(opgemaakt)}, serverklok)`, {
     x: margin,
     y,
@@ -300,7 +362,6 @@ export async function sealDocument(input: SealInput): Promise<SealResult> {
   // Niet onderdrukbaar: staat de verzegeling uit, dan hoort dat op het certificaat.
   if (input.sealed === false) {
     y -= 7
-    ensure(20)
     page.drawText('Dit document is niet verzegeld.', {
       x: margin,
       y,
@@ -309,11 +370,7 @@ export async function sealDocument(input: SealInput): Promise<SealResult> {
       color: rgb(0.72, 0.25, 0.05)
     })
     y -= 13
-    paragraph(
-      'Er staat geen digitaal zegel in dit bestand. De echtheid is daarom niet automatisch ' +
-        'door uw PDF-lezer te controleren; alleen bovenstaande vingerafdruk en dit certificaat ' +
-        'leggen de inhoud vast.'
-    )
+    paragraph(geenZegelUitleg)
   }
 
   plattenEnControleren(doc, PDFName)
