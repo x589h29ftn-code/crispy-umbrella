@@ -122,24 +122,31 @@ async function testHerinneringen(accId: string) {
     include: { recipients: true }
   })
 
+  // `sendDueReminders` veegt de hele database. Er wordt hier daarom niet op een
+  // exact totaal gecontroleerd: elk ander dossier dat toevallig ook aan de beurt
+  // is, telt mee. Zo'n controle gaat niet stuk omdat de code fout is maar omdat
+  // er iets naast staat — en dan wordt hij genegeerd. Wat wél hard is: wat er met
+  // dít dossier en déze drie ontvangers gebeurt.
   const res = await sendDueReminders()
-  check('er is één dossier herinnerd', res.dossiers === 1, res)
-  check('alleen wie nog moet tekenen én bereikbaar is krijgt een herinnering', res.ontvangers === 1, res)
+  check('de veegronde heeft dit dossier meegenomen', res.dossiers >= 1, res)
 
   const regels = await prisma.auditEvent.findMany({
     where: { dossierId: dossier.id, type: 'HERINNERD' },
     select: { message: true, recipientId: true }
   })
-  check('de herinnering staat in het auditspoor', regels.length === 1, regels)
+  check('alleen wie nog moet tekenen én bereikbaar is krijgt een herinnering', regels.length === 1, regels)
   const traag = dossier.recipients.find((r) => r.email === 'traag@example.com')!
   check('bij de juiste ontvanger', regels[0]?.recipientId === traag.id)
+  check('de herinnering staat in het auditspoor', !!regels[0])
 
   const na = await prisma.recipient.findUniqueOrThrow({ where: { id: traag.id }, select: { tokenHash: true } })
   check('de ontvanger heeft een nieuwe tekenlink gekregen', !!na.tokenHash)
 
-  // Nog een ronde: dag 12 is nog niet bereikt, dus niets.
-  const tweede = await sendDueReminders()
-  check('een tweede ronde op dezelfde dag stuurt niets', tweede.dossiers === 0, tweede)
+  // Nog een ronde: dag 12 is nog niet bereikt, dus voor dit dossier niets. Ook
+  // hier geen totaal, maar het aantal herinneringen van dít dossier.
+  await sendDueReminders()
+  const naTweede = await prisma.auditEvent.count({ where: { dossierId: dossier.id, type: 'HERINNERD' } })
+  check('een tweede ronde op dezelfde dag stuurt niets', naTweede === 1, naTweede)
 
   const geteld = await prisma.dossier.findUniqueOrThrow({
     where: { id: dossier.id },
@@ -168,9 +175,11 @@ async function testVerlopen(accId: string) {
     include: { recipients: true }
   })
 
+  // Ook een veegronde over de hele database; zie de toelichting bij de
+  // herinneringen. Wat er met dít dossier gebeurt, staat hieronder.
   const res = await expireDueDossiers()
-  check('het verlopen dossier is verwerkt', res.dossiers === 1, res)
-  check('één tekenlink ingetrokken', res.tokensIngetrokken === 1, res)
+  check('de veegronde heeft dit dossier meegenomen', res.dossiers >= 1, res)
+  check('er is minstens één tekenlink ingetrokken', res.tokensIngetrokken >= 1, res)
 
   const na = await prisma.dossier.findUniqueOrThrow({
     where: { id: dossier.id },

@@ -25,6 +25,7 @@
  */
 import { spawn, type ChildProcess } from 'node:child_process'
 import { createHmac, randomBytes } from 'node:crypto'
+import { createServer } from 'node:net'
 import { prisma } from '@/lib/db'
 import { env } from '@/env'
 import { storage } from '@/lib/storage'
@@ -180,6 +181,41 @@ async function main() {
   // --- Server starten ---
   let server: ChildProcess | null = null
   try {
+    // Eerst kijken of de poort vrij is. Blijft er een server van een vorige ronde
+    // hangen, dan lukt `next start` niet (EADDRINUSE), maar antwoordt die oude
+    // server wél op /login — en dan test deze rooktest stilletjes een verouderde
+    // build. Dat is erger dan een fout: het geeft een uitslag over code die er
+    // niet meer is.
+    //
+    // Er wordt geprobeerd te BINDEN en niet te fetchen: een half vastgelopen
+    // server houdt de poort bezet zonder nog op HTTP te antwoorden, en een
+    // fetch-probe ziet dat niet.
+    const bezet = await new Promise<boolean>((resolve) => {
+      const s = createServer()
+      s.once('error', () => resolve(true))
+      s.once('listening', () => s.close(() => resolve(false)))
+      s.listen(PORT, '0.0.0.0')
+    })
+    // `next start` draait als productie, en dan vult env.ts géén dev-placeholders
+    // meer in. Ontbreekt er een geheim, dan valt élke ingelogde pagina om met een
+    // kale 500 en lijkt het of de applicatie stuk is. Daarom vooraf gecontroleerd.
+    const ontbreekt = ['SESSION_SECRET', 'DATABASE_URL', 'APP_URL', 'STORAGE_ENCRYPTION_KEY'].filter(
+      (k) => !process.env[k]
+    )
+    if (ontbreekt.length) {
+      check('alle geheimen staan in de omgeving', false, `ontbreekt: ${ontbreekt.join(', ')}`)
+      throw new Error('omgeving onvolledig')
+    }
+
+    if (bezet) {
+      check(
+        `poort ${PORT} is vrij`,
+        false,
+        `er draait al iets op ${BASE}; stop dat eerst (pkill -f "next start -p ${PORT}")`
+      )
+      throw new Error('poort bezet')
+    }
+
     server = spawn('npx', ['next', 'start', '-p', String(PORT)], {
       cwd: process.cwd(),
       stdio: ['ignore', 'pipe', 'pipe'],
@@ -229,6 +265,12 @@ async function main() {
       // doorverwijzing en geen fout. Alleen 5xx betekent dat de pagina omvalt.
       const ok = status === 200 || status === 307 || status === 308
       check(`${r.naam} rendert zonder serverfout`, ok, `status ${status}`)
+      // Zonder de serverkant erbij zegt "status 500" niets en begint het zoeken
+      // opnieuw. De laatste regels van het serverlog staan er daarom bij.
+      if (!ok) {
+        console.log('        serverlog:', serverLog.slice(-1500).trim() || '(leeg)')
+        serverLog = ''
+      }
     }
   } finally {
     if (server) {

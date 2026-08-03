@@ -47,6 +47,29 @@ async function tekstVan(bytes: Uint8Array): Promise<string> {
   return out
 }
 
+/**
+ * Tekst die buiten de rechterkantlijn van het rapport valt (marge 44).
+ *
+ * `drawText` kapt niets af: te lange tekst loopt gewoon van de pagina af en
+ * staat dan nog wél in de tekstlaag. Een controle op de inhoud ziet die fout
+ * dus niet — alleen de meetkunde verraadt hem.
+ */
+async function buitenDeKantlijn(bytes: Uint8Array, marge = 44): Promise<string[]> {
+  const pdfjs = await import('pdfjs-dist/legacy/build/pdf.mjs')
+  const doc = await pdfjs.getDocument({ data: Uint8Array.from(bytes), useSystemFonts: true }).promise
+  const buiten: string[] = []
+  for (let i = 1; i <= doc.numPages; i++) {
+    const page = await doc.getPage(i)
+    const breedte = page.getViewport({ scale: 1 }).width
+    for (const it of (await page.getTextContent()).items) {
+      if (!('str' in it) || !it.str.trim()) continue
+      // Eén punt speling voor afrondingsverschillen in de breedtemeting.
+      if (it.transform[4] + it.width > breedte - marge + 1) buiten.push(`p${i}: ${it.str}`)
+    }
+  }
+  return buiten
+}
+
 async function schoonVooraf() {
   const oud = await prisma.accountant.findUnique({ where: { email: EMAIL }, select: { id: true } })
   if (!oud) return
@@ -196,6 +219,8 @@ async function main() {
   check('alle acht gebeurtenissen zijn meegenomen', rapport.gebeurtenissen === 8, rapport.gebeurtenissen)
 
   const tekst = await tekstVan(rapport.bytes)
+  const overloop = await buitenDeKantlijn(rapport.bytes)
+  check('geen tekst in het rapport loopt van de pagina af', overloop.length === 0, overloop.slice(0, 5))
 
   // Het verzoek en het niveau.
   check('het rapport noemt de titel', tekst.includes('Akkoordverklaring aangifte IB 2025'))

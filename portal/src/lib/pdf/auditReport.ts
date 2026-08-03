@@ -239,37 +239,65 @@ export async function buildAuditReport(input: AuditReportInput): Promise<AuditRe
     if (y - nodig < margin) nieuwePagina()
   }
 
+  /**
+   * Breekt tekst af binnen de beschikbare breedte. Woorden die zelf al te breed
+   * zijn (een lang e-mailadres, een user-agent zonder spaties) worden hard
+   * doorgeknipt: `drawText` kapt niets af, dus zonder dat loopt zo'n woord van de
+   * pagina af en mist er tekst op het rapport zonder dat het opvalt.
+   */
+  const breekAf = (tekst: string, size: number, f: typeof font, beschikbaar: number): string[] => {
+    const stukken: string[] = []
+    for (const woord of tekst.split(/\s+/).filter(Boolean)) {
+      if (f.widthOfTextAtSize(woord, size) <= beschikbaar) {
+        stukken.push(woord)
+        continue
+      }
+      let rest = woord
+      while (rest && f.widthOfTextAtSize(rest, size) > beschikbaar) {
+        let n = rest.length
+        while (n > 1 && f.widthOfTextAtSize(rest.slice(0, n), size) > beschikbaar) n--
+        stukken.push(rest.slice(0, n))
+        rest = rest.slice(n)
+      }
+      if (rest) stukken.push(rest)
+    }
+    const uit: string[] = []
+    let huidig = ''
+    for (const w of stukken) {
+      const kandidaat = huidig ? `${huidig} ${w}` : w
+      if (f.widthOfTextAtSize(kandidaat, size) > beschikbaar && huidig) {
+        uit.push(huidig)
+        huidig = w
+      } else huidig = kandidaat
+    }
+    if (huidig) uit.push(huidig)
+    return uit
+  }
+
   const regel = (
     tekst: string,
     opts?: { size?: number; f?: typeof font; color?: typeof grijs; gap?: number; x?: number }
   ) => {
     const size = opts?.size ?? 9.5
     const gap = opts?.gap ?? size + 4
-    ensure(gap)
-    page.drawText(tekst, { x: opts?.x ?? margin, y, size, font: opts?.f ?? font, color: opts?.color ?? zwart })
-    y -= gap
+    const f = opts?.f ?? font
+    const x = opts?.x ?? margin
+    for (const r of breekAf(tekst, size, f, width - margin - x)) {
+      ensure(gap)
+      page.drawText(r, { x, y, size, font: f, color: opts?.color ?? zwart })
+      y -= gap
+    }
   }
 
   const alinea = (tekst: string, opts?: { size?: number; indent?: number; f?: typeof font }) => {
     const size = opts?.size ?? 8.5
     const indent = opts?.indent ?? 0
     const f = opts?.f ?? font
-    const maxBreedte = width - 2 * margin - indent
-    const woorden = tekst.split(/\s+/).filter(Boolean)
-    let huidig = ''
-    const schrijf = (t: string) => {
+    for (const t of breekAf(tekst, size, f, width - 2 * margin - indent)) {
       ensure(size + 3)
       page.drawText(t, { x: margin + indent, y, size, font: f, color: grijs })
       y -= size + 3
     }
-    for (const w of woorden) {
-      const kandidaat = huidig ? `${huidig} ${w}` : w
-      if (f.widthOfTextAtSize(kandidaat, size) > maxBreedte && huidig) {
-        schrijf(huidig)
-        huidig = w
-      } else huidig = kandidaat
-    }
-    if (huidig) schrijf(huidig)
   }
 
   /** Lange hex-waarde over meerdere regels, in een vaste breedte. */

@@ -28,16 +28,45 @@ function pngDataUrl(): string {
   return `data:image/png;base64,${base64}`
 }
 
-async function tekstVan(bytes: Uint8Array): Promise<string> {
+async function paginasVan(bytes: Uint8Array): Promise<string[]> {
   const pdfjs = await import('pdfjs-dist/legacy/build/pdf.mjs')
   const doc = await pdfjs.getDocument({ data: Uint8Array.from(bytes), useSystemFonts: true }).promise
-  let out = ''
+  const out: string[] = []
   for (let i = 1; i <= doc.numPages; i++) {
     const page = await doc.getPage(i)
     const content = await page.getTextContent()
-    out += content.items.map((it) => ('str' in it ? it.str : '')).join(' ') + '\n'
+    out.push(content.items.map((it) => ('str' in it ? it.str : '')).join(' '))
   }
   return out
+}
+
+async function tekstVan(bytes: Uint8Array): Promise<string> {
+  return (await paginasVan(bytes)).join('\n')
+}
+
+/**
+ * Tekst die buiten de rechterkantlijn valt.
+ *
+ * `drawText` kapt niets af: te lange tekst loopt gewoon van de pagina af. In de
+ * tekstlaag staat hij dan nog helemaal, dus een controle op de inhoud ziet zo'n
+ * fout niet — alleen de meetkunde verraadt hem. Daarom wordt hier per tekstitem
+ * de rechterrand vergeleken met de paginabreedte.
+ */
+async function buitenDeKantlijn(bytes: Uint8Array, marge = 48): Promise<string[]> {
+  const pdfjs = await import('pdfjs-dist/legacy/build/pdf.mjs')
+  const doc = await pdfjs.getDocument({ data: Uint8Array.from(bytes), useSystemFonts: true }).promise
+  const buiten: string[] = []
+  for (let i = 1; i <= doc.numPages; i++) {
+    const page = await doc.getPage(i)
+    const breedte = page.getViewport({ scale: 1 }).width
+    for (const it of (await page.getTextContent()).items) {
+      if (!('str' in it) || !it.str.trim()) continue
+      const rechts = it.transform[4] + it.width
+      // Eén punt speling voor afrondingsverschillen in de breedtemeting.
+      if (rechts > breedte - marge + 1) buiten.push(`p${i}: ${it.str}`)
+    }
+  }
+  return buiten
 }
 
 async function main() {
@@ -207,7 +236,88 @@ async function main() {
   check('certificaat beschrijft de omvang van het stuk', /Omvang: \d+ pagina/.test(certTekst))
   check('certificaat telt de handtekeningvelden', /handtekeningveld/.test(certTekst))
   check('certificaat benoemt de tijdzone', certTekst.includes('Europe/Amsterdam'))
-  check('certificaat benoemt de identiteitscontrole', /Identiteitscontrole: /.test(certTekst))
+  check('certificaat benoemt de identiteitscontrole', /Identiteitscontrole:/.test(certTekst))
+  // De omschrijving van de identiteitscontrole is langer dan één regel en werd
+  // bij de paginarand afgekapt ("... op het moment van"), midden in wat er nu
+  // precies is gecontroleerd. Nu breekt hij af op woordgrenzen.
+  check(
+    'omschrijving van de identiteitscontrole staat er voluit',
+    certTekst.includes('verificatiecode per e-mail naar dat adres') ||
+      certTekst.includes('verificatiecode per sms naar het opgegeven nummer') ||
+      certTekst.includes('verse verificatiecode op het moment van ondertekenen'),
+    certTekst.slice(certTekst.indexOf('Identiteitscontrole'), certTekst.indexOf('Identiteitscontrole') + 300)
+  )
+  const overloop = metCert.preSealKey ? await buitenDeKantlijn(await storage().get(metCert.preSealKey)) : []
+  check('geen tekst op het certificaat loopt van de pagina af', overloop.length === 0, overloop.slice(0, 5))
+
+  // Los van deze fixture, want die heeft alleen externe ondertekenaars met de
+  // kortste omschrijving. De omschrijving bij een kantoorondertekening is de
+  // langste die voorkomt, en die liep eerder van de pagina af. Daarom hier een
+  // certificaat met álle lange varianten erin.
+  {
+    const { PDFDocument: LeegDoc } = await import('@cantoo/pdf-lib')
+    const leeg = await LeegDoc.create()
+    leeg.addPage([595.28, 841.89])
+    const { sealDocument } = await import('@/lib/pdf/seal')
+    const langeUa =
+      'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/139.0.0.0 Safari/537.36 Edg/139.0.0.0'
+    const proef = await sealDocument({
+      pdfBytes: await leeg.save(),
+      dossierTitle: 'Jaarrekening 2025 en de bijbehorende publicatiestukken — Een Tamelijk Lange Bedrijfsnaam Holding B.V.',
+      dossierId: 'cmproefdossierkenmerk000000',
+      sealed: false,
+      fieldCounts: { signature: 3, initials: 1, date: 1 },
+      signers: (['KANTOOR', 'SMS', 'EMAIL'] as const).map((v, i) => ({
+        name: `Ondertekenaar ${i + 1} met een lange naam`,
+        email: `ondertekenaar${i + 1}@een-tamelijk-lang-domein-voorbeeld.nl`,
+        verification: v,
+        ip: '198.51.100.24',
+        userAgent: langeUa,
+        sentAt: new Date(),
+        openedAt: new Date(),
+        otpVerifiedAt: new Date(),
+        reauthVerifiedAt: new Date(),
+        signedAt: new Date()
+      }))
+    })
+    const proefOverloop = await buitenDeKantlijn(proef.sealedBytes)
+    check(
+      'certificaat blijft binnen de kantlijn bij de langste omschrijvingen',
+      proefOverloop.length === 0,
+      proefOverloop.slice(0, 5)
+    )
+  }
+
+  // Het integriteitsblok hoort op één pagina: kop, uitleg, vingerafdruk en de
+  // eventuele waarschuwing. Eerder bleven kop en uitleg achter op de vorige
+  // pagina en begon de nieuwe met een kale hash zonder tekst erbij.
+  // Geankerd op de pagina van de vingerafdruk zelf, niet op die van de kop: de
+  // breuk die hier fout ging liet de kop en de uitleg juist staan en verplaatste
+  // alleen de hash. Een controle die bij de kop begint, ziet dat niet.
+  const certPaginas = metCert.preSealKey ? await paginasVan(await storage().get(metCert.preSealKey)) : []
+  const hashPagina = certPaginas.findIndex((p) => /\b[0-9a-f]{32}\b/.test(p))
+  check('certificaat toont de vingerafdruk', hashPagina >= 0)
+  if (hashPagina >= 0) {
+    const blad = certPaginas[hashPagina]
+    check('de kop "Integriteit" staat bij de vingerafdruk', blad.includes('Integriteit'), blad.slice(0, 400))
+    check(
+      'de uitleg staat op dezelfde pagina als de vingerafdruk',
+      blad.includes('SHA-256-vingerafdruk is berekend'),
+      blad.slice(0, 400)
+    )
+    check(
+      'het moment van opmaak staat op dezelfde pagina als de vingerafdruk',
+      blad.includes('Certificaat opgemaakt op'),
+      blad.slice(-400)
+    )
+    if (certTekst.includes('Dit document is niet verzegeld.')) {
+      check(
+        'de waarschuwing zonder zegel staat bij de vingerafdruk',
+        blad.includes('Dit document is niet verzegeld.'),
+        blad.slice(-400)
+      )
+    }
+  }
 
   // A.2 uit changeset v1.7. Het organisatiezegel certificeert met DocMDP P=1, dus
   // de stempels moeten pagina-inhoud zijn en er mag geen formulierveld of
