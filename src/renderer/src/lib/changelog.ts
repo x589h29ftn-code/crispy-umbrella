@@ -11,7 +11,8 @@ export const APP_CHANGELOG: { version: string; items: string[] }[] = [
       'Zelf ondertekenen kan op twee manieren tegelijk: een zichtbare handtekening-afbeelding én een echte digitale ondertekening (PAdES). Voor de gratis start maak je bij "Certificaat" een zelf-ondertekend certificaat aan; later kun je een AATL/gekwalificeerd .p12-certificaat importeren voor een vertrouwde handtekening',
       'Laat een tweede partij op een andere plek in het document tekenen: verstuur het via je eigen Outlook (ontvanger, onderwerp en begeleidende tekst worden vooraf ingevuld) en importeer het getekende bestand terug in het dashboard — de status springt dan automatisch op "Ondertekend"',
       'Herinneringen: bij een verzonden, nog niet getekend document toont het dashboard "x dagen geleden verzonden" en een knop die een herinneringsmail via Outlook klaarzet',
-      'Elk dossier heeft een tijdlijn (aangemaakt, zelf-getekend, verzonden, herinnering, geïmporteerd) en de dossiers worden — net als de sjablonen — in de gedeelde bibliotheekmap bewaard, zodat het hele kantoor hetzelfde overzicht heeft'
+      'Elk dossier heeft een tijdlijn (aangemaakt, zelf-getekend, verzonden, herinnering, geïmporteerd) en de dossiers worden — net als de sjablonen — in de gedeelde bibliotheekmap bewaard, zodat het hele kantoor hetzelfde overzicht heeft',
+      'De app start voortaan leeg: de PDF\'s van de vorige keer worden niet meer automatisch geopend, ook niet in het overzicht voor samenvoegen en splitsen. Wil je dat wél, zet dan "Vorige sessie herstellen bij opstarten" aan bij Voorkeuren'
     ]
   },
   {

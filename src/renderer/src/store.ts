@@ -81,6 +81,7 @@ const NIGHT_MODE_STORAGE_KEY = 'pdf-studio-night-mode'
 const FLATTEN_STORAGE_KEY = 'pdf-studio-flatten-forms'
 const CLEAN_META_STORAGE_KEY = 'pdf-studio-clean-metadata'
 const TOOLBAR_HIDDEN_STORAGE_KEY = 'pdf-studio-toolbar-hidden'
+const RESTORE_SESSION_STORAGE_KEY = 'pdf-studio-restore-session'
 
 function getInitialReaderView(): 'scroll' | 'spread' | 'single' {
   const v = window.localStorage.getItem(READER_VIEW_STORAGE_KEY)
@@ -132,10 +133,16 @@ interface StudioState {
   flattenForms: boolean
   /** Metadata opschonen bij export (auteur/maker/producer/XMP weg). */
   cleanMetadata: boolean
+  /**
+   * Vorige sessie terugzetten bij het opstarten. Standaard uit: de app begint
+   * leeg, zowel in het leestabblad als in het overzicht (samenvoegen/splitsen).
+   */
+  restoreLastSession: boolean
 
   setFormValue: (sourceId: string, fieldName: string, value: string | boolean) => void
   setFlattenForms: (flatten: boolean) => void
   setCleanMetadata: (clean: boolean) => void
+  setRestoreLastSession: (on: boolean) => void
   setAuthorName: (name: string) => void
   /** Herstelt een vorige sessie (alleen wanneer er nog niets geopend is). */
   restoreSession: (payload: {
@@ -356,6 +363,7 @@ export const useStudioStore = create<StudioState>((set, get) => ({
   formValues: {},
   flattenForms: window.localStorage.getItem(FLATTEN_STORAGE_KEY) === '1',
   cleanMetadata: window.localStorage.getItem(CLEAN_META_STORAGE_KEY) === '1',
+  restoreLastSession: window.localStorage.getItem(RESTORE_SESSION_STORAGE_KEY) === '1',
 
   setFormValue: (sourceId, fieldName, value) => {
     set((state) => ({
@@ -373,6 +381,10 @@ export const useStudioStore = create<StudioState>((set, get) => ({
   setCleanMetadata: (clean) => {
     window.localStorage.setItem(CLEAN_META_STORAGE_KEY, clean ? '1' : '0')
     set({ cleanMetadata: clean })
+  },
+  setRestoreLastSession: (on) => {
+    window.localStorage.setItem(RESTORE_SESSION_STORAGE_KEY, on ? '1' : '0')
+    set({ restoreLastSession: on })
   },
 
   restoreSession: (payload) => {

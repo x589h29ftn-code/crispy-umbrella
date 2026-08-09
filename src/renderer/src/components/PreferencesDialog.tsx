@@ -18,6 +18,8 @@ export default function PreferencesDialog(): JSX.Element | null {
   const setFlattenForms = useStudioStore((s) => s.setFlattenForms)
   const cleanMetadata = useStudioStore((s) => s.cleanMetadata)
   const setCleanMetadata = useStudioStore((s) => s.setCleanMetadata)
+  const restoreLastSession = useStudioStore((s) => s.restoreLastSession)
+  const setRestoreLastSession = useStudioStore((s) => s.setRestoreLastSession)
 
   useEffect(() => {
     if (!open) return
@@ -88,6 +90,21 @@ export default function PreferencesDialog(): JSX.Element | null {
             ))}
           </div>
         </div>
+
+        <label className="prefs-check">
+          <input
+            type="checkbox"
+            checked={restoreLastSession}
+            onChange={(e) => setRestoreLastSession(e.target.checked)}
+          />
+          <span>
+            <span className="prefs-row__title">Vorige sessie herstellen bij opstarten</span>
+            <span className="prefs-row__hint">
+              Uit: de app begint leeg, ook in het overzicht voor samenvoegen en splitsen. Aan: de documenten en
+              bewerkingen van de vorige keer komen terug.
+            </span>
+          </span>
+        </label>
 
         <label className="prefs-check">
           <input type="checkbox" checked={readerNightMode} onChange={(e) => setReaderNightMode(e.target.checked)} />

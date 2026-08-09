@@ -13,18 +13,36 @@ interface SessionState {
 const SAVE_DEBOUNCE_MS = 1500
 
 /**
- * Sessieherstel: bij het opstarten wordt de vorige werksessie (documenten,
- * bewerkingen, handtekeningen, formulierwaarden) teruggezet, en elke wijziging
- * wordt met een korte vertraging naar de gebruikersmap weggeschreven.
+ * Sessieherstel: alleen wanneer de voorkeur "Vorige sessie herstellen" aan
+ * staat wordt de vorige werksessie (documenten, bewerkingen, handtekeningen,
+ * formulierwaarden) teruggezet en bij elke wijziging bewaard. Standaard staat
+ * de voorkeur uit: de app begint dan leeg — ook in het overzicht waar je
+ * samenvoegt en splitst — en er blijft niets op schijf achter.
  */
 export function initSessionPersistence(): void {
   if (typeof window.api.sessionLoad !== 'function') return
 
-  void restore()
+  let enabled = useStudioStore.getState().restoreLastSession
+  if (enabled) void restore()
+  else void clear()
 
   let timer: number | null = null
   let lastSnapshot = ''
   useStudioStore.subscribe((state) => {
+    if (!state.restoreLastSession) {
+      // Voorkeur (net) uitgezet: niets meer bewaren en het opgeslagene wissen.
+      if (enabled) {
+        enabled = false
+        lastSnapshot = ''
+        if (timer !== null) {
+          window.clearTimeout(timer)
+          timer = null
+        }
+        void clear()
+      }
+      return
+    }
+    enabled = true
     const snapshotKey = JSON.stringify([state.groups, state.signatureAssets, state.formValues, state.flattenForms])
     if (snapshotKey === lastSnapshot) return
     lastSnapshot = snapshotKey
@@ -34,6 +52,14 @@ export function initSessionPersistence(): void {
       void persist()
     }, SAVE_DEBOUNCE_MS)
   })
+}
+
+async function clear(): Promise<void> {
+  try {
+    await window.api.sessionClear()
+  } catch {
+    // Best-effort; een mislukte opruiming mag het opstarten niet blokkeren.
+  }
 }
 
 async function restore(): Promise<void> {
