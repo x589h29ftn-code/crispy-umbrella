@@ -8,10 +8,24 @@ import { exportTablesToXlsx } from '../lib/tableExport'
 import { exportGroupText } from '../lib/textExport'
 import { getGroupBookmarks } from '../lib/bookmarks'
 import { getTextLineBoxes } from '../lib/textLines'
-import { IconClose, IconFile, IconTrash } from './icons'
 import ScanNotice from './ScanNotice'
 import type { DocGroup } from '../types'
 import { useModalDialog } from '../hooks/useModalDialog'
+import {
+  IconArchive,
+  IconCalendar,
+  IconClose,
+  IconCompress,
+  IconEditText,
+  IconFile,
+  IconGridView,
+  IconHash,
+  IconMarkdown,
+  IconScissors,
+  IconSparkles,
+  IconTrash,
+  IconType
+} from './icons'
 import CompressPanel from './CompressPanel'
 import MarkdownPanel from './MarkdownPanel'
 
@@ -230,18 +244,102 @@ export default function SmartDialog(): JSX.Element | null {
     }
   }
 
-  const TABS: [Tab, string][] = [
-    ['rename', 'Hernoemen'],
-    ['split', 'Splitsen'],
-    ['markdown', 'Markdown'],
-    ['sort', 'Sorteren'],
-    ['blank', "Lege pagina's"],
-    ['cleanup', 'Opschonen'],
-    ['data', 'Gegevens → CSV'],
-    ['table', 'Tabel → Excel'],
-    ['text', 'Tekst / Word'],
-    ['compress', 'Comprimeren'],
-    ['portfolio', 'Dossier']
+  const TOOL_GROUPS: {
+    title: string
+    tools: { key: Tab; label: string; hint: string; icon: JSX.Element; blocked?: string }[]
+  }[] = [
+    {
+      title: 'Ordenen',
+      tools: [
+        {
+          key: 'rename',
+          label: 'Hernoemen',
+          hint: 'Naam voorstellen op basis van de inhoud',
+          icon: <IconEditText size={15} />,
+          blocked: activeGroup ? undefined : 'Open eerst een document'
+        },
+        {
+          key: 'sort',
+          label: 'Sorteren',
+          hint: "Pagina's op datum zetten",
+          icon: <IconCalendar size={15} />,
+          blocked: activeGroup ? undefined : 'Open eerst een document'
+        },
+        {
+          key: 'split',
+          label: 'Splitsen',
+          hint: 'Opknippen langs de inhoudsopgave',
+          icon: <IconScissors size={15} />,
+          blocked: activeGroup ? undefined : 'Open eerst een document'
+        },
+        {
+          key: 'portfolio',
+          label: 'Dossier bundelen',
+          hint: 'Alle documenten in één PDF met inhoudsopgave',
+          icon: <IconArchive size={15} />,
+          blocked: groups.length >= 2 ? undefined : 'Hiervoor zijn minstens twee documenten nodig'
+        }
+      ]
+    },
+    {
+      title: 'Opschonen',
+      tools: [
+        {
+          key: 'blank',
+          label: "Lege pagina's",
+          hint: 'Lege scans opsporen en verwijderen',
+          icon: <IconFile size={15} />,
+          blocked: activeGroup ? undefined : 'Open eerst een document'
+        },
+        {
+          key: 'cleanup',
+          label: 'Scans opschonen',
+          hint: 'Grijssluier weg, tekst zwarter',
+          icon: <IconSparkles size={15} />,
+          blocked: activeGroup ? undefined : 'Open eerst een document'
+        },
+        {
+          key: 'compress',
+          label: 'Comprimeren',
+          hint: 'Kleiner maken om te mailen',
+          icon: <IconCompress size={15} />,
+          blocked: activeGroup ? undefined : 'Open eerst een document'
+        }
+      ]
+    },
+    {
+      title: 'Eruit halen',
+      tools: [
+        {
+          key: 'markdown',
+          label: 'Markdown',
+          hint: 'Opgemaakte tekst als .md',
+          icon: <IconMarkdown size={15} />,
+          blocked: activeGroup ? undefined : 'Open eerst een document'
+        },
+        {
+          key: 'text',
+          label: 'Tekst / Word',
+          hint: 'Als .txt, .docx of .rtf',
+          icon: <IconType size={15} />,
+          blocked: activeGroup ? undefined : 'Open eerst een document'
+        },
+        {
+          key: 'table',
+          label: 'Tabel → Excel',
+          hint: 'Herkende tabellen naar .xlsx',
+          icon: <IconGridView size={15} />,
+          blocked: activeGroup ? undefined : 'Open eerst een document'
+        },
+        {
+          key: 'data',
+          label: 'Gegevens → CSV',
+          hint: 'Datum, bedrag en afzender per document',
+          icon: <IconHash size={15} />,
+          blocked: activeGroup ? undefined : 'Open eerst een document'
+        }
+      ]
+    }
   ]
 
   return (
@@ -251,19 +349,37 @@ export default function SmartDialog(): JSX.Element | null {
           <IconClose size={13} />
         </button>
         <h3>Slimme documenten</h3>
-        <div className="smart-card__tabs">
-          {TABS.map(([key, label]) => (
-            <button
-              key={key}
-              type="button"
-              className={`smart-card__tab${tab === key ? ' smart-card__tab--active' : ''}`}
-              onClick={() => setTab(key)}
-            >
-              {label}
-            </button>
-          ))}
-        </div>
+        <p className="smart-card__lead">
+          Gereedschap voor het actieve document{activeGroup ? ` — "${activeGroup.name}"` : ''}.
+        </p>
 
+        <div className="smart-layout">
+          <nav className="smart-rail" aria-label="Gereedschap">
+            {TOOL_GROUPS.map((group) => (
+              <div key={group.title} className="smart-rail__group">
+                <div className="smart-rail__group-title">{group.title}</div>
+                {group.tools.map((tool) => (
+                  <button
+                    key={tool.key}
+                    type="button"
+                    className={`smart-rail__item${tab === tool.key ? ' smart-rail__item--active' : ''}`}
+                    disabled={Boolean(tool.blocked)}
+                    title={tool.blocked ?? tool.hint}
+                    aria-current={tab === tool.key}
+                    onClick={() => setTab(tool.key)}
+                  >
+                    <span className="smart-rail__icon">{tool.icon}</span>
+                    <span className="smart-rail__text">
+                      <span className="smart-rail__label">{tool.label}</span>
+                      <span className="smart-rail__hint">{tool.blocked ?? tool.hint}</span>
+                    </span>
+                  </button>
+                ))}
+              </div>
+            ))}
+          </nav>
+
+          <div className="smart-panel">
         {(['table', 'data', 'text', 'sort', 'rename'] as Tab[]).includes(tab) && <ScanNotice group={activeGroup} />}
 
         {tab === 'rename' && (
@@ -544,6 +660,8 @@ export default function SmartDialog(): JSX.Element | null {
             </div>
           </div>
         )}
+          </div>
+        </div>
       </div>
     </div>
   )

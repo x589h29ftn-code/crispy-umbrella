@@ -313,7 +313,7 @@ export default function Toolbar({ zoomPct, onZoomIn, onZoomOut, onZoomReset, onZ
             className="sidebar-btn"
             disabled={!activeGroup}
             onClick={() => setSmartDialogOpen(true)}
-            title="Slimme documenten: hernoemen, lege pagina's, scans opschonen, gegevens naar CSV"
+            title="Slimme documenten: ordenen (hernoemen, sorteren, splitsen, dossier), opschonen (lege pagina's, scans, comprimeren) en eruit halen (Markdown, Word, Excel, CSV)"
           >
             <IconSparkles size={15} />
             <span className="sidebar-btn__label">Slim</span>
