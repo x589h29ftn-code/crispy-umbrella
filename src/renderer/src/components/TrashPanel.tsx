@@ -1,24 +1,16 @@
-import { useEffect } from 'react'
 import { useStudioStore } from '../store'
 import { IconClose, IconTrash } from './icons'
+import { useModalDialog } from '../hooks/useModalDialog'
 
 /** Prullenbak: verwijderde pagina's van deze sessie, met de optie ze terug te halen. */
 export default function TrashPanel(): JSX.Element | null {
   const open = useStudioStore((s) => s.trashPanelOpen)
   const setOpen = useStudioStore((s) => s.setTrashPanelOpen)
+  const cardRef = useModalDialog<HTMLDivElement>(open, () => setOpen(false))
   const trash = useStudioStore((s) => s.trash)
   const restore = useStudioStore((s) => s.restoreTrashedPages)
   const clearTrash = useStudioStore((s) => s.clearTrash)
   const addToast = useStudioStore((s) => s.addToast)
-
-  useEffect(() => {
-    if (!open) return
-    function onKey(e: KeyboardEvent): void {
-      if (e.key === 'Escape') setOpen(false)
-    }
-    window.addEventListener('keydown', onKey)
-    return () => window.removeEventListener('keydown', onKey)
-  }, [open, setOpen])
 
   if (!open) return null
 
@@ -35,7 +27,7 @@ export default function TrashPanel(): JSX.Element | null {
 
   return (
     <div className="modal-overlay" onClick={() => setOpen(false)}>
-      <div className="modal-card trash-card" onClick={(e) => e.stopPropagation()}>
+      <div ref={cardRef} role="dialog" aria-modal="true" className="modal-card trash-card" onClick={(e) => e.stopPropagation()}>
         <div className="modal-card__header">
           <h3>Prullenbak</h3>
           <button type="button" className="icon-btn icon-btn--chrome" title="Sluiten (Esc)" onClick={() => setOpen(false)}>

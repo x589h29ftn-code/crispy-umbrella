@@ -43,7 +43,14 @@ export default function TabStrip(): JSX.Element | null {
           key={group.id}
           className={`tab-strip__tab${activeEditorTab === group.id ? ' tab-strip__tab--active' : ''}`}
           onClick={() => setActiveEditorTab(group.id)}
-          title={group.name}
+          onAuxClick={(e) => {
+            // Middelklik sluit het tabblad, zoals in een browser.
+            if (e.button === 1) {
+              e.preventDefault()
+              closeEditorTab(group.id)
+            }
+          }}
+          title={`${group.name} — middelklik sluit dit tabblad`}
         >
           <span className="tab-strip__name">{group.name}</span>
           <button

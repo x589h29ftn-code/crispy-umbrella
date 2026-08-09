@@ -1,11 +1,14 @@
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { Suspense, lazy, useEffect, useMemo, useRef, useState } from 'react'
 import { useAutoAnimate } from '@formkit/auto-animate/react'
 import { isImportableFileName, useStudioStore } from '../store'
 import { usePanZoom, type PanZoomTransform } from '../hooks/usePanZoom'
 import { mergeRefs } from '../lib/mergeRefs'
-import GroupRow from './GroupRow'
 import AddTile from './AddTile'
 import EmptyState from './EmptyState'
+
+// GroupRow trekt via de miniaturen pdf.js mee (±0,6 MB). Er is pas een rij
+// zodra er een document is, dus laden we hem op dat moment pas.
+const GroupRow = lazy(() => import('./GroupRow'))
 
 interface Props {
   onScaleChange: (scale: number) => void
@@ -126,16 +129,18 @@ export default function Canvas({ onScaleChange, registerZoomControls }: Props): 
       }}
     >
       <div className="canvas-content" ref={contentNodeRef}>
-        {groups.map((group, i) => (
-          <GroupRow
-            key={group.id}
-            group={group}
-            index={i}
-            isLast={i === groups.length - 1}
-            sources={sources}
-            isActive={group.id === activeGroupId}
-          />
-        ))}
+        <Suspense fallback={null}>
+          {groups.map((group, i) => (
+            <GroupRow
+              key={group.id}
+              group={group}
+              index={i}
+              isLast={i === groups.length - 1}
+              sources={sources}
+              isActive={group.id === activeGroupId}
+            />
+          ))}
+        </Suspense>
         {groups.length > 0 && (
           <AddTile
             label="Document toevoegen"

@@ -1,6 +1,6 @@
-import { useEffect } from 'react'
 import { useStudioStore } from '../store'
 import { IconClose } from './icons'
+import { useModalDialog } from '../hooks/useModalDialog'
 
 const GROUPS: { title: string; items: [string, string][] }[] = [
   {
@@ -15,10 +15,21 @@ const GROUPS: { title: string; items: [string, string][] }[] = [
     ]
   },
   {
+    title: 'Tabbladen',
+    items: [
+      ['Ctrl + Tab', 'Volgend tabblad'],
+      ['Ctrl + Shift + Tab', 'Vorig tabblad'],
+      ['Ctrl + 1…9', 'Naar tabblad (1 = Overzicht)'],
+      ['Ctrl + W', 'Tabblad sluiten (document blijft)'],
+      ['Middelklik', 'Tabblad sluiten']
+    ]
+  },
+  {
     title: 'Bewerken',
     items: [
       ['Ctrl + Z', 'Ongedaan maken'],
       ['Ctrl + Y', 'Opnieuw'],
+      ['Ctrl + A', "Alle pagina's van dit document selecteren"],
       ['Ctrl + D', "Geselecteerde pagina's dupliceren"],
       ['R', 'Geselecteerde pagina draaien'],
       ['Delete', "Geselecteerde pagina's verwijderen"],
@@ -31,21 +42,13 @@ const GROUPS: { title: string; items: [string, string][] }[] = [
 export default function ShortcutsDialog(): JSX.Element | null {
   const open = useStudioStore((s) => s.shortcutsOpen)
   const setOpen = useStudioStore((s) => s.setShortcutsOpen)
-
-  useEffect(() => {
-    if (!open) return
-    function onKey(e: KeyboardEvent): void {
-      if (e.key === 'Escape') setOpen(false)
-    }
-    window.addEventListener('keydown', onKey)
-    return () => window.removeEventListener('keydown', onKey)
-  }, [open, setOpen])
+  const cardRef = useModalDialog<HTMLDivElement>(open, () => setOpen(false))
 
   if (!open) return null
 
   return (
     <div className="modal-overlay" onClick={() => setOpen(false)}>
-      <div className="modal-card shortcuts-card" onClick={(e) => e.stopPropagation()}>
+      <div ref={cardRef} role="dialog" aria-modal="true" className="modal-card shortcuts-card" onClick={(e) => e.stopPropagation()}>
         <div className="modal-card__header">
           <h3>Sneltoetsen</h3>
           <button type="button" className="icon-btn icon-btn--chrome" title="Sluiten (Esc)" onClick={() => setOpen(false)}>

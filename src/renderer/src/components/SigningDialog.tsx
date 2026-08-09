@@ -31,6 +31,7 @@ import {
   type SignPlacement
 } from '../lib/signing'
 import { IconClock, IconClose, IconSend, IconTrash } from './icons'
+import { useModalDialog } from '../hooks/useModalDialog'
 
 const PREVIEW_WIDTH = 520
 
@@ -77,6 +78,7 @@ const METHOD_OPTIONS: { value: SignMethod; label: string; hint: string }[] = [
 
 export default function SigningDialog(): JSX.Element {
   const setOpen = useStudioStore((s) => s.setSigningDialogOpen)
+  const cardRef = useModalDialog<HTMLDivElement>(true, () => setOpen(false))
   const addToast = useStudioStore((s) => s.addToast)
   const signatureAssets = useStudioStore((s) => s.signatureAssets)
   const activeSignatureId = useStudioStore((s) => s.activeSignatureId)
@@ -315,7 +317,7 @@ export default function SigningDialog(): JSX.Element {
 
   return (
     <div className="modal-overlay" onClick={() => setOpen(false)}>
-      <div className="modal-card smart-card templates-card signing-card" onClick={(e) => e.stopPropagation()}>
+      <div ref={cardRef} role="dialog" aria-modal="true" className="modal-card smart-card templates-card signing-card" onClick={(e) => e.stopPropagation()}>
         <div className="modal-card__head">
           <h2>
             {view.kind === 'list' && 'Ondertekenen — dashboard'}

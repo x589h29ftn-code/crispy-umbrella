@@ -23,6 +23,49 @@ export const jsDocCache = new Map<string, Promise<PdfJsDoc>>()
 export const libDocCache = new Map<string, Promise<PDFDocument>>()
 export const thumbCache = new Map<string, string>()
 
+/**
+ * Elke zoomstap levert een nieuwe bitmap op; zonder limiet groeit het geheugen
+ * in een lange werkdag door. We houden de laatst gebruikte miniaturen vast en
+ * geven de oudste blob-URL's weer vrij.
+ */
+const MAX_CACHED_THUMBS = 400
+
+function rememberThumb(key: string, url: string): void {
+  thumbCache.set(key, url)
+  // Alleen miniaturen opruimen die nergens meer in beeld staan; een <img> die
+  // nog naar de blob-URL wijst zou anders leeg worden.
+  let checked = 0
+  while (thumbCache.size > MAX_CACHED_THUMBS && checked < thumbCache.size) {
+    const oldest = thumbCache.keys().next()
+    if (oldest.done) break
+    const stale = thumbCache.get(oldest.value)
+    checked += 1
+    thumbCache.delete(oldest.value)
+    if (stale && inUse(stale)) {
+      thumbCache.set(oldest.value, stale)
+      continue
+    }
+    if (stale && stale.startsWith('blob:')) URL.revokeObjectURL(stale)
+  }
+}
+
+function inUse(url: string): boolean {
+  try {
+    return document.querySelector(`img[src="${url.replace(/["\\]/g, '\\$&')}"]`) !== null
+  } catch {
+    return true
+  }
+}
+
+/** Haalt een miniatuur op en markeert hem als "recent gebruikt" (LRU). */
+function takeThumb(key: string): string | undefined {
+  const url = thumbCache.get(key)
+  if (url === undefined) return undefined
+  thumbCache.delete(key)
+  thumbCache.set(key, url)
+  return url
+}
+
 export function cloneBytes(data: Uint8Array): Uint8Array {
   // pdf.js detaches/transfers the buffer it's given, so every consumer needs its own copy.
   return data.slice()
@@ -332,7 +375,7 @@ export async function renderThumbnail(
   targetWidth: number
 ): Promise<string> {
   const cacheKey = `${source.id}::${pageIndex}::${deltaRotation}::${targetWidth}`
-  const cached = thumbCache.get(cacheKey)
+  const cached = takeThumb(cacheKey)
   if (cached) return cached
 
   let lastError: unknown
@@ -341,7 +384,7 @@ export async function renderThumbnail(
     await acquireRenderSlot()
     try {
       const dataUrl = await renderThumbnailOnce(source, pageIndex, deltaRotation, targetWidth)
-      thumbCache.set(cacheKey, dataUrl)
+      rememberThumb(cacheKey, dataUrl)
       return dataUrl
     } catch (error) {
       lastError = error

@@ -1,11 +1,12 @@
-import { useEffect } from 'react'
 import { useStudioStore } from '../store'
 import { IconClose } from './icons'
+import { useModalDialog } from '../hooks/useModalDialog'
 
 /** Voorkeuren: standaardinstellingen die tussen sessies bewaard blijven. */
 export default function PreferencesDialog(): JSX.Element | null {
   const open = useStudioStore((s) => s.preferencesOpen)
   const setOpen = useStudioStore((s) => s.setPreferencesOpen)
+  const cardRef = useModalDialog<HTMLDivElement>(open, () => setOpen(false))
   const theme = useStudioStore((s) => s.theme)
   const toggleTheme = useStudioStore((s) => s.toggleTheme)
   const authorName = useStudioStore((s) => s.authorName)
@@ -20,15 +21,8 @@ export default function PreferencesDialog(): JSX.Element | null {
   const setCleanMetadata = useStudioStore((s) => s.setCleanMetadata)
   const restoreLastSession = useStudioStore((s) => s.restoreLastSession)
   const setRestoreLastSession = useStudioStore((s) => s.setRestoreLastSession)
-
-  useEffect(() => {
-    if (!open) return
-    function onKey(e: KeyboardEvent): void {
-      if (e.key === 'Escape') setOpen(false)
-    }
-    window.addEventListener('keydown', onKey)
-    return () => window.removeEventListener('keydown', onKey)
-  }, [open, setOpen])
+  const fullToolbar = useStudioStore((s) => s.fullToolbar)
+  const setFullToolbar = useStudioStore((s) => s.setFullToolbar)
 
   if (!open) return null
 
@@ -40,7 +34,7 @@ export default function PreferencesDialog(): JSX.Element | null {
 
   return (
     <div className="modal-overlay" onClick={() => setOpen(false)}>
-      <div className="modal-card prefs-card" onClick={(e) => e.stopPropagation()}>
+      <div ref={cardRef} role="dialog" aria-modal="true" className="modal-card prefs-card" onClick={(e) => e.stopPropagation()}>
         <div className="modal-card__header">
           <h3>Voorkeuren</h3>
           <button type="button" className="icon-btn icon-btn--chrome" title="Sluiten (Esc)" onClick={() => setOpen(false)}>
@@ -102,6 +96,17 @@ export default function PreferencesDialog(): JSX.Element | null {
             <span className="prefs-row__hint">
               Uit: de app begint leeg, ook in het overzicht voor samenvoegen en splitsen. Aan: de documenten en
               bewerkingen van de vorige keer komen terug.
+            </span>
+          </span>
+        </label>
+
+        <label className="prefs-check">
+          <input type="checkbox" checked={fullToolbar} onChange={(e) => setFullToolbar(e.target.checked)} />
+          <span>
+            <span className="prefs-row__title">Volledige werkbalk</span>
+            <span className="prefs-row__hint">
+              Zet alle acties terug in de zijbalk (zoals vroeger). Uit: de zijbalk toont de kernacties, de rest
+              staat in het Menu linksboven.
             </span>
           </span>
         </label>

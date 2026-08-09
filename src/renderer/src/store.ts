@@ -1,6 +1,5 @@
 import { create } from 'zustand'
 import { nanoid } from 'nanoid'
-import { forgetSource, isPasswordError, loadSourceFile } from './lib/pdfRender'
 import type { ExportPermissions } from './lib/pdfEngine'
 import type { Annotation, DocGroup, PageComment, PageRef, SignatureAsset, SignaturePlacement, SourceFile, Watermark } from './types'
 
@@ -82,6 +81,7 @@ const FLATTEN_STORAGE_KEY = 'pdf-studio-flatten-forms'
 const CLEAN_META_STORAGE_KEY = 'pdf-studio-clean-metadata'
 const TOOLBAR_HIDDEN_STORAGE_KEY = 'pdf-studio-toolbar-hidden'
 const RESTORE_SESSION_STORAGE_KEY = 'pdf-studio-restore-session'
+const FULL_TOOLBAR_STORAGE_KEY = 'pdf-studio-full-toolbar'
 
 function getInitialReaderView(): 'scroll' | 'spread' | 'single' {
   const v = window.localStorage.getItem(READER_VIEW_STORAGE_KEY)
@@ -101,6 +101,8 @@ interface StudioState {
   zoom: number
   lightbox: LightboxState
   isImporting: boolean
+  /** Voortgang tijdens het openen van bestanden (null = niets bezig). */
+  importProgress: { done: number; total: number } | null
   dragPageIds: string[] | null
   dragGroupId: string | null
   signatureAssets: SignatureAsset[]
@@ -138,11 +140,17 @@ interface StudioState {
    * leeg, zowel in het leestabblad als in het overzicht (samenvoegen/splitsen).
    */
   restoreLastSession: boolean
+  /**
+   * Volledige werkbalk: alle acties in de zijbalk (zoals vóór de opschoning).
+   * Standaard uit — de zijbalk toont dan de kernacties en de rest staat in het Menu.
+   */
+  fullToolbar: boolean
 
   setFormValue: (sourceId: string, fieldName: string, value: string | boolean) => void
   setFlattenForms: (flatten: boolean) => void
   setCleanMetadata: (clean: boolean) => void
   setRestoreLastSession: (on: boolean) => void
+  setFullToolbar: (on: boolean) => void
   setAuthorName: (name: string) => void
   /** Herstelt een vorige sessie (alleen wanneer er nog niets geopend is). */
   restoreSession: (payload: {
@@ -164,6 +172,8 @@ interface StudioState {
   redo: () => void
   toggleSelectPage: (pageId: string) => void
   rangeSelectPage: (pageId: string) => void
+  /** Selecteert alle pagina's van het actieve document (Ctrl+A); nogmaals = alles in alle documenten. */
+  selectAllPages: () => void
   clearSelection: () => void
   addToast: (kind: Toast['kind'], message: string, action?: Toast['action']) => void
   dismissToast: (id: string) => void
@@ -298,6 +308,78 @@ function requestPassword(fileName: string, attempt: number): Promise<string | nu
 }
 
 /**
+ * Wachtwoorddialoog: er kan er maar één tegelijk open staan, terwijl bestanden
+ * wél naast elkaar geladen worden. Deze poort laat de vragen netjes op elkaar
+ * wachten.
+ */
+let passwordGate: Promise<unknown> = Promise.resolve()
+function withPasswordGate<T>(run: () => Promise<T>): Promise<T> {
+  const next = passwordGate.then(run, run)
+  passwordGate = next.catch(() => undefined)
+  return next
+}
+
+/** Voert `task` uit over alle items, met maximaal `limit` tegelijk (volgorde blijft behouden). */
+async function mapLimited<T, R>(items: T[], limit: number, task: (item: T) => Promise<R>): Promise<R[]> {
+  const results = new Array<R>(items.length)
+  let next = 0
+  await Promise.all(
+    Array.from({ length: Math.min(limit, items.length) }, async () => {
+      for (;;) {
+        const index = next
+        next += 1
+        if (index >= items.length) return
+        results[index] = await task(items[index])
+      }
+    })
+  )
+  return results
+}
+
+/** Aantal bestanden dat tegelijk door pdf.js gehaald wordt bij het importeren. */
+const IMPORT_CONCURRENCY = 3
+
+interface LoadedImport {
+  file: { name: string; data: Uint8Array; path?: string }
+  source: SourceFile
+  comments: Map<number, PageComment[]>
+}
+
+/**
+ * Laadt de gekozen bestanden (meerdere tegelijk) en houdt de voortgang bij, zodat
+ * de gebruiker bij een grote stapel ziet dat er gewerkt wordt.
+ */
+async function loadImports(
+  files: { name: string; data: Uint8Array; path?: string }[],
+  addToast: StudioState['addToast'],
+  setState: (partial: Partial<StudioState>) => void
+): Promise<LoadedImport[]> {
+  let done = 0
+  setState({ importProgress: { done: 0, total: files.length } })
+  const loaded = await mapLimited(files, IMPORT_CONCURRENCY, async (file) => {
+    const source = await loadFileInteractive(file, addToast)
+    let comments = new Map<number, PageComment[]>()
+    if (source) {
+      const { extractComments } = await import('./lib/commentImport')
+      comments = await extractComments(source)
+    }
+    done += 1
+    setState({ importProgress: { done, total: files.length } })
+    return source ? { file, source, comments } : null
+  })
+  return loaded.filter((entry): entry is LoadedImport => entry !== null)
+}
+
+/**
+ * pdf.js is de zwaarste bibliotheek van de app (±0,6 MB). Hij wordt pas geladen
+ * zodra er echt een document binnenkomt, zodat een lege start snel is.
+ */
+let renderLibPromise: Promise<typeof import('./lib/pdfRender')> | null = null
+function renderLib(): Promise<typeof import('./lib/pdfRender')> {
+  return (renderLibPromise ??= import('./lib/pdfRender'))
+}
+
+/**
  * Loads a PDF, prompting for a password (and decrypting via the main process)
  * when the file turns out to be protected. Returns null if the user cancels
  * or the file is unreadable — a toast explains which.
@@ -306,6 +388,7 @@ async function loadFileInteractive(
   file: { name: string; data: Uint8Array; path?: string },
   addToast: StudioState['addToast']
 ): Promise<SourceFile | null> {
+  const { loadSourceFile, isPasswordError } = await renderLib()
   let data = file.data
   for (let attempt = 1; ; attempt += 1) {
     try {
@@ -315,7 +398,7 @@ async function loadFileInteractive(
         addToast('error', `Kon "${file.name}" niet openen — is het een geldig PDF-bestand?`)
         return null
       }
-      const password = await requestPassword(file.name, attempt)
+      const password = await withPasswordGate(() => requestPassword(file.name, attempt))
       if (password === null) {
         addToast('info', `"${file.name}" overgeslagen`)
         return null
@@ -338,6 +421,7 @@ export const useStudioStore = create<StudioState>((set, get) => ({
   zoom: 1,
   lightbox: { open: false, pageId: null },
   isImporting: false,
+  importProgress: null,
   dragPageIds: null,
   dragGroupId: null,
   signatureAssets: [],
@@ -364,6 +448,7 @@ export const useStudioStore = create<StudioState>((set, get) => ({
   flattenForms: window.localStorage.getItem(FLATTEN_STORAGE_KEY) === '1',
   cleanMetadata: window.localStorage.getItem(CLEAN_META_STORAGE_KEY) === '1',
   restoreLastSession: window.localStorage.getItem(RESTORE_SESSION_STORAGE_KEY) === '1',
+  fullToolbar: window.localStorage.getItem(FULL_TOOLBAR_STORAGE_KEY) === '1',
 
   setFormValue: (sourceId, fieldName, value) => {
     set((state) => ({
@@ -385,6 +470,10 @@ export const useStudioStore = create<StudioState>((set, get) => ({
   setRestoreLastSession: (on) => {
     window.localStorage.setItem(RESTORE_SESSION_STORAGE_KEY, on ? '1' : '0')
     set({ restoreLastSession: on })
+  },
+  setFullToolbar: (on) => {
+    window.localStorage.setItem(FULL_TOOLBAR_STORAGE_KEY, on ? '1' : '0')
+    set({ fullToolbar: on })
   },
 
   restoreSession: (payload) => {
@@ -508,12 +597,25 @@ export const useStudioStore = create<StudioState>((set, get) => ({
     })
   },
 
+  selectAllPages: () => {
+    const { groups, activeGroupId, selectedPageIds } = get()
+    if (!groups.length) return
+    const active = groups.find((g) => g.id === activeGroupId) ?? groups[0]
+    const inActive = active.pages.map((p) => p.id)
+    // Alles in dit document al geselecteerd? Dan pakt een tweede Ctrl+A alles.
+    const allOfActive = inActive.length > 0 && inActive.every((id) => selectedPageIds.has(id))
+    const target = allOfActive ? groups.flatMap((g) => g.pages.map((p) => p.id)) : inActive
+    set({ selectedPageIds: new Set(target), lastSelectedPageId: target[target.length - 1] ?? null })
+  },
+
   clearSelection: () => set({ selectedPageIds: new Set(), lastSelectedPageId: null }),
 
   addToast: (kind, message, action) => {
     const id = nanoid()
     set((state) => ({ toasts: [...state.toasts, { id, kind, message, action }] }))
-    // Meldingen met een actieknop blijven langer staan zodat je erop kunt klikken.
+    // Foutmeldingen blijven staan tot je ze wegklikt — anders mis je ze.
+    // Meldingen met een actieknop blijven wat langer staan zodat je erop kunt klikken.
+    if (kind === 'error') return
     window.setTimeout(() => get().dismissToast(id), action ? 12000 : 4500)
   },
 
@@ -564,12 +666,8 @@ export const useStudioStore = create<StudioState>((set, get) => ({
       files = await prepareImportFiles(files, get().addToast)
       const newGroups: DocGroup[] = []
       const sources = new Map(get().sources)
-      for (const file of files) {
-        const source = await loadFileInteractive(file, get().addToast)
-        if (!source) continue
+      for (const { file, source, comments } of await loadImports(files, get().addToast, set)) {
         sources.set(source.id, source)
-        const { extractComments } = await import('./lib/commentImport')
-        const importedComments = await extractComments(source)
         const baseName = file.name.replace(/\.pdf$/i, '')
         newGroups.push({
           id: nanoid(),
@@ -581,7 +679,7 @@ export const useStudioStore = create<StudioState>((set, get) => ({
             rotation: 0,
             signatures: [],
             annotations: [],
-            comments: importedComments.get(i) ?? []
+            comments: comments.get(i) ?? []
           })),
           watermark: null,
           pageNumbers: false,
@@ -605,7 +703,7 @@ export const useStudioStore = create<StudioState>((set, get) => ({
         }
       })
     } finally {
-      set({ isImporting: false })
+      set({ isImporting: false, importProgress: null })
     }
   },
 
@@ -616,12 +714,8 @@ export const useStudioStore = create<StudioState>((set, get) => ({
       files = await prepareImportFiles(files, get().addToast)
       const sources = new Map(get().sources)
       const newPages: PageRef[] = []
-      for (const file of files) {
-        const source = await loadFileInteractive(file, get().addToast)
-        if (!source) continue
+      for (const { source, comments } of await loadImports(files, get().addToast, set)) {
         sources.set(source.id, source)
-        const { extractComments } = await import('./lib/commentImport')
-        const importedComments = await extractComments(source)
         for (let i = 0; i < source.pageCount; i += 1) {
           newPages.push({
             id: nanoid(),
@@ -630,7 +724,7 @@ export const useStudioStore = create<StudioState>((set, get) => ({
             rotation: 0,
             signatures: [],
             annotations: [],
-            comments: importedComments.get(i) ?? []
+            comments: comments.get(i) ?? []
           })
         }
       }
@@ -641,7 +735,7 @@ export const useStudioStore = create<StudioState>((set, get) => ({
         groups: state.groups.map((g) => (g.id === groupId ? { ...g, pages: [...g.pages, ...newPages] } : g))
       }))
     } finally {
-      set({ isImporting: false })
+      set({ isImporting: false, importProgress: null })
     }
   },
 
@@ -1213,11 +1307,17 @@ export function releaseUnusedSources(): void {
     [...past, ...future, groups].flatMap((snapshot) => snapshot.flatMap((g) => g.pages.map((p) => p.sourceId)))
   )
   const next = new Map(sources)
+  const dropped: string[] = []
   for (const id of sources.keys()) {
     if (!used.has(id)) {
       next.delete(id)
-      forgetSource(id)
+      dropped.push(id)
     }
+  }
+  // pdf.js is hier per definitie al geladen (er was een document), maar de
+  // import blijft dynamisch zodat het opstartpad vrij blijft.
+  if (dropped.length) {
+    void renderLib().then(({ forgetSource }) => dropped.forEach(forgetSource))
   }
   if (next.size !== sources.size) {
     useStudioStore.setState({ sources: next })

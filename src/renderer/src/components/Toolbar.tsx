@@ -4,7 +4,6 @@ import { useStudioStore } from '../store'
 import AppMenu from './AppMenu'
 import { useClickOutside } from '../hooks/useClickOutside'
 import { exportActivePdf, exportAllZip, mailActivePdf, saveActiveToOneDrive } from '../lib/exportActions'
-import { printActiveGroup } from '../lib/printActions'
 import {
   IconArchive,
   IconCheck,
@@ -105,6 +104,7 @@ export default function Toolbar({ zoomPct, onZoomIn, onZoomOut, onZoomReset, onZ
   const setTrashPanelOpen = useStudioStore((s) => s.setTrashPanelOpen)
   const setToolbarHidden = useStudioStore((s) => s.setToolbarHidden)
   const trashCount = useStudioStore((s) => s.trash.length)
+  const fullToolbar = useStudioStore((s) => s.fullToolbar)
   const [showPasswordField, setShowPasswordField] = useState(false)
   const [sigMenuOpen, setSigMenuOpen] = useState(false)
   const [collapsed, setCollapsed] = useState(() => window.localStorage.getItem(SIDEBAR_STORAGE_KEY) === '1')
@@ -230,327 +230,372 @@ export default function Toolbar({ zoomPct, onZoomIn, onZoomOut, onZoomReset, onZ
         />
       )}
 
-      <div className="sidebar__divider" />
+      {/* Alles hieronder schuift mee, zodat de zijbalk ook in een klein venster
+          volledig bereikbaar blijft; exporteren en Voorkeuren staan vast onderaan. */}
+      <div className="sidebar__scroll">
+        <SidebarSection title="Bestand" collapsed={collapsed}>
+          <button type="button" className="sidebar-btn" onClick={() => void handleOpen()} title="Openen (Ctrl+O)">
+            <IconFolderOpen size={15} />
+            <span className="sidebar-btn__label">Openen</span>
+          </button>
+          {fullToolbar && (
+            <button
+              type="button"
+              className="sidebar-btn"
+              disabled={!activeGroup}
+              onClick={() => void import('../lib/printActions').then((m) => m.printActiveGroup())}
+              title="Druk het actieve document af (Ctrl+P)"
+            >
+              <IconPrinter size={15} />
+              <span className="sidebar-btn__label">Afdrukken</span>
+            </button>
+          )}
+        </SidebarSection>
 
-      <button
-        type="button"
-        className={`sidebar-btn${searchOpen ? ' sidebar-btn--active' : ''}`}
-        onClick={() => setSearchOpen(!searchOpen)}
-        title="Zoeken in alle documenten (Ctrl+F)"
-      >
-        <IconSearch size={15} />
-        <span className="sidebar-btn__label">Zoeken</span>
-      </button>
+        <SidebarSection title="Bekijken" collapsed={collapsed}>
+          <button
+            type="button"
+            className={`sidebar-btn${searchOpen ? ' sidebar-btn--active' : ''}`}
+            onClick={() => setSearchOpen(!searchOpen)}
+            title="Zoeken in alle documenten (Ctrl+F)"
+          >
+            <IconSearch size={15} />
+            <span className="sidebar-btn__label">Zoeken</span>
+          </button>
 
-      <button
-        type="button"
-        className={`sidebar-btn${commentsPanelOpen ? ' sidebar-btn--active' : ''}`}
-        onClick={() => setCommentsPanelOpen(!commentsPanelOpen)}
-        title="Tijdlijn van alle opmerkingen"
-      >
-        <IconComment size={15} />
-        <span className="sidebar-btn__label">Opmerkingen</span>
-        {openCommentCount > 0 && <span className="sidebar-btn__badge">{openCommentCount}</span>}
-      </button>
+          <button
+            type="button"
+            className={`sidebar-btn${commentsPanelOpen ? ' sidebar-btn--active' : ''}`}
+            onClick={() => setCommentsPanelOpen(!commentsPanelOpen)}
+            title="Tijdlijn van alle opmerkingen"
+          >
+            <IconComment size={15} />
+            <span className="sidebar-btn__label">Opmerkingen</span>
+            {openCommentCount > 0 && <span className="sidebar-btn__badge">{openCommentCount}</span>}
+          </button>
 
-      <button
-        type="button"
-        className={`sidebar-btn${bookmarksPanelOpen ? ' sidebar-btn--active' : ''}`}
-        onClick={() => setBookmarksPanelOpen(!bookmarksPanelOpen)}
-        title="Bladwijzers / inhoudsopgave van de documenten"
-      >
-        <IconBookmark size={15} />
-        <span className="sidebar-btn__label">Bladwijzers</span>
-      </button>
+          <button
+            type="button"
+            className={`sidebar-btn${bookmarksPanelOpen ? ' sidebar-btn--active' : ''}`}
+            onClick={() => setBookmarksPanelOpen(!bookmarksPanelOpen)}
+            title="Bladwijzers / inhoudsopgave van de documenten"
+          >
+            <IconBookmark size={15} />
+            <span className="sidebar-btn__label">Bladwijzers</span>
+          </button>
 
-      <button
-        type="button"
-        className="sidebar-btn"
-        disabled={groups.length < 1}
-        onClick={openCompare}
-        title="Twee documenten (of versies) naast elkaar vergelijken"
-      >
-        <IconCompare size={15} />
-        <span className="sidebar-btn__label">Vergelijken</span>
-      </button>
+          {fullToolbar && (
+            <button
+              type="button"
+              className="sidebar-btn"
+              disabled={groups.length < 1}
+              onClick={openCompare}
+              title="Twee documenten (of versies) naast elkaar vergelijken"
+            >
+              <IconCompare size={15} />
+              <span className="sidebar-btn__label">Vergelijken</span>
+            </button>
+          )}
+        </SidebarSection>
 
-      <button
-        type="button"
-        className="sidebar-btn"
-        disabled={!activeGroup}
-        onClick={() => setPrivacyScanOpen(true)}
-        title="Privacy-scan (AVG): vind BSN, IBAN, e-mail en telefoon om te redigeren"
-      >
-        <IconShield size={15} />
-        <span className="sidebar-btn__label">Privacy-scan</span>
-      </button>
+        <SidebarSection title="Documenten" collapsed={collapsed}>
+          <button
+            type="button"
+            className="sidebar-btn"
+            disabled={!activeGroup}
+            onClick={() => setSmartDialogOpen(true)}
+            title="Slimme documenten: hernoemen, lege pagina's, scans opschonen, gegevens naar CSV"
+          >
+            <IconSparkles size={15} />
+            <span className="sidebar-btn__label">Slim</span>
+          </button>
 
-      <button
-        type="button"
-        className="sidebar-btn"
-        disabled={!activeGroup}
-        onClick={() => setSmartDialogOpen(true)}
-        title="Slimme documenten: hernoemen, lege pagina's, scans opschonen, gegevens naar CSV"
-      >
-        <IconSparkles size={15} />
-        <span className="sidebar-btn__label">Slim</span>
-      </button>
+          <button
+            type="button"
+            className="sidebar-btn"
+            onClick={() => setTemplatesDialogOpen(true)}
+            title="Documentsjablonen: Word-sjablonen met {variabelen} invullen en genereren naar Word of PDF"
+          >
+            <IconForm size={15} />
+            <span className="sidebar-btn__label">Sjablonen</span>
+          </button>
 
-      <button
-        type="button"
-        className="sidebar-btn"
-        onClick={() => setTemplatesDialogOpen(true)}
-        title="Documentsjablonen: Word-sjablonen met {variabelen} invullen en genereren naar Word of PDF"
-      >
-        <IconForm size={15} />
-        <span className="sidebar-btn__label">Sjablonen</span>
-      </button>
+          <button
+            type="button"
+            className="sidebar-btn"
+            onClick={() => setSigningDialogOpen(true)}
+            title="Ondertekenen: zelf tekenen of een tweede partij laten tekenen, verzenden en herinneren"
+          >
+            <IconStamp size={15} />
+            <span className="sidebar-btn__label">Ondertekenen</span>
+          </button>
 
-      <button
-        type="button"
-        className="sidebar-btn"
-        onClick={() => setSigningDialogOpen(true)}
-        title="Ondertekenen: zelf tekenen of een tweede partij laten tekenen, verzenden en herinneren"
-      >
-        <IconStamp size={15} />
-        <span className="sidebar-btn__label">Ondertekenen</span>
-      </button>
+          {fullToolbar && (
+            <button
+              type="button"
+              className="sidebar-btn"
+              disabled={!activeGroup}
+              onClick={() => setPrivacyScanOpen(true)}
+              title="Privacy-scan (AVG): vind BSN, IBAN, e-mail en telefoon om te redigeren"
+            >
+              <IconShield size={15} />
+              <span className="sidebar-btn__label">Privacy-scan</span>
+            </button>
+          )}
 
-      <button
-        type="button"
-        className="sidebar-btn"
-        onClick={toggleTheme}
-        title={theme === 'dark' ? 'Licht thema' : 'Donker thema'}
-      >
-        {theme === 'dark' ? <IconSun size={15} /> : <IconMoon size={15} />}
-        <span className="sidebar-btn__label">{theme === 'dark' ? 'Licht thema' : 'Donker thema'}</span>
-      </button>
-
-      <div className="sidebar__flyout-wrap" ref={sigMenuRef}>
-        <input
-          ref={signatureInputRef}
-          type="file"
-          accept="image/png,image/jpeg"
-          style={{ display: 'none' }}
-          onChange={(e) => void handleSignatureFile(e)}
-        />
-        <button
-          type="button"
-          className={`sidebar-btn${signatureAssets.length ? ' sidebar-btn--active' : ''}`}
-          onClick={() => setSigMenuOpen((v) => !v)}
-          title="Handtekeningen laden, tekenen en beheren"
-        >
-          <IconSignature size={15} />
-          <span className="sidebar-btn__label">
-            {signatureAssets.length > 1 ? 'Handtekeningen' : 'Handtekening'}
-          </span>
-          {signatureAssets.length > 0 && <span className="sidebar-btn__badge">{signatureAssets.length}</span>}
-        </button>
-        {sigMenuOpen && (
-          <div className="dropdown-menu sidebar__flyout signature-menu" onClick={(e) => e.stopPropagation()}>
-            <div className="signature-menu__hint">Actieve handtekening sleep je in het volledig scherm op de pagina.</div>
-            {signatureAssets.map((asset) => (
-              <div
-                key={asset.id}
-                className={`signature-menu__item${asset.id === activeSignatureId ? ' signature-menu__item--active' : ''}`}
-                onClick={() => setActiveSignature(asset.id)}
-                title="Klik om deze handtekening actief te maken"
-              >
-                <img src={asset.dataUrl} alt={asset.name} draggable={false} />
-                <span className="signature-menu__name">{asset.name}</span>
-                {asset.id === activeSignatureId && <IconCheck size={13} className="dropdown-menu__check" />}
+          <div className="sidebar__flyout-wrap" ref={sigMenuRef}>
+            <input
+              ref={signatureInputRef}
+              type="file"
+              accept="image/png,image/jpeg"
+              style={{ display: 'none' }}
+              onChange={(e) => void handleSignatureFile(e)}
+            />
+            <button
+              type="button"
+              className={`sidebar-btn${signatureAssets.length ? ' sidebar-btn--active' : ''}`}
+              onClick={() => setSigMenuOpen((v) => !v)}
+              title="Handtekeningen laden, tekenen en beheren"
+            >
+              <IconSignature size={15} />
+              <span className="sidebar-btn__label">
+                {signatureAssets.length > 1 ? 'Handtekeningen' : 'Handtekening'}
+              </span>
+              {signatureAssets.length > 0 && <span className="sidebar-btn__badge">{signatureAssets.length}</span>}
+            </button>
+            {sigMenuOpen && (
+              <div className="dropdown-menu sidebar__flyout signature-menu" onClick={(e) => e.stopPropagation()}>
+                <div className="signature-menu__hint">Actieve handtekening sleep je in het volledig scherm op de pagina.</div>
+                {signatureAssets.map((asset) => (
+                  <div
+                    key={asset.id}
+                    className={`signature-menu__item${asset.id === activeSignatureId ? ' signature-menu__item--active' : ''}`}
+                    onClick={() => setActiveSignature(asset.id)}
+                    title="Klik om deze handtekening actief te maken"
+                  >
+                    <img src={asset.dataUrl} alt={asset.name} draggable={false} />
+                    <span className="signature-menu__name">{asset.name}</span>
+                    {asset.id === activeSignatureId && <IconCheck size={13} className="dropdown-menu__check" />}
+                    <button
+                      type="button"
+                      className="icon-btn icon-btn--chrome icon-btn--danger"
+                      title="Handtekening verwijderen"
+                      onClick={(e) => {
+                        e.stopPropagation()
+                        removeSignatureAsset(asset.id)
+                      }}
+                    >
+                      <IconClose size={12} />
+                    </button>
+                  </div>
+                ))}
                 <button
                   type="button"
-                  className="icon-btn icon-btn--chrome icon-btn--danger"
-                  title="Handtekening verwijderen"
-                  onClick={(e) => {
-                    e.stopPropagation()
-                    removeSignatureAsset(asset.id)
+                  className="dropdown-menu__item"
+                  onClick={() => signatureInputRef.current?.click()}
+                >
+                  <IconPlus size={14} />
+                  Afbeelding laden…
+                </button>
+                <button
+                  type="button"
+                  className="dropdown-menu__item"
+                  onClick={() => {
+                    setSigMenuOpen(false)
+                    setDrawSignatureOpen(true)
                   }}
                 >
-                  <IconClose size={12} />
+                  <IconPen size={14} />
+                  Handtekening tekenen…
                 </button>
               </div>
-            ))}
-            <button
-              type="button"
-              className="dropdown-menu__item"
-              onClick={() => signatureInputRef.current?.click()}
-            >
-              <IconPlus size={14} />
-              Afbeelding laden…
-            </button>
-            <button
-              type="button"
-              className="dropdown-menu__item"
-              onClick={() => {
-                setSigMenuOpen(false)
-                setDrawSignatureOpen(true)
-              }}
-            >
-              <IconPen size={14} />
-              Handtekening tekenen…
-            </button>
+            )}
           </div>
+
+          {fullToolbar && (
+            <div className="sidebar__flyout-wrap" ref={passwordRef}>
+              <button
+                type="button"
+                className={`sidebar-btn${exportPassword ? ' sidebar-btn--active' : ''}`}
+                onClick={() => setShowPasswordField((v) => !v)}
+                title="Wachtwoord instellen voor geëxporteerde PDF's"
+              >
+                <IconLock size={15} />
+                <span className="sidebar-btn__label">Wachtwoord</span>
+              </button>
+              {showPasswordField && (
+                <div className="dropdown-menu sidebar__flyout sidebar__password-flyout" onClick={(e) => e.stopPropagation()}>
+                  <input
+                    autoFocus
+                    type="password"
+                    className="sidebar__password-input"
+                    placeholder="Wachtwoord voor export"
+                    value={exportPassword}
+                    onChange={(e) => setExportPassword(e.target.value)}
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter' || e.key === 'Escape') setShowPasswordField(false)
+                    }}
+                  />
+                  <div className="sidebar__password-perms">
+                    <div className="sidebar__password-perms-title">Rechten voor de ontvanger</div>
+                    {([
+                      ['printing', 'Afdrukken toestaan'],
+                      ['copying', 'Tekst kopiëren toestaan'],
+                      ['modifying', 'Bewerken toestaan']
+                    ] as const).map(([key, label]) => (
+                      <label key={key} className="sidebar__password-perm">
+                        <input
+                          type="checkbox"
+                          checked={exportPermissions[key]}
+                          onChange={(e) => setExportPermissions({ [key]: e.target.checked })}
+                        />
+                        {label}
+                      </label>
+                    ))}
+                    <div className="sidebar__password-hint">
+                      Beperkingen worden bij export met encryptie afgedwongen (ook zonder wachtwoord).
+                    </div>
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
+        </SidebarSection>
+
+        {fullToolbar && (
+          <SidebarSection title="Delen" collapsed={collapsed}>
+            <button
+              type="button"
+              className="sidebar-btn"
+              disabled={!activeGroup}
+              onClick={() => void import('../lib/remarkableActions').then((m) => m.shareActiveToRemarkable())}
+              title="Deel het actieve document met je reMarkable-cloud (map &quot;PDF Studio&quot;)"
+            >
+              <IconRemarkable size={15} />
+              <span className="sidebar-btn__label">Deel met reMarkable</span>
+            </button>
+            <button
+              type="button"
+              className="sidebar-btn"
+              disabled={!activeGroup}
+              onClick={() =>
+                activeGroup &&
+                void import('../lib/detachWindow').then((m) => m.openDocumentInNewWindow(activeGroup.id))
+              }
+              title="Open het actieve document in een eigen venster"
+            >
+              <IconExpand size={15} />
+              <span className="sidebar-btn__label">Los venster</span>
+            </button>
+            <button
+              type="button"
+              className="sidebar-btn"
+              disabled={!activeGroup || busyExport !== null}
+              onClick={() => void saveActiveToOneDrive()}
+              title="Sla het actieve document op in je OneDrive-map (synct automatisch)"
+            >
+              <IconCloud size={15} />
+              <span className="sidebar-btn__label">Opslaan in OneDrive</span>
+            </button>
+            <button
+              type="button"
+              className="sidebar-btn"
+              disabled={!activeGroup || busyExport !== null}
+              onClick={() => void mailActivePdf()}
+              title="Open een nieuw Outlook-bericht met het actieve document als bijlage"
+            >
+              <IconMail size={15} />
+              <span className="sidebar-btn__label">Mail als bijlage</span>
+            </button>
+          </SidebarSection>
+        )}
+
+        <SidebarSection title="Extra" collapsed={collapsed}>
+          <button
+            type="button"
+            className="sidebar-btn"
+            onClick={() => setTrashPanelOpen(true)}
+            title="Prullenbak: verwijderde pagina's terughalen"
+          >
+            <IconTrash size={15} />
+            <span className="sidebar-btn__label">Prullenbak{trashCount > 0 ? ` (${trashCount})` : ''}</span>
+          </button>
+          {fullToolbar && (
+            <button
+              type="button"
+              className="sidebar-btn"
+              onClick={toggleTheme}
+              title={theme === 'dark' ? 'Licht thema' : 'Donker thema'}
+            >
+              {theme === 'dark' ? <IconSun size={15} /> : <IconMoon size={15} />}
+              <span className="sidebar-btn__label">{theme === 'dark' ? 'Licht thema' : 'Donker thema'}</span>
+            </button>
+          )}
+          {fullToolbar && (
+            <button
+              type="button"
+              className="sidebar-btn"
+              onClick={() => setShortcutsOpen(true)}
+              title="Sneltoetsen-overzicht (?)"
+            >
+              <IconKeyboard size={15} />
+              <span className="sidebar-btn__label">Sneltoetsen</span>
+            </button>
+          )}
+        </SidebarSection>
+
+        {!fullToolbar && !collapsed && (
+          <p className="sidebar__hint">
+            Alle overige acties staan in <strong>Menu</strong> linksboven. Liever alles in de zijbalk? Zet
+            “Volledige werkbalk” aan bij Voorkeuren.
+          </p>
         )}
       </div>
 
-      <div className="sidebar__flyout-wrap" ref={passwordRef}>
+      <div className="sidebar__footer">
         <button
           type="button"
-          className={`sidebar-btn${exportPassword ? ' sidebar-btn--active' : ''}`}
-          onClick={() => setShowPasswordField((v) => !v)}
-          title="Wachtwoord instellen voor geëxporteerde PDF's"
+          className="sidebar-btn"
+          disabled={!activeGroup || busyExport !== null}
+          onClick={() => void exportActivePdf()}
+          title="Exporteer het actieve document als PDF"
         >
-          <IconLock size={15} />
-          <span className="sidebar-btn__label">Wachtwoord</span>
+          <IconDownload size={15} />
+          <span className="sidebar-btn__label">{busyExport === 'pdf' ? 'Bezig…' : 'Exporteer PDF'}</span>
         </button>
-        {showPasswordField && (
-          <div className="dropdown-menu sidebar__flyout sidebar__password-flyout" onClick={(e) => e.stopPropagation()}>
-            <input
-              autoFocus
-              type="password"
-              className="sidebar__password-input"
-              placeholder="Wachtwoord voor export"
-              value={exportPassword}
-              onChange={(e) => setExportPassword(e.target.value)}
-              onKeyDown={(e) => {
-                if (e.key === 'Enter' || e.key === 'Escape') setShowPasswordField(false)
-              }}
-            />
-            <div className="sidebar__password-perms">
-              <div className="sidebar__password-perms-title">Rechten voor de ontvanger</div>
-              {([
-                ['printing', 'Afdrukken toestaan'],
-                ['copying', 'Tekst kopiëren toestaan'],
-                ['modifying', 'Bewerken toestaan']
-              ] as const).map(([key, label]) => (
-                <label key={key} className="sidebar__password-perm">
-                  <input
-                    type="checkbox"
-                    checked={exportPermissions[key]}
-                    onChange={(e) => setExportPermissions({ [key]: e.target.checked })}
-                  />
-                  {label}
-                </label>
-              ))}
-              <div className="sidebar__password-hint">
-                Beperkingen worden bij export met encryptie afgedwongen (ook zonder wachtwoord).
-              </div>
-            </div>
-          </div>
-        )}
+        <button
+          type="button"
+          className="sidebar-btn sidebar-btn--primary"
+          disabled={!groups.length || busyExport !== null}
+          onClick={() => void exportAllZip()}
+          title="Exporteer alles als zip (Ctrl+E)"
+        >
+          <IconArchive size={15} />
+          <span className="sidebar-btn__label">{busyExport === 'zip' ? 'Bezig…' : 'Exporteer zip'}</span>
+        </button>
+        <button type="button" className="sidebar-btn" onClick={() => setPreferencesOpen(true)} title="Voorkeuren">
+          <IconSettings size={15} />
+          <span className="sidebar-btn__label">Voorkeuren</span>
+        </button>
       </div>
-
-      <div className="sidebar__divider" />
-
-      <button type="button" className="sidebar-btn" onClick={() => void handleOpen()} title="Openen (Ctrl+O)">
-        <IconFolderOpen size={15} />
-        <span className="sidebar-btn__label">Openen</span>
-      </button>
-      <button
-        type="button"
-        className="sidebar-btn"
-        disabled={!activeGroup}
-        onClick={() => void printActiveGroup()}
-        title="Druk het actieve document af (Ctrl+P)"
-      >
-        <IconPrinter size={15} />
-        <span className="sidebar-btn__label">Afdrukken</span>
-      </button>
-      <button
-        type="button"
-        className="sidebar-btn"
-        disabled={!activeGroup}
-        onClick={() => void import('../lib/remarkableActions').then((m) => m.shareActiveToRemarkable())}
-        title="Deel het actieve document met je reMarkable-cloud (map &quot;PDF Studio&quot;)"
-      >
-        <IconRemarkable size={15} />
-        <span className="sidebar-btn__label">Deel met reMarkable</span>
-      </button>
-      <button
-        type="button"
-        className="sidebar-btn"
-        disabled={!activeGroup}
-        onClick={() =>
-          activeGroup &&
-          void import('../lib/detachWindow').then((m) => m.openDocumentInNewWindow(activeGroup.id))
-        }
-        title="Open het actieve document in een eigen venster"
-      >
-        <IconExpand size={15} />
-        <span className="sidebar-btn__label">Los venster</span>
-      </button>
-      <button
-        type="button"
-        className="sidebar-btn"
-        disabled={!activeGroup || busyExport !== null}
-        onClick={() => void saveActiveToOneDrive()}
-        title="Sla het actieve document op in je OneDrive-map (synct automatisch)"
-      >
-        <IconCloud size={15} />
-        <span className="sidebar-btn__label">Opslaan in OneDrive</span>
-      </button>
-      <button
-        type="button"
-        className="sidebar-btn"
-        disabled={!activeGroup || busyExport !== null}
-        onClick={() => void mailActivePdf()}
-        title="Open een nieuw Outlook-bericht met het actieve document als bijlage"
-      >
-        <IconMail size={15} />
-        <span className="sidebar-btn__label">Mail als bijlage</span>
-      </button>
-      <button
-        type="button"
-        className="sidebar-btn"
-        disabled={!activeGroup || busyExport !== null}
-        onClick={() => void exportActivePdf()}
-        title="Exporteer het actieve document als PDF"
-      >
-        <IconDownload size={15} />
-        <span className="sidebar-btn__label">{busyExport === 'pdf' ? 'Bezig…' : 'Exporteer PDF'}</span>
-      </button>
-      <button
-        type="button"
-        className="sidebar-btn sidebar-btn--primary"
-        disabled={!groups.length || busyExport !== null}
-        onClick={() => void exportAllZip()}
-        title="Exporteer alles als zip (Ctrl+E)"
-      >
-        <IconArchive size={15} />
-        <span className="sidebar-btn__label">{busyExport === 'zip' ? 'Bezig…' : 'Exporteer zip'}</span>
-      </button>
-
-      <div className="sidebar__divider" />
-
-      <button
-        type="button"
-        className="sidebar-btn"
-        onClick={() => setTrashPanelOpen(true)}
-        title="Prullenbak: verwijderde pagina's terughalen"
-      >
-        <IconTrash size={15} />
-        <span className="sidebar-btn__label">Prullenbak{trashCount > 0 ? ` (${trashCount})` : ''}</span>
-      </button>
-      <button
-        type="button"
-        className="sidebar-btn"
-        onClick={() => setShortcutsOpen(true)}
-        title="Sneltoetsen-overzicht (?)"
-      >
-        <IconKeyboard size={15} />
-        <span className="sidebar-btn__label">Sneltoetsen</span>
-      </button>
-      <button
-        type="button"
-        className="sidebar-btn"
-        onClick={() => setPreferencesOpen(true)}
-        title="Voorkeuren"
-      >
-        <IconSettings size={15} />
-        <span className="sidebar-btn__label">Voorkeuren</span>
-      </button>
     </aside>
+  )
+}
+
+/** Groepje zijbalkknoppen met een kopje; ingeklapt blijft alleen een streepje over. */
+function SidebarSection({
+  title,
+  collapsed,
+  children
+}: {
+  title: string
+  collapsed: boolean
+  children: React.ReactNode
+}): JSX.Element {
+  return (
+    <div className="sidebar__section">
+      {collapsed ? <div className="sidebar__divider" /> : <div className="sidebar__section-title">{title}</div>}
+      {children}
+    </div>
   )
 }

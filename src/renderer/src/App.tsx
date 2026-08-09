@@ -11,6 +11,7 @@ import StatusBar from './components/StatusBar'
 import ShortcutsDialog from './components/ShortcutsDialog'
 import PreferencesDialog from './components/PreferencesDialog'
 import TrashPanel from './components/TrashPanel'
+import ImportProgress from './components/ImportProgress'
 import { IconPanelLeft } from './components/icons'
 import { exportAllZip, saveActiveToSource } from './lib/exportActions'
 
@@ -28,13 +29,33 @@ const CompareView = lazy(() => import('./components/CompareView'))
 const SmartDialog = lazy(() => import('./components/SmartDialog'))
 const TemplatesDialog = lazy(() => import('./components/TemplatesDialog'))
 const SigningDialog = lazy(() => import('./components/SigningDialog'))
-import { printActiveGroup } from './lib/printActions'
 import { cancelDrag, isDragActive } from './lib/dragController'
 import { useStudioStore } from './store'
 
 function isTypingTarget(target: EventTarget | null): boolean {
   const el = target as HTMLElement | null
   return !!el && (el.tagName === 'INPUT' || el.tagName === 'TEXTAREA' || el.isContentEditable)
+}
+
+/** Tabbladen op volgorde: het Overzicht staat vooraan (null), daarna de documenten. */
+function tabOrder(): (string | null)[] {
+  const { editorTabs, groups } = useStudioStore.getState()
+  return [null, ...editorTabs.filter((id) => groups.some((g) => g.id === id))]
+}
+
+function cycleEditorTab(direction: 1 | -1): void {
+  const state = useStudioStore.getState()
+  const order = tabOrder()
+  if (order.length < 2) return
+  const current = order.indexOf(state.activeEditorTab)
+  const next = ((current < 0 ? 0 : current) + direction + order.length) % order.length
+  state.setActiveEditorTab(order[next])
+}
+
+function selectEditorTabByNumber(number: number): void {
+  const order = tabOrder()
+  const target = order[number - 1]
+  if (target !== undefined) useStudioStore.getState().setActiveEditorTab(target)
 }
 
 export default function App(): JSX.Element {
@@ -64,6 +85,9 @@ export default function App(): JSX.Element {
 
   useEffect(() => {
     document.documentElement.setAttribute('data-theme', theme)
+    // Het hoofdproces onthoudt het thema zodat een volgend venster meteen in de
+    // juiste kleur opent (geen donkere flits bij een licht thema).
+    if (typeof window.api?.setWindowTheme === 'function') window.api.setWindowTheme(theme)
   }, [theme])
 
   useEffect(() => {
@@ -99,7 +123,19 @@ export default function App(): JSX.Element {
         state.setShortcutsOpen(!state.shortcutsOpen)
       } else if (mod && key === 'p') {
         e.preventDefault()
-        void printActiveGroup()
+        void import('./lib/printActions').then((m) => m.printActiveGroup())
+      } else if (mod && key === 'w') {
+        e.preventDefault()
+        if (state.activeEditorTab) state.closeEditorTab(state.activeEditorTab)
+      } else if (mod && e.key === 'Tab') {
+        e.preventDefault()
+        cycleEditorTab(e.shiftKey ? -1 : 1)
+      } else if (mod && /^[1-9]$/.test(e.key)) {
+        e.preventDefault()
+        selectEditorTabByNumber(Number(e.key))
+      } else if (mod && key === 'a') {
+        e.preventDefault()
+        if (!state.lightbox.open && !state.activeEditorTab) state.selectAllPages()
       } else if (mod && key === 'd') {
         e.preventDefault()
         if (!state.lightbox.open && !state.activeEditorTab) state.duplicatePages([...state.selectedPageIds])
@@ -177,6 +213,7 @@ export default function App(): JSX.Element {
         {templatesDialogOpen && <TemplatesDialog />}
         {signingDialogOpen && <SigningDialog />}
       </Suspense>
+      <ImportProgress />
       <SelectionBar />
       <PasswordDialog />
       <WhatsNewDialog />

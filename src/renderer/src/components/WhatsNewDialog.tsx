@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
 import { APP_CHANGELOG } from '../lib/changelog'
+import { useModalDialog } from '../hooks/useModalDialog'
 import { IconCheck } from './icons'
 
 const SEEN_VERSION_KEY = 'pdf-studio-seen-version'
@@ -11,6 +12,7 @@ const SEEN_VERSION_KEY = 'pdf-studio-seen-version'
  */
 export default function WhatsNewDialog(): JSX.Element | null {
   const [entry, setEntry] = useState<{ version: string; items: string[] } | null>(null)
+  const cardRef = useModalDialog<HTMLDivElement>(entry !== null, () => close())
 
   useEffect(() => {
     if (typeof window.api.getAppVersion !== 'function') return
@@ -39,7 +41,7 @@ export default function WhatsNewDialog(): JSX.Element | null {
 
   return (
     <div className="modal-overlay" onClick={close}>
-      <div className="modal-card whatsnew-card" onClick={(e) => e.stopPropagation()}>
+      <div ref={cardRef} role="dialog" aria-modal="true" className="modal-card whatsnew-card" onClick={(e) => e.stopPropagation()}>
         <h3>Wat is nieuw in versie {entry.version}</h3>
         <ul className="whatsnew-list">
           {entry.items.map((item, i) => (

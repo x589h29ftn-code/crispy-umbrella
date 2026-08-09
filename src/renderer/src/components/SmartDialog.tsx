@@ -11,6 +11,7 @@ import { getTextLineBoxes } from '../lib/textLines'
 import { IconClose, IconFile, IconTrash } from './icons'
 import ScanNotice from './ScanNotice'
 import type { DocGroup } from '../types'
+import { useModalDialog } from '../hooks/useModalDialog'
 
 type Tab = 'rename' | 'blank' | 'cleanup' | 'data' | 'split' | 'sort' | 'text' | 'table' | 'compress' | 'portfolio'
 
@@ -21,6 +22,7 @@ type Tab = 'rename' | 'blank' | 'cleanup' | 'data' | 'split' | 'sort' | 'text' |
 export default function SmartDialog(): JSX.Element | null {
   const open = useStudioStore((s) => s.smartDialogOpen)
   const setOpen = useStudioStore((s) => s.setSmartDialogOpen)
+  const cardRef = useModalDialog<HTMLDivElement>(open, () => setOpen(false))
   const groups = useStudioStore((s) => s.groups)
   const sources = useStudioStore((s) => s.sources)
   const activeGroupId = useStudioStore((s) => s.activeGroupId)
@@ -235,7 +237,7 @@ export default function SmartDialog(): JSX.Element | null {
 
   return (
     <div className="modal-overlay" onClick={() => setOpen(false)}>
-      <div className="modal-card smart-card" onClick={(e) => e.stopPropagation()}>
+      <div ref={cardRef} role="dialog" aria-modal="true" className="modal-card smart-card" onClick={(e) => e.stopPropagation()}>
         <button type="button" className="icon-btn icon-btn--chrome smart-card__close" title="Sluiten" onClick={() => setOpen(false)}>
           <IconClose size={13} />
         </button>

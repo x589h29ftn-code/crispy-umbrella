@@ -1,6 +1,7 @@
-import { app, shell, BrowserWindow, ipcMain, dialog } from 'electron'
+import { app, shell, BrowserWindow, ipcMain, dialog, screen } from 'electron'
 import { join, basename } from 'path'
 import { mkdir, mkdtemp, readdir, readFile, rm, stat, unlink, writeFile } from 'fs/promises'
+import { readFileSync, writeFileSync } from 'fs'
 import { execFile } from 'child_process'
 import { tmpdir } from 'os'
 import { randomUUID } from 'node:crypto'
@@ -12,6 +13,65 @@ let mainWindow: BrowserWindow | null = null
 // Losse vensters: een document dat naar een eigen venster is losgekoppeld. De
 // payload wacht hier tot het nieuwe venster hem via 'window:consumeHandoff' ophaalt.
 const documentHandoffs = new Map<string, unknown>()
+
+// ---- Venster-voorkeuren (userData/window.json) ----
+//
+// Grootte, positie en het gekozen thema worden onthouden. Het thema staat hier
+// óók (de renderer bewaart het in localStorage) zodat het venster meteen in de
+// juiste kleur opent en je bij het opstarten geen donkere flits ziet.
+
+interface WindowPrefs {
+  bounds?: { x: number; y: number; width: number; height: number }
+  maximized?: boolean
+  theme?: 'dark' | 'light'
+}
+
+const WINDOW_BACKGROUNDS = { dark: '#141416', light: '#eef0f4' } as const
+
+let windowPrefs: WindowPrefs = {}
+
+function windowPrefsPath(): string {
+  return join(app.getPath('userData'), 'window.json')
+}
+
+/** Leest de voorkeuren synchroon: het venster wordt er direct mee opgebouwd. */
+function loadWindowPrefs(): void {
+  try {
+    const parsed = JSON.parse(readFileSync(windowPrefsPath(), 'utf-8'))
+    if (parsed && typeof parsed === 'object') windowPrefs = parsed as WindowPrefs
+  } catch {
+    // Geen (of kapotte) voorkeuren: standaardafmetingen.
+  }
+}
+
+function saveWindowPrefs(): void {
+  try {
+    writeFileSync(windowPrefsPath(), JSON.stringify(windowPrefs), 'utf-8')
+  } catch {
+    // Best-effort.
+  }
+}
+
+/** Alleen hergebruiken als het venster nog (deels) op een aangesloten scherm valt. */
+function usableBounds(): WindowPrefs['bounds'] | null {
+  const b = windowPrefs.bounds
+  if (!b || [b.x, b.y, b.width, b.height].some((n) => typeof n !== 'number' || !Number.isFinite(n))) return null
+  if (b.width < 400 || b.height < 300) return null
+  const visible = screen.getAllDisplays().some((display) => {
+    const a = display.workArea
+    return b.x < a.x + a.width && b.x + b.width > a.x && b.y < a.y + a.height && b.y + b.height > a.y
+  })
+  return visible ? b : null
+}
+
+function rememberBounds(win: BrowserWindow): void {
+  if (win.isDestroyed()) return
+  windowPrefs.maximized = win.isMaximized()
+  if (!win.isMaximized() && !win.isMinimized() && !win.isFullScreen()) {
+    windowPrefs.bounds = win.getNormalBounds()
+  }
+  saveWindowPrefs()
+}
 
 // ---- Recent geopende bestanden (userData/recent.json) ----
 
@@ -85,14 +145,14 @@ async function sendFilesToWindow(win: BrowserWindow, paths: string[]): Promise<v
 }
 
 function createWindow(): void {
+  const saved = usableBounds()
   const win = new BrowserWindow({
-    width: 1280,
-    height: 820,
+    ...(saved ? saved : { width: 1280, height: 820 }),
     minWidth: 860,
     minHeight: 560,
     show: false,
     autoHideMenuBar: true,
-    backgroundColor: '#141416',
+    backgroundColor: WINDOW_BACKGROUNDS[windowPrefs.theme === 'light' ? 'light' : 'dark'],
     ...(process.platform === 'linux' ? { icon } : {}),
     webPreferences: {
       preload: join(__dirname, '../preload/index.js'),
@@ -102,8 +162,25 @@ function createWindow(): void {
 
   mainWindow = win
 
+  if (windowPrefs.maximized) win.maximize()
+
   win.on('ready-to-show', () => {
     win.show()
+  })
+
+  // Grootte/positie onthouden; tijdens het slepen niet bij elke pixel schrijven.
+  let boundsTimer: NodeJS.Timeout | null = null
+  const scheduleRemember = (): void => {
+    if (boundsTimer) clearTimeout(boundsTimer)
+    boundsTimer = setTimeout(() => rememberBounds(win), 400)
+  }
+  win.on('resize', scheduleRemember)
+  win.on('move', scheduleRemember)
+  win.on('maximize', scheduleRemember)
+  win.on('unmaximize', scheduleRemember)
+  win.on('close', () => {
+    if (boundsTimer) clearTimeout(boundsTimer)
+    rememberBounds(win)
   })
 
   win.on('closed', () => {
@@ -143,7 +220,7 @@ function createDetachedWindow(handoffId: string): void {
     minHeight: 520,
     show: false,
     autoHideMenuBar: true,
-    backgroundColor: '#141416',
+    backgroundColor: WINDOW_BACKGROUNDS[windowPrefs.theme === 'light' ? 'light' : 'dark'],
     ...(process.platform === 'linux' ? { icon } : {}),
     webPreferences: {
       preload: join(__dirname, '../preload/index.js'),
@@ -180,11 +257,25 @@ app.on('second-instance', (_evt, argv) => {
 
 app.whenReady().then(() => {
   electronApp.setAppUserModelId('com.pdfstudio.app')
+  loadWindowPrefs()
 
-  void import('./updater').then(({ initAutoUpdater }) => initAutoUpdater())
+  // De updater doet meteen een netwerkcheck; die wachten we af tot het venster
+  // er staat, zodat het opstarten er niet door vertraagd wordt.
+  setTimeout(() => {
+    void import('./updater').then(({ initAutoUpdater }) => initAutoUpdater())
+  }, 8000)
 
   app.on('browser-window-created', (_, window) => {
     optimizer.watchWindowShortcuts(window)
+  })
+
+  // De renderer meldt het gekozen thema zodat het volgende venster meteen in
+  // de juiste kleur opent.
+  ipcMain.on('prefs:theme', (_evt, theme: 'dark' | 'light') => {
+    if (theme !== 'dark' && theme !== 'light') return
+    if (windowPrefs.theme === theme) return
+    windowPrefs.theme = theme
+    saveWindowPrefs()
   })
 
   ipcMain.handle('print:html', async (_evt, html: string) => {
@@ -256,11 +347,11 @@ app.whenReady().then(() => {
 
   ipcMain.handle('recent:list', async () => {
     const list = await readRecent()
-    const existing: { path: string; name: string }[] = []
+    const existing: { path: string; name: string; openedAt?: number }[] = []
     for (const entry of list) {
       try {
         await stat(entry.path)
-        existing.push({ path: entry.path, name: entry.name })
+        existing.push({ path: entry.path, name: entry.name, openedAt: entry.openedAt })
       } catch {
         // Verplaatst of verwijderd — stilletjes overslaan.
       }

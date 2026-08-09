@@ -12,7 +12,17 @@ export const APP_CHANGELOG: { version: string; items: string[] }[] = [
       'Laat een tweede partij op een andere plek in het document tekenen: verstuur het via je eigen Outlook (ontvanger, onderwerp en begeleidende tekst worden vooraf ingevuld) en importeer het getekende bestand terug in het dashboard — de status springt dan automatisch op "Ondertekend"',
       'Herinneringen: bij een verzonden, nog niet getekend document toont het dashboard "x dagen geleden verzonden" en een knop die een herinneringsmail via Outlook klaarzet',
       'Elk dossier heeft een tijdlijn (aangemaakt, zelf-getekend, verzonden, herinnering, geïmporteerd) en de dossiers worden — net als de sjablonen — in de gedeelde bibliotheekmap bewaard, zodat het hele kantoor hetzelfde overzicht heeft',
-      'De app start voortaan leeg: de PDF\'s van de vorige keer worden niet meer automatisch geopend, ook niet in het overzicht voor samenvoegen en splitsen. Wil je dat wél, zet dan "Vorige sessie herstellen bij opstarten" aan bij Voorkeuren'
+      'De app start voortaan leeg: de PDF\'s van de vorige keer worden niet meer automatisch geopend, ook niet in het overzicht voor samenvoegen en splitsen. Wil je dat wél, zet dan "Vorige sessie herstellen bij opstarten" aan bij Voorkeuren',
+      'Nieuw startscherm: een ruime sleepzone met daaronder de knoppen Openen, Combineren of splitsen, Sjablonen en Ondertekenen, plus je recent geopende bestanden met map en datum ("Vandaag", "Gisteren")',
+      'Opgeruimde zijbalk: de acties staan gegroepeerd onder kopjes (Bestand, Bekijken, Documenten, Extra), het middendeel schuift mee en Exporteer PDF, Exporteer zip en Voorkeuren staan vast onderaan — vóór deze versie vielen die knoppen bij een normaal venster buiten beeld en waren ze onbereikbaar. Wil je alles zoals vroeger in de zijbalk? Zet "Volledige werkbalk" aan bij Voorkeuren',
+      'Sneller opstarten: de PDF-motor (±0,6 MB) wordt pas geladen zodra je een document opent, waardoor er bij het starten ongeveer de helft minder programmacode ingelezen hoeft te worden. Ook wordt de update-controle pas na het opstarten gedaan',
+      'Het venster onthoudt zijn grootte, positie en of het gemaximaliseerd stond, en opent meteen in de juiste themakleur (geen donkere flits meer bij een licht thema)',
+      'Meerdere bestanden openen gaat nu drie tegelijk in plaats van één voor één, met een voortgangsbalk ("Bestanden openen… 3 van 12") zodat je ziet dat er gewerkt wordt',
+      'Nieuwe sneltoetsen: Ctrl+W (tabblad sluiten), Ctrl+Tab en Ctrl+1…9 (wisselen tussen tabbladen) en Ctrl+A (alle pagina\'s van het document selecteren; nogmaals = alle documenten). Een tabblad sluit ook met een middelklik',
+      'Escape sluit voortaan élk venster (ook Sjablonen, Ondertekenen, Slim, Privacy-scan en Handtekening tekenen), de Tab-toets blijft binnen het geopende venster en na sluiten keert de focus terug naar waar je was',
+      'Beter met het toetsenbord te bedienen: overal een duidelijke blauwe focusring, en foutmeldingen blijven staan tot je ze wegklikt in plaats van na een paar seconden te verdwijnen',
+      'Minder geheugengebruik bij lang doorwerken: gerenderde pagina-afbeeldingen worden begrensd bewaard en niet meer eindeloos opgestapeld',
+      'Opgelost: een bestand dat je op het lege startscherm liet vallen werd twee keer geïmporteerd'
     ]
   },
   {

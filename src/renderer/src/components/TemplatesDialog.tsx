@@ -43,6 +43,7 @@ import {
   type TemplateField
 } from '../lib/templates'
 import { IconClose, IconTrash } from './icons'
+import { useModalDialog } from '../hooks/useModalDialog'
 
 type View =
   | { kind: 'list' }
@@ -88,6 +89,7 @@ function loadFavs(): Set<string> {
 export default function TemplatesDialog(): JSX.Element | null {
   const open = useStudioStore((s) => s.templatesDialogOpen)
   const setOpen = useStudioStore((s) => s.setTemplatesDialogOpen)
+  const cardRef = useModalDialog<HTMLDivElement>(open, () => setOpen(false))
   const addToast = useStudioStore((s) => s.addToast)
   const importFiles = useStudioStore((s) => s.importFiles)
 
@@ -696,7 +698,7 @@ export default function TemplatesDialog(): JSX.Element | null {
 
   return (
     <div className="modal-overlay" onClick={() => setOpen(false)}>
-      <div className="modal-card smart-card templates-card" onClick={(e) => e.stopPropagation()}>
+      <div ref={cardRef} role="dialog" aria-modal="true" className="modal-card smart-card templates-card" onClick={(e) => e.stopPropagation()}>
         <div className="modal-card__head">
           <h2>
             {view.kind === 'list' && 'Documentsjablonen'}

@@ -8,7 +8,6 @@ import {
   saveActiveToOneDrive,
   saveActiveToSource
 } from '../lib/exportActions'
-import { printActiveGroup } from '../lib/printActions'
 import {
   IconArchive,
   IconBookmark,
@@ -213,7 +212,7 @@ export default function AppMenu(): JSX.Element {
             type="button"
             className="app-menu__item"
             disabled={!hasDoc}
-            onClick={() => run(() => void printActiveGroup())}
+            onClick={() => run(() => void import('../lib/printActions').then((m) => m.printActiveGroup()))}
           >
             <IconPrinter size={15} />
             <span>Afdrukken…</span>

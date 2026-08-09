@@ -11,6 +11,7 @@ import {
 } from '../lib/sensitiveData'
 import { IconClose, IconShield } from './icons'
 import ScanNotice from './ScanNotice'
+import { useModalDialog } from '../hooks/useModalDialog'
 
 /**
  * Privacy-scan (AVG): doorzoekt het actieve document op BSN, IBAN, e-mail en
@@ -19,6 +20,7 @@ import ScanNotice from './ScanNotice'
 export default function PrivacyScanDialog(): JSX.Element | null {
   const open = useStudioStore((s) => s.privacyScanOpen)
   const setOpen = useStudioStore((s) => s.setPrivacyScanOpen)
+  const cardRef = useModalDialog<HTMLDivElement>(open, () => setOpen(false))
   const groups = useStudioStore((s) => s.groups)
   const activeGroupId = useStudioStore((s) => s.activeGroupId)
   const sources = useStudioStore((s) => s.sources)
@@ -105,7 +107,7 @@ export default function PrivacyScanDialog(): JSX.Element | null {
 
   return (
     <div className="modal-overlay" onClick={() => setOpen(false)}>
-      <div className="modal-card privacy-card" onClick={(e) => e.stopPropagation()}>
+      <div ref={cardRef} role="dialog" aria-modal="true" className="modal-card privacy-card" onClick={(e) => e.stopPropagation()}>
         <button type="button" className="icon-btn icon-btn--chrome privacy-card__close" title="Sluiten" onClick={() => setOpen(false)}>
           <IconClose size={13} />
         </button>

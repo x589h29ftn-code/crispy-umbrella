@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react'
 import { nanoid } from 'nanoid'
 import { useStudioStore } from '../store'
 import { IconClose } from './icons'
+import { useModalDialog } from '../hooks/useModalDialog'
 
 const PEN_COLORS = ['#111827', '#1d4ed8', '#b91c1c']
 
@@ -12,6 +13,7 @@ const PEN_COLORS = ['#111827', '#1d4ed8', '#b91c1c']
 export default function DrawSignatureDialog(): JSX.Element | null {
   const open = useStudioStore((s) => s.drawSignatureOpen)
   const setOpen = useStudioStore((s) => s.setDrawSignatureOpen)
+  const cardRef = useModalDialog<HTMLDivElement>(open, () => setOpen(false))
   const addSignatureAsset = useStudioStore((s) => s.addSignatureAsset)
   const setActiveSignature = useStudioStore((s) => s.setActiveSignature)
   const canvasRef = useRef<HTMLCanvasElement>(null)
@@ -121,7 +123,7 @@ export default function DrawSignatureDialog(): JSX.Element | null {
 
   return (
     <div className="modal-overlay" onClick={() => setOpen(false)}>
-      <div className="modal-card draw-signature-card" onClick={(e) => e.stopPropagation()}>
+      <div ref={cardRef} role="dialog" aria-modal="true" className="modal-card draw-signature-card" onClick={(e) => e.stopPropagation()}>
         <button type="button" className="icon-btn icon-btn--chrome draw-signature-card__close" title="Sluiten" onClick={() => setOpen(false)}>
           <IconClose size={13} />
         </button>

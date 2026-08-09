@@ -99,7 +99,8 @@ const api = {
     ipcRenderer.on('files:opened', listener)
     return () => ipcRenderer.removeListener('files:opened', listener)
   },
-  getRecentFiles: (): Promise<{ path: string; name: string }[]> => ipcRenderer.invoke('recent:list'),
+  getRecentFiles: (): Promise<{ path: string; name: string; openedAt?: number }[]> =>
+    ipcRenderer.invoke('recent:list'),
   openRecentFile: (path: string): Promise<(LoadedFile & { error?: undefined }) | { error: string }> =>
     ipcRenderer.invoke('recent:open', path),
   sessionLoad: (): Promise<{
@@ -116,6 +117,8 @@ const api = {
   remarkableUnpair: (): Promise<{ ok: boolean }> => ipcRenderer.invoke('remarkable:unpair'),
   remarkableUpload: (name: string, data: Uint8Array): Promise<{ ok: boolean; error?: string }> =>
     ipcRenderer.invoke('remarkable:upload', name, data),
+  /** Meldt het gekozen thema zodat een volgend venster meteen goed opent. */
+  setWindowTheme: (theme: 'dark' | 'light'): void => ipcRenderer.send('prefs:theme', theme),
   getAppVersion: (): Promise<string> => ipcRenderer.invoke('app:version'),
   installUpdate: (): Promise<void> => ipcRenderer.invoke('update:install'),
   onUpdateEvent: (callback: (event: { type: string; version?: string }) => void): (() => void) => {
