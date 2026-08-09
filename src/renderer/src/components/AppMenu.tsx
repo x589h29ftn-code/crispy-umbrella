@@ -14,6 +14,7 @@ import {
   IconCloud,
   IconCompare,
   IconComment,
+  IconCompress,
   IconDownload,
   IconExpand,
   IconFile,
@@ -22,6 +23,7 @@ import {
   IconGridView,
   IconKeyboard,
   IconMail,
+  IconMarkdown,
   IconMenu,
   IconMoon,
   IconPrinter,
@@ -292,6 +294,24 @@ export default function AppMenu(): JSX.Element {
           >
             <IconSparkles size={15} />
             <span>Slimme documenten</span>
+          </button>
+          <button
+            type="button"
+            className="app-menu__item"
+            disabled={!hasDoc}
+            onClick={() => run(() => setSmartDialogOpen(true, 'markdown'))}
+          >
+            <IconMarkdown size={15} />
+            <span>Exporteren als Markdown…</span>
+          </button>
+          <button
+            type="button"
+            className="app-menu__item"
+            disabled={!hasDoc}
+            onClick={() => run(() => setSmartDialogOpen(true, 'compress'))}
+          >
+            <IconCompress size={15} />
+            <span>Comprimeren (kleiner maken)…</span>
           </button>
           <button type="button" className="app-menu__item" onClick={() => run(() => setSearchOpen(true))}>
             <IconSearch size={15} />

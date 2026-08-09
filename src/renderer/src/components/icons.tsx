@@ -569,3 +569,25 @@ export function IconScissors({ size = 16, className }: IconProps): JSX.Element {
     </svg>
   )
 }
+
+/** Markdown: het bekende "M ⌄"-teken in een kader. */
+export function IconMarkdown({ size = 16, className }: IconProps): JSX.Element {
+  return (
+    <svg width={size} height={size} viewBox="0 0 24 24" className={className} {...base}>
+      <rect x="2.5" y="5" width="19" height="14" rx="2" />
+      <path d="M6 15.5v-7l3 3.5 3-3.5v7" />
+      <path d="M16.5 8.5v5.5M14.5 12l2 2 2-2" />
+    </svg>
+  )
+}
+
+/** Comprimeren: pijlen die naar elkaar toe wijzen. */
+export function IconCompress({ size = 16, className }: IconProps): JSX.Element {
+  return (
+    <svg width={size} height={size} viewBox="0 0 24 24" className={className} {...base}>
+      <path d="M4 12h16" />
+      <path d="M9 5l3 3 3-3" />
+      <path d="M9 19l3-3 3 3" />
+    </svg>
+  )
+}

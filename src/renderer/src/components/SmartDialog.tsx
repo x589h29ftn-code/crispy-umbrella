@@ -12,6 +12,8 @@ import { IconClose, IconFile, IconTrash } from './icons'
 import ScanNotice from './ScanNotice'
 import type { DocGroup } from '../types'
 import { useModalDialog } from '../hooks/useModalDialog'
+import CompressPanel from './CompressPanel'
+import MarkdownPanel from './MarkdownPanel'
 
 type Tab = SmartTab
 
@@ -231,6 +233,7 @@ export default function SmartDialog(): JSX.Element | null {
   const TABS: [Tab, string][] = [
     ['rename', 'Hernoemen'],
     ['split', 'Splitsen'],
+    ['markdown', 'Markdown'],
     ['sort', 'Sorteren'],
     ['blank', "Lege pagina's"],
     ['cleanup', 'Opschonen'],
@@ -438,49 +441,9 @@ export default function SmartDialog(): JSX.Element | null {
           </div>
         )}
 
-        {tab === 'compress' && (
-          <div className="smart-card__body">
-            <p className="smart-card__intro">
-              Maakt "{activeGroup?.name ?? '—'}" kleiner om te mailen: elke pagina wordt als compacte afbeelding
-              opgeslagen. Vooral effectief bij scans; de tekstlaag vervalt (draai daarna zo nodig OCR). Is het
-              resultaat niet kleiner, dan wordt de gewone export bewaard.
-            </p>
-            <div className="modal-card__actions">
-              <button
-                type="button"
-                className="pill-btn"
-                disabled={busy || !activeGroup}
-                onClick={() => {
-                  setBusy(true)
-                  void import('../lib/compress')
-                    .then((m) => m.compressActiveGroup('normal'))
-                    .finally(() => {
-                      setBusy(false)
-                      setOpen(false)
-                    })
-                }}
-              >
-                Normaal (150 dpi)
-              </button>
-              <button
-                type="button"
-                className="pill-btn pill-btn--primary"
-                disabled={busy || !activeGroup}
-                onClick={() => {
-                  setBusy(true)
-                  void import('../lib/compress')
-                    .then((m) => m.compressActiveGroup('strong'))
-                    .finally(() => {
-                      setBusy(false)
-                      setOpen(false)
-                    })
-                }}
-              >
-                {busy ? 'Bezig…' : 'Sterk (100 dpi)'}
-              </button>
-            </div>
-          </div>
-        )}
+        {tab === 'compress' && <CompressPanel />}
+
+        {tab === 'markdown' && <MarkdownPanel group={activeGroup} />}
 
         {tab === 'portfolio' && (
           <div className="smart-card__body">
@@ -564,6 +527,9 @@ export default function SmartDialog(): JSX.Element | null {
                 }}
               >
                 Als Word (.docx)
+              </button>
+              <button type="button" className="pill-btn" onClick={() => setTab('markdown')}>
+                Als Markdown (.md)…
               </button>
               <button
                 type="button"

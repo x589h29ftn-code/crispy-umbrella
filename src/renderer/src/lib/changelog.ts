@@ -27,6 +27,9 @@ export const APP_CHANGELOG: { version: string; items: string[] }[] = [
       'Nieuw op elke documentkaart: een knop "Samenvoegen met…" waarmee je het document in één klik achter een ander document plakt, plus "Splitsen op inhoudsopgave…" in het "…"-menu',
       'De knoppen op een documentkaart staan nu direct naast de documentnaam (links) en zijn groter: bij inzoomen schoven ze voorheen rechts uit beeld',
       'Meerdere pagina\'s tegelijk naar een ander document verplaatsen kan nu ook zonder slepen: selecteer ze (Ctrl+klik of Shift+klik) en kies "Naar document…" in de selectiebalk',
+      'Nieuw gereedschap "Markdown" (Slim → Markdown, of Menu → Exporteren als Markdown): zet een PDF om naar een net opgemaakt .md-bestand. Koppen worden herkend aan lettergrootte, vet en de bladwijzers van de PDF, opsommingen worden lijsten, uitgelijnde kolommen worden een Markdown-tabel, afgebroken woorden en losse regels worden weer hele alinea\'s, en terugkerende kop-/voetteksten (kantoornaam, "Pagina 3 van 12") vallen weg. Alles is per optie aan/uit te zetten en je ziet het resultaat meteen in een voorbeeld — opslaan als .md of kopiëren naar het klembord',
+      'Comprimeren vernieuwd (Slim → Comprimeren): een schuifregelaar van "Kleinst (mailen)" tot "Vrijwel origineel" met daarbij direct de geschatte bestandsgrootte, het verwachte percentage winst én een voorbeeld van een pagina op die instelling, zodat je vóóraf ziet of het nog leesbaar is',
+      'Comprimeren kan nu pagina\'s met tekst ongemoeid laten: die blijven scherp en doorzoekbaar en alleen de scans worden verkleind. Optioneel alles naar grijstinten, wat bij scans van zwarte tekst nog fors scheelt (in onze test: 2,0 MB → 0,4 MB)',
       'Bij het slepen van pagina\'s licht het doeldocument op en zie je precies tussen welke pagina\'s ze komen. Opgelost: de selectiebalk onderin ving de muis af, waardoor pagina\'s daar niet losgelaten konden worden'
     ]
   },

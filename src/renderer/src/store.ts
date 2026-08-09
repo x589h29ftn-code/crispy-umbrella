@@ -40,6 +40,7 @@ export type SmartTab =
   | 'text'
   | 'table'
   | 'compress'
+  | 'markdown'
   | 'portfolio'
 
 export type DropTarget =

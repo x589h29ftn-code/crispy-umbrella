@@ -7,6 +7,8 @@ export interface TextLineBox {
   str: string
   /** Approximate font size in PDF points. */
   fontSize: number
+  /** Regel staat (grotendeels) in een vet lettertype. */
+  bold?: boolean
   /** Axis-aligned box around the line in visual (on-screen, y-down) units. */
   visual: { x: number; y: number; width: number; height: number }
 }
@@ -17,6 +19,35 @@ interface RawItem {
   y: number
   width: number
   height: number
+  bold?: boolean
+}
+
+/**
+ * pdf.js geeft per fragment een interne lettertypenaam; de échte naam
+ * (bv. "ABCDE+Arial-BoldMT") staat in commonObjs. Daaruit leiden we af of de
+ * tekst vet staat — nodig om koppen te herkennen bij export naar Markdown.
+ */
+function boldLookup(page: { commonObjs: { has: (k: string) => boolean; get: (k: string) => unknown } }): (
+  fontName: string | undefined
+) => boolean {
+  const cache = new Map<string, boolean>()
+  return (fontName) => {
+    if (!fontName) return false
+    const known = cache.get(fontName)
+    if (known !== undefined) return known
+    let bold = false
+    try {
+      if (page.commonObjs.has(fontName)) {
+        const font = page.commonObjs.get(fontName) as { name?: string; bold?: boolean } | null
+        const name = font?.name ?? ''
+        bold = Boolean(font?.bold) || /bold|black|heavy|semib|demi/i.test(name)
+      }
+    } catch {
+      // Lettertype (nog) niet geladen — dan gewoon niet vet.
+    }
+    cache.set(fontName, bold)
+    return bold
+  }
 }
 
 /**
@@ -34,12 +65,20 @@ export async function getTextLineBoxes(
   const viewport = page.getViewport({ scale: 1, rotation: totalRotation })
   const content = await page.getTextContent()
 
+  const isBold = boldLookup(page)
   const items: RawItem[] = []
   for (const item of content.items) {
     if (!('str' in item) || !item.str.trim()) continue
     const [a, b, , , e, f] = item.transform
     const fontSize = Math.hypot(a, b) || item.height || 10
-    items.push({ str: item.str, x: e, y: f, width: item.width || fontSize * item.str.length * 0.5, height: fontSize })
+    items.push({
+      str: item.str,
+      x: e,
+      y: f,
+      width: item.width || fontSize * item.str.length * 0.5,
+      height: fontSize,
+      bold: isBold((item as { fontName?: string }).fontName)
+    })
   }
 
   // Geen ingebouwde tekstlaag (gescande pagina)? Val terug op OCR-resultaten,
@@ -96,7 +135,10 @@ export async function getTextLineBoxes(
       width: Math.max(...xs) - Math.min(...xs),
       height: Math.max(...ys) - Math.min(...ys)
     }
-    return { str: str.trim(), fontSize, visual }
+    // Vet als het merendeel van de tekens in een vet lettertype staat.
+    const boldChars = line.filter((i) => i.bold).reduce((n, i) => n + i.str.length, 0)
+    const allChars = line.reduce((n, i) => n + i.str.length, 0)
+    return { str: str.trim(), fontSize, bold: allChars > 0 && boldChars / allChars > 0.6, visual }
   })
 }
 
@@ -107,6 +149,8 @@ export interface TextItem {
   y: number
   width: number
   height: number
+  /** Fragment staat in een vet lettertype. */
+  bold?: boolean
 }
 
 /**
@@ -118,6 +162,7 @@ export async function getTextItems(source: SourceFile, pageIndex: number): Promi
   const doc = await getPdfJsDocument(source)
   const page = await doc.getPage(pageIndex + 1)
   const content = await page.getTextContent()
+  const isBold = boldLookup(page)
   const items: TextItem[] = []
   for (const item of content.items) {
     if (!('str' in item) || !item.str.trim()) continue
@@ -128,7 +173,8 @@ export async function getTextItems(source: SourceFile, pageIndex: number): Promi
       x: e,
       y: f,
       width: item.width || fontSize * item.str.length * 0.5,
-      height: fontSize
+      height: fontSize,
+      bold: isBold((item as { fontName?: string }).fontName)
     })
   }
   // Terugval op OCR bij een gescande pagina zonder tekstlaag.
