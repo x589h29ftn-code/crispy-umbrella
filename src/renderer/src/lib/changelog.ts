@@ -6,6 +6,7 @@ export const APP_CHANGELOG: { version: string; items: string[] }[] = [
   {
     version: '1.10.0',
     items: [
+      'Nieuw: menu linksboven (knop "Menu"), zoals in Adobe — met openen, bestanden combineren/splitsen, opslaan (als), alles exporteren, OneDrive, afdrukken, delen (mailen, reMarkable, los venster), ondertekenen, sjablonen, vergelijken, privacy-scan, slimme documenten, zoeken, voorkeuren en meer, netjes gegroepeerd; inclusief recent geopende bestanden',
       'Nieuw: Ondertekenen (knop "Ondertekenen") — een dashboard in ValidSign-stijl waarin je ziet wat je verstuurd hebt en of de tweede partij al getekend heeft. Maak een ondertekenverzoek van het huidige document of een gekozen bestand, plaats per ondertekenaar een tekenvak op de pagina, en volg de status (Concept, Verzonden, Gedeeltelijk, Ondertekend)',
       'Zelf ondertekenen kan op twee manieren tegelijk: een zichtbare handtekening-afbeelding én een echte digitale ondertekening (PAdES). Voor de gratis start maak je bij "Certificaat" een zelf-ondertekend certificaat aan; later kun je een AATL/gekwalificeerd .p12-certificaat importeren voor een vertrouwde handtekening',
       'Laat een tweede partij op een andere plek in het document tekenen: verstuur het via je eigen Outlook (ontvanger, onderwerp en begeleidende tekst worden vooraf ingevuld) en importeer het getekende bestand terug in het dashboard — de status springt dan automatisch op "Ondertekend"',

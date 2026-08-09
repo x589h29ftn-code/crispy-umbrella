@@ -1,6 +1,7 @@
 import { useRef, useState } from 'react'
 import { nanoid } from 'nanoid'
 import { useStudioStore } from '../store'
+import AppMenu from './AppMenu'
 import { useClickOutside } from '../hooks/useClickOutside'
 import { exportActivePdf, exportAllZip, mailActivePdf, saveActiveToOneDrive } from '../lib/exportActions'
 import { printActiveGroup } from '../lib/printActions'
@@ -158,7 +159,7 @@ export default function Toolbar({ zoomPct, onZoomIn, onZoomOut, onZoomReset, onZ
   return (
     <aside className={`sidebar${collapsed ? ' sidebar--collapsed' : ''}`}>
       <div className="sidebar__top">
-        {!collapsed && <span className="sidebar__title">PDF Studio</span>}
+        <AppMenu />
         {!collapsed && (
           <button
             type="button"

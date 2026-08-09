@@ -4715,3 +4715,100 @@ button.group-row__date:hover {
   margin-bottom: var(--space-3);
 }
 .signing-cert__status--none { color: var(--text-dim); }
+
+/* ---------- App-menu (Adobe-achtig, linksboven) ---------- */
+
+.app-menu {
+  flex: 1;
+  min-width: 0;
+}
+.app-menu__btn {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  width: 100%;
+  padding: 5px 8px;
+  border: 1px solid var(--border-soft);
+  border-radius: var(--radius-sm);
+  background: var(--panel-2);
+  color: var(--text);
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+}
+.app-menu__btn:hover,
+.app-menu__btn--active {
+  background: var(--panel-hover);
+  border-color: var(--accent);
+}
+.sidebar--collapsed .app-menu__btn-label {
+  display: none;
+}
+.sidebar--collapsed .app-menu__btn {
+  justify-content: center;
+  padding: 5px;
+}
+
+.app-menu__panel {
+  width: 264px;
+  max-height: 78vh;
+  overflow-y: auto;
+  padding: var(--space-2);
+}
+.app-menu__section {
+  font-size: 10.5px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--text-dim);
+  padding: 6px 8px 2px;
+}
+.app-menu__subsection {
+  font-size: 10.5px;
+  color: var(--text-dim);
+  padding: 6px 8px 2px;
+}
+.app-menu__item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  padding: 7px 8px;
+  border: none;
+  border-radius: var(--radius-sm);
+  background: none;
+  color: var(--text);
+  font-size: 13px;
+  text-align: left;
+  cursor: pointer;
+}
+.app-menu__item > span:first-of-type {
+  flex: 1;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.app-menu__item:hover:not(:disabled) {
+  background: var(--panel-hover);
+}
+.app-menu__item:disabled {
+  opacity: 0.4;
+  cursor: default;
+}
+.app-menu__item svg {
+  flex-shrink: 0;
+  color: var(--text-dim);
+}
+.app-menu__key {
+  font-size: 11px;
+  color: var(--text-dim);
+  flex-shrink: 0;
+}
+.app-menu__recent-name {
+  font-size: 12.5px;
+}
+.app-menu__divider {
+  height: 1px;
+  background: var(--border);
+  margin: var(--space-2) 4px;
+}
