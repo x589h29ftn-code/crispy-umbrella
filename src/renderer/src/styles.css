@@ -1762,6 +1762,16 @@ body.is-dragging * {
   right: auto;
 }
 
+/* Uitklapmenu's die in het schuifgebied van de zijbalk hangen: dat gebied zou
+   een absoluut geplaatst menu afknippen, dus staan ze vast ten opzichte van het
+   venster. De coördinaten komen uit useAnchoredFlyout. */
+.sidebar__flyout--anchored {
+  position: fixed;
+  left: auto;
+  right: auto;
+  z-index: 120;
+}
+
 .sidebar__password-flyout {
   padding: var(--space-2);
   min-width: 220px;

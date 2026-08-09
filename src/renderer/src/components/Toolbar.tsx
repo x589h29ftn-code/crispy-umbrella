@@ -1,8 +1,10 @@
-import { useRef, useState } from 'react'
+import { useMemo, useRef, useState } from 'react'
 import { nanoid } from 'nanoid'
 import { useStudioStore } from '../store'
 import AppMenu from './AppMenu'
 import { useClickOutside } from '../hooks/useClickOutside'
+import { useAnchoredFlyout } from '../hooks/useAnchoredFlyout'
+import { mergeRefs } from '../lib/mergeRefs'
 import { exportActivePdf, exportAllZip, mailActivePdf, saveActiveToOneDrive } from '../lib/exportActions'
 import {
   IconArchive,
@@ -114,6 +116,13 @@ export default function Toolbar({ zoomPct, onZoomIn, onZoomOut, onZoomReset, onZ
 
   useClickOutside(sigMenuRef, sigMenuOpen, () => setSigMenuOpen(false))
   useClickOutside(passwordRef, showPasswordField, () => setShowPasswordField(false))
+
+  // De uitklapmenu's hangen in het schuifbare deel van de zijbalk en worden
+  // daarom ten opzichte van het venster geplaatst.
+  const sigFlyout = useAnchoredFlyout(sigMenuOpen)
+  const passwordFlyout = useAnchoredFlyout(showPasswordField)
+  const sigWrapRef = useMemo(() => mergeRefs(sigMenuRef, sigFlyout.anchorRef), [sigFlyout.anchorRef])
+  const passwordWrapRef = useMemo(() => mergeRefs(passwordRef, passwordFlyout.anchorRef), [passwordFlyout.anchorRef])
 
   const pageTotal = groups.reduce((n, g) => n + g.pages.length, 0)
   const activeGroup = groups.find((g) => g.id === activeGroupId) ?? groups[0]
@@ -343,7 +352,7 @@ export default function Toolbar({ zoomPct, onZoomIn, onZoomOut, onZoomReset, onZ
             </button>
           )}
 
-          <div className="sidebar__flyout-wrap" ref={sigMenuRef}>
+          <div className="sidebar__flyout-wrap" ref={sigWrapRef}>
             <input
               ref={signatureInputRef}
               type="file"
@@ -364,7 +373,12 @@ export default function Toolbar({ zoomPct, onZoomIn, onZoomOut, onZoomReset, onZ
               {signatureAssets.length > 0 && <span className="sidebar-btn__badge">{signatureAssets.length}</span>}
             </button>
             {sigMenuOpen && (
-              <div className="dropdown-menu sidebar__flyout signature-menu" onClick={(e) => e.stopPropagation()}>
+              <div
+                ref={sigFlyout.flyoutRef}
+                style={sigFlyout.style}
+                className="dropdown-menu sidebar__flyout sidebar__flyout--anchored signature-menu"
+                onClick={(e) => e.stopPropagation()}
+              >
                 <div className="signature-menu__hint">Actieve handtekening sleep je in het volledig scherm op de pagina.</div>
                 {signatureAssets.map((asset) => (
                   <div
@@ -413,7 +427,7 @@ export default function Toolbar({ zoomPct, onZoomIn, onZoomOut, onZoomReset, onZ
           </div>
 
           {fullToolbar && (
-            <div className="sidebar__flyout-wrap" ref={passwordRef}>
+            <div className="sidebar__flyout-wrap" ref={passwordWrapRef}>
               <button
                 type="button"
                 className={`sidebar-btn${exportPassword ? ' sidebar-btn--active' : ''}`}
@@ -424,7 +438,12 @@ export default function Toolbar({ zoomPct, onZoomIn, onZoomOut, onZoomReset, onZ
                 <span className="sidebar-btn__label">Wachtwoord</span>
               </button>
               {showPasswordField && (
-                <div className="dropdown-menu sidebar__flyout sidebar__password-flyout" onClick={(e) => e.stopPropagation()}>
+                <div
+                  ref={passwordFlyout.flyoutRef}
+                  style={passwordFlyout.style}
+                  className="dropdown-menu sidebar__flyout sidebar__flyout--anchored sidebar__password-flyout"
+                  onClick={(e) => e.stopPropagation()}
+                >
                   <input
                     autoFocus
                     type="password"
