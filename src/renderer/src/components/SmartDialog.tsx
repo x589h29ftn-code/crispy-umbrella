@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { nanoid } from 'nanoid'
-import { useStudioStore } from '../store'
+import { useStudioStore, type SmartTab } from '../store'
 import { extractFields, getGroupText, suggestName, DOC_TYPE_LABELS } from '../lib/docAnalysis'
 import { cleanupScannedPage, isBlankPage } from '../lib/scanTools'
 import { exportDataToCsv } from '../lib/dataExport'
@@ -13,7 +13,7 @@ import ScanNotice from './ScanNotice'
 import type { DocGroup } from '../types'
 import { useModalDialog } from '../hooks/useModalDialog'
 
-type Tab = 'rename' | 'blank' | 'cleanup' | 'data' | 'split' | 'sort' | 'text' | 'table' | 'compress' | 'portfolio'
+type Tab = SmartTab
 
 /**
  * "Slimme documenten": automatisch hernoemen op inhoud, lege pagina's vinden en
@@ -34,6 +34,12 @@ export default function SmartDialog(): JSX.Element | null {
   const addToast = useStudioStore((s) => s.addToast)
 
   const [tab, setTab] = useState<Tab>('rename')
+  const requestedTab = useStudioStore((s) => s.smartDialogTab)
+
+  // Vanuit een documentkaart kan dit venster direct op "Splitsen" openen.
+  useEffect(() => {
+    if (open && requestedTab) setTab(requestedTab)
+  }, [open, requestedTab])
   const [busy, setBusy] = useState(false)
   const [suggestions, setSuggestions] = useState<{ groupId: string; current: string; type: string; suggested: string }[]>([])
   const [blanks, setBlanks] = useState<{ pageId: string; groupName: string; pageNumber: number }[]>([])

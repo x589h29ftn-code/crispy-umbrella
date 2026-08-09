@@ -547,3 +547,25 @@ export function IconMenu({ size = 16, className }: IconProps): JSX.Element {
     </svg>
   )
 }
+
+/** Samenvoegen: twee stromen die in één document uitkomen. */
+export function IconMerge({ size = 16, className }: IconProps): JSX.Element {
+  return (
+    <svg width={size} height={size} viewBox="0 0 24 24" className={className} {...base}>
+      <path d="M5 4v3.5c0 2.5 2 4.5 4.5 4.5H19" />
+      <path d="M5 20v-3.5c0-2.5 2-4.5 4.5-4.5H19" />
+      <path d="M15.5 8.5L19 12l-3.5 3.5" />
+    </svg>
+  )
+}
+
+/** Splitsen: één document dat in twee delen uiteenvalt. */
+export function IconScissors({ size = 16, className }: IconProps): JSX.Element {
+  return (
+    <svg width={size} height={size} viewBox="0 0 24 24" className={className} {...base}>
+      <circle cx="6" cy="6" r="2.5" />
+      <circle cx="6" cy="18" r="2.5" />
+      <path d="M8.2 7.6L20 18M8.2 16.4L20 6" />
+    </svg>
+  )
+}

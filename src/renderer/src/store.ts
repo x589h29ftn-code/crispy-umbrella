@@ -29,6 +29,19 @@ export interface TrashedPage {
   groupName: string
 }
 
+/** Tabbladen van het "Slim"-venster; ook gebruikt om het op een tab te openen. */
+export type SmartTab =
+  | 'rename'
+  | 'blank'
+  | 'cleanup'
+  | 'data'
+  | 'split'
+  | 'sort'
+  | 'text'
+  | 'table'
+  | 'compress'
+  | 'portfolio'
+
 export type DropTarget =
   | { type: 'slot'; groupId: string; index: number; edge: 'before' | 'after' }
   | { type: 'canvas' }
@@ -187,6 +200,8 @@ interface StudioState {
   setDragGroupId: (id: string | null) => void
   reorderGroups: (groupId: string, toIndex: number) => void
   removeGroup: (groupId: string) => void
+  /** Voegt alle pagina's van het ene document achter aan het andere toe. */
+  mergeGroupInto: (sourceGroupId: string, targetGroupId: string) => void
   importFiles: (files: { name: string; data: Uint8Array; path?: string }[]) => Promise<void>
   addPagesToGroup: (groupId: string, files: { name: string; data: Uint8Array; path?: string }[]) => Promise<void>
   insertBlankPage: (groupId: string) => Promise<void>
@@ -249,7 +264,9 @@ interface StudioState {
   setPrivacyScanOpen: (open: boolean) => void
   /** "Slimme documenten"-dialoog (hernoemen, lege pagina's, opschonen, CSV). */
   smartDialogOpen: boolean
-  setSmartDialogOpen: (open: boolean) => void
+  /** Tabblad waarop het Slim-venster opent (null = het standaardtabblad). */
+  smartDialogTab: SmartTab | null
+  setSmartDialogOpen: (open: boolean, tab?: SmartTab) => void
   /** Documentsjablonen: Word-sjablonen met {variabelen} invullen en genereren. */
   templatesDialogOpen: boolean
   setTemplatesDialogOpen: (open: boolean) => void
@@ -649,6 +666,27 @@ export const useStudioStore = create<StudioState>((set, get) => ({
       groups.splice(Math.max(0, Math.min(insertAt, groups.length)), 0, moved)
       return { groups }
     })
+  },
+
+  mergeGroupInto: (sourceGroupId, targetGroupId) => {
+    if (sourceGroupId === targetGroupId) return
+    const { groups, addToast } = get()
+    const source = groups.find((g) => g.id === sourceGroupId)
+    const target = groups.find((g) => g.id === targetGroupId)
+    if (!source || !target) return
+    get().markHistory()
+    set((state) => {
+      const merged = state.groups
+        .map((g) => (g.id === targetGroupId ? { ...g, pages: [...g.pages, ...source.pages] } : g))
+        .filter((g) => g.id !== sourceGroupId)
+      return { ...finalizeGroups(state, merged), ...pruneSelection(state, merged), activeGroupId: targetGroupId }
+    })
+    addToast(
+      'success',
+      `"${source.name}" toegevoegd aan "${target.name}" (${source.pages.length} ${
+        source.pages.length === 1 ? 'pagina' : "pagina's"
+      })`
+    )
   },
 
   removeGroup: (groupId) => {
@@ -1104,7 +1142,8 @@ export const useStudioStore = create<StudioState>((set, get) => ({
   privacyScanOpen: false,
   setPrivacyScanOpen: (open) => set({ privacyScanOpen: open }),
   smartDialogOpen: false,
-  setSmartDialogOpen: (open) => set({ smartDialogOpen: open }),
+  smartDialogTab: null,
+  setSmartDialogOpen: (open, tab) => set({ smartDialogOpen: open, smartDialogTab: open ? (tab ?? null) : null }),
   templatesDialogOpen: false,
   setTemplatesDialogOpen: (open) => set({ templatesDialogOpen: open }),
   signingDialogOpen: false,

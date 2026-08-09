@@ -1,4 +1,4 @@
-import { useRef, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { useAutoAnimate } from '@formkit/auto-animate/react'
 import { isImportableFileName, useStudioStore } from '../store'
 import { useClickOutside } from '../hooks/useClickOutside'
@@ -7,7 +7,20 @@ import { beginGroupDrag, cancelDrag, finishDrag, updateDrag } from '../lib/dragC
 import type { DocGroup, SourceFile } from '../types'
 import PageThumb from './PageThumb'
 import AddTile from './AddTile'
-import { IconCalendar, IconCheck, IconClose, IconFolderOpen, IconGrip, IconHash, IconMore, IconPlus, IconStamp, IconTab } from './icons'
+import {
+  IconCalendar,
+  IconCheck,
+  IconClose,
+  IconFolderOpen,
+  IconGrip,
+  IconHash,
+  IconMerge,
+  IconMore,
+  IconPlus,
+  IconScissors,
+  IconStamp,
+  IconTab
+} from './icons'
 
 interface Props {
   group: DocGroup
@@ -25,7 +38,9 @@ function formatDutchDate(isoDate: string): string {
 export default function GroupRow({ group, index, isLast, sources, isActive }: Props): JSX.Element {
   const [editing, setEditing] = useState(false)
   const [draft, setDraft] = useState(group.name)
-  const [menuView, setMenuView] = useState<'closed' | 'menu' | 'watermark' | 'date'>('closed')
+  const [menuView, setMenuView] = useState<'closed' | 'menu' | 'watermark' | 'date' | 'merge'>('closed')
+  /** Er wordt een bestand boven deze kaart gesleept (dan voegen we het hier toe). */
+  const [fileHover, setFileHover] = useState(false)
   const [watermarkDraft, setWatermarkDraft] = useState(group.watermark?.text ?? '')
   const [dateDraft, setDateDraft] = useState(group.documentDate ?? '')
   const [addMenuOpen, setAddMenuOpen] = useState(false)
@@ -50,6 +65,10 @@ export default function GroupRow({ group, index, isLast, sources, isActive }: Pr
   const toggleGroupPageNumbers = useStudioStore((s) => s.toggleGroupPageNumbers)
   const setGroupDocumentDate = useStudioStore((s) => s.setGroupDocumentDate)
   const openEditorTab = useStudioStore((s) => s.openEditorTab)
+  const mergeGroupInto = useStudioStore((s) => s.mergeGroupInto)
+  const setSmartDialogOpen = useStudioStore((s) => s.setSmartDialogOpen)
+  const setActiveGroupStore = useStudioStore((s) => s.setActiveGroup)
+  const otherGroups = useStudioStore((s) => s.groups.filter((g) => g.id !== group.id))
 
   // Encoded drop indicator position for this row: page index * 2 (+1 for the
   // "after" edge), or -1 when the drag isn't targeting this document.
@@ -85,13 +104,52 @@ export default function GroupRow({ group, index, isLast, sources, isActive }: Pr
     if (files.length) await addPagesToGroup(group.id, files)
   }
 
+  // Eindigt het slepen buiten deze kaart (of wordt het afgebroken), dan moet de
+  // markering hoe dan ook weg — een gemiste dragleave laat hem anders staan.
+  useEffect(() => {
+    if (!fileHover) return
+    const clear = (): void => setFileHover(false)
+    window.addEventListener('dragend', clear)
+    window.addEventListener('drop', clear)
+    return () => {
+      window.removeEventListener('dragend', clear)
+      window.removeEventListener('drop', clear)
+    }
+  }, [fileHover])
+
+  /** Een bestand dat op déze kaart valt wordt aan dit document toegevoegd (samenvoegen). */
+  function onFileDragOver(e: React.DragEvent): void {
+    if (!e.dataTransfer.types.includes('Files')) return
+    e.preventDefault()
+    e.stopPropagation()
+    setFileHover(true)
+  }
+
+  function onFileDrop(e: React.DragEvent): void {
+    if (!e.dataTransfer.types.includes('Files')) return
+    e.preventDefault()
+    e.stopPropagation()
+    setFileHover(false)
+    void addDroppedFiles(e.dataTransfer.files)
+  }
+
   return (
     <section
-      className={`group-row${isActive ? ' group-row--active' : ''}${dragGroupId === group.id ? ' group-row--dragging' : ''}${dropBefore ? ' group-row--drop-before' : ''}${dropAfter ? ' group-row--drop-after' : ''}`}
+      className={`group-row${isActive ? ' group-row--active' : ''}${dragGroupId === group.id ? ' group-row--dragging' : ''}${dropBefore ? ' group-row--drop-before' : ''}${dropAfter ? ' group-row--drop-after' : ''}${fileHover ? ' group-row--file-drop' : ''}${dropSlot >= 0 ? ' group-row--page-drop' : ''}`}
       data-group-id={group.id}
       data-group-index={index}
       onClick={() => setActiveGroup(group.id)}
+      onDragOver={onFileDragOver}
+      onDragLeave={(e) => {
+        if (!e.currentTarget.contains(e.relatedTarget as Node | null)) setFileHover(false)
+      }}
+      onDrop={onFileDrop}
     >
+      {fileHover && (
+        <div className="group-row__file-overlay">
+          <span>Toevoegen aan “{group.name}”</span>
+        </div>
+      )}
       <header
         className="group-row__header"
         {...headerDrag}
@@ -140,14 +198,30 @@ export default function GroupRow({ group, index, isLast, sources, isActive }: Pr
         <div className="group-row__menu-wrap" ref={menuRef}>
           <button
             type="button"
-            className="icon-btn icon-btn--chrome"
+            className="icon-btn icon-btn--chrome group-row__action"
             title="Openen als tabblad om te bewerken"
             onClick={(e) => {
               e.stopPropagation()
               openEditorTab(group.id)
             }}
           >
-            <IconTab size={14} />
+            <IconTab size={16} />
+          </button>
+          <button
+            type="button"
+            className={`icon-btn icon-btn--chrome group-row__action${menuView === 'merge' ? ' icon-btn--active' : ''}`}
+            disabled={otherGroups.length === 0}
+            title={
+              otherGroups.length
+                ? 'Samenvoegen met een ander document'
+                : 'Samenvoegen kan zodra er een tweede document is'
+            }
+            onClick={(e) => {
+              e.stopPropagation()
+              setMenuView((v) => (v === 'merge' ? 'closed' : 'merge'))
+            }}
+          >
+            <IconMerge size={16} />
           </button>
           {group.documentDate ? (
             <button
@@ -165,7 +239,7 @@ export default function GroupRow({ group, index, isLast, sources, isActive }: Pr
           ) : (
             <button
               type="button"
-              className={`icon-btn icon-btn--chrome${menuView === 'date' ? ' icon-btn--active' : ''}`}
+              className={`icon-btn icon-btn--chrome group-row__action${menuView === 'date' ? ' icon-btn--active' : ''}`}
               title="Documentdatum instellen (aanmaak- en wijzigingsdatum bij export)"
               onClick={(e) => {
                 e.stopPropagation()
@@ -173,19 +247,19 @@ export default function GroupRow({ group, index, isLast, sources, isActive }: Pr
                 setMenuView((v) => (v === 'date' ? 'closed' : 'date'))
               }}
             >
-              <IconCalendar size={14} />
+              <IconCalendar size={16} />
             </button>
           )}
           <button
             type="button"
-            className={`icon-btn icon-btn--chrome${menuView !== 'closed' ? ' icon-btn--active' : ''}`}
+            className={`icon-btn icon-btn--chrome group-row__action${menuView === 'menu' || menuView === 'watermark' ? ' icon-btn--active' : ''}`}
             title="Meer opties"
             onClick={(e) => {
               e.stopPropagation()
               setMenuView((v) => (v === 'closed' ? 'menu' : 'closed'))
             }}
           >
-            <IconMore size={14} />
+            <IconMore size={16} />
           </button>
           {menuView !== 'closed' && (
             <div className="dropdown-menu" onClick={(e) => e.stopPropagation()}>
@@ -260,8 +334,40 @@ export default function GroupRow({ group, index, isLast, sources, isActive }: Pr
                   </div>
                 </div>
               )}
+              {menuView === 'merge' && (
+                <>
+                  <div className="dropdown-menu__label">Samenvoegen met…</div>
+                  {otherGroups.map((other) => (
+                    <button
+                      key={other.id}
+                      type="button"
+                      className="dropdown-menu__item"
+                      title={`Voeg de pagina's van "${group.name}" achter "${other.name}"`}
+                      onClick={() => {
+                        closeMenu()
+                        mergeGroupInto(group.id, other.id)
+                      }}
+                    >
+                      <IconMerge size={14} />
+                      <span className="dropdown-menu__ellipsis">{other.name}</span>
+                    </button>
+                  ))}
+                </>
+              )}
               {menuView === 'menu' && (
                 <>
+                  <button
+                    type="button"
+                    className="dropdown-menu__item"
+                    onClick={() => {
+                      closeMenu()
+                      setActiveGroupStore(group.id)
+                      setSmartDialogOpen(true, 'split')
+                    }}
+                  >
+                    <IconScissors size={14} />
+                    Splitsen op inhoudsopgave…
+                  </button>
                   <button type="button" className="dropdown-menu__item" onClick={() => setMenuView('watermark')}>
                     <IconStamp size={14} />
                     Watermerk
@@ -299,18 +405,18 @@ export default function GroupRow({ group, index, isLast, sources, isActive }: Pr
               )}
             </div>
           )}
+          <button
+            type="button"
+            className="icon-btn icon-btn--chrome icon-btn--danger group-row__action"
+            title="Verwijder document uit het overzicht"
+            onClick={(e) => {
+              e.stopPropagation()
+              removeGroup(group.id)
+            }}
+          >
+            <IconClose size={15} />
+          </button>
         </div>
-        <button
-          type="button"
-          className="icon-btn icon-btn--chrome icon-btn--danger group-row__remove"
-          title="Verwijder document"
-          onClick={(e) => {
-            e.stopPropagation()
-            removeGroup(group.id)
-          }}
-        >
-          <IconClose size={13} />
-        </button>
       </header>
 
       <div

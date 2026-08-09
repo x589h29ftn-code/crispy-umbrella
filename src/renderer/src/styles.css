@@ -395,13 +395,10 @@ body {
   color: var(--text-dim);
 }
 
+/* De documentacties staan direct naast de naam (links), niet aan de rechterkant
+   van de kaart: bij inzoomen is een brede kaart rechts vaak niet meer in beeld. */
 .group-row__menu-wrap {
   position: relative;
-  margin-left: auto;
-}
-
-.group-row__remove {
-  margin-left: 4px;
 }
 
 .group-row__grip {
@@ -1449,6 +1446,19 @@ body.is-dragging {
 
 body.is-dragging * {
   cursor: grabbing !important;
+}
+
+/* Zwevende balken mogen tijdens het slepen geen documentkaart afschermen: de
+   selectiebalk staat middenonder en verhinderde anders het neerzetten daar. */
+body.is-dragging .selection-bar,
+body.is-dragging .import-progress,
+body.is-dragging .toasts,
+body.is-dragging .zoom-reset-btn {
+  pointer-events: none;
+}
+
+body.is-dragging .selection-bar {
+  opacity: 0.55;
 }
 
 .page-thumb--drag-source {
@@ -5060,4 +5070,104 @@ button.group-row__date:hover {
     animation-iteration-count: 1 !important;
     transition-duration: 0.01ms !important;
   }
+}
+
+/* ---------------------------------------------------------------------------
+   Documentkaart: acties, samenvoegen en sleepterugkoppeling.
+   --------------------------------------------------------------------------- */
+.group-row__action {
+  width: 30px;
+  height: 30px;
+  border-radius: var(--radius-sm);
+}
+
+.group-row__action:disabled {
+  opacity: 0.35;
+  cursor: default;
+}
+
+.group-row {
+  position: relative;
+}
+
+/* Bestand boven deze kaart: duidelijk maken dat het hier wordt toegevoegd. */
+.group-row--file-drop {
+  border-color: var(--accent);
+}
+
+.group-row__file-overlay {
+  position: absolute;
+  inset: 0;
+  z-index: 12;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: var(--radius-lg);
+  background: var(--accent-tint);
+  border: 2px dashed var(--accent);
+  pointer-events: none;
+}
+
+.group-row__file-overlay span {
+  padding: 8px 16px;
+  background: var(--panel);
+  border-radius: 999px;
+  box-shadow: var(--shadow-md);
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text);
+}
+
+/* Pagina's die naar dit document gesleept worden. */
+.group-row--page-drop {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 1px var(--accent);
+}
+
+.dropdown-menu__label {
+  padding: 6px 8px 4px;
+  font-size: 10.5px;
+  font-weight: 700;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  color: var(--text-dim);
+}
+
+.dropdown-menu__ellipsis {
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+/* Uitleg tijdens het slepen van een bestand boven het overzicht. */
+.canvas-drop-hint {
+  position: absolute;
+  top: 16px;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 60;
+  padding: 8px 16px;
+  background: var(--panel);
+  border: 1px solid var(--accent);
+  border-radius: 999px;
+  box-shadow: var(--shadow-md);
+  font-size: 12.5px;
+  color: var(--text);
+  pointer-events: none;
+  white-space: nowrap;
+}
+
+.selection-bar__menu-wrap {
+  position: relative;
+  display: flex;
+}
+
+/* Het menu klapt omhoog: de selectiebalk staat onderaan het scherm. */
+.selection-bar__menu {
+  top: auto;
+  bottom: calc(100% + 8px);
+  left: 0;
+  right: auto;
+  max-height: 320px;
+  overflow-y: auto;
 }

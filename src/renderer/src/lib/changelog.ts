@@ -22,7 +22,12 @@ export const APP_CHANGELOG: { version: string; items: string[] }[] = [
       'Escape sluit voortaan élk venster (ook Sjablonen, Ondertekenen, Slim, Privacy-scan en Handtekening tekenen), de Tab-toets blijft binnen het geopende venster en na sluiten keert de focus terug naar waar je was',
       'Beter met het toetsenbord te bedienen: overal een duidelijke blauwe focusring, en foutmeldingen blijven staan tot je ze wegklikt in plaats van na een paar seconden te verdwijnen',
       'Minder geheugengebruik bij lang doorwerken: gerenderde pagina-afbeeldingen worden begrensd bewaard en niet meer eindeloos opgestapeld',
-      'Opgelost: een bestand dat je op het lege startscherm liet vallen werd twee keer geïmporteerd'
+      'Opgelost: een bestand dat je op het lege startscherm liet vallen werd twee keer geïmporteerd',
+      'Samenvoegen in het overzicht is veel directer: sleep een PDF bovenop een document en je ziet "Toevoegen aan …" — hij komt er dan achter in plaats van als los document eronder. Laat je hem op de achtergrond vallen, dan wordt het (zoals altijd) een nieuw document; tijdens het slepen legt een hint het verschil uit',
+      'Nieuw op elke documentkaart: een knop "Samenvoegen met…" waarmee je het document in één klik achter een ander document plakt, plus "Splitsen op inhoudsopgave…" in het "…"-menu',
+      'De knoppen op een documentkaart staan nu direct naast de documentnaam (links) en zijn groter: bij inzoomen schoven ze voorheen rechts uit beeld',
+      'Meerdere pagina\'s tegelijk naar een ander document verplaatsen kan nu ook zonder slepen: selecteer ze (Ctrl+klik of Shift+klik) en kies "Naar document…" in de selectiebalk',
+      'Bij het slepen van pagina\'s licht het doeldocument op en zie je precies tussen welke pagina\'s ze komen. Opgelost: de selectiebalk onderin ving de muis af, waardoor pagina\'s daar niet losgelaten konden worden'
     ]
   },
   {

@@ -27,6 +27,8 @@ export default function Canvas({ onScaleChange, registerZoomControls }: Props): 
   const [scalePct, setScalePct] = useState(100)
   const [transform, setTransform] = useState<PanZoomTransform>({ x: 0, y: 0, k: 1 })
   const [sizes, setSizes] = useState({ viewportW: 0, contentW: 0 })
+  /** Er wordt een bestand boven de lege achtergrond gesleept (→ nieuw document). */
+  const [fileOverCanvas, setFileOverCanvas] = useState(false)
 
   const handleTransformChange = useMemo(
     () => (t: PanZoomTransform) => {
@@ -41,6 +43,17 @@ export default function Canvas({ onScaleChange, registerZoomControls }: Props): 
   const { viewportRef, contentRef, zoomBy, zoomTo, panToX } = usePanZoom(handleTransformChange)
   const [animateRef] = useAutoAnimate<HTMLDivElement>({ duration: 180, easing: 'ease-out' })
   const contentNodeRef = useMemo(() => mergeRefs(contentRef, animateRef), [contentRef, animateRef])
+
+  useEffect(() => {
+    if (!fileOverCanvas) return
+    const clear = (): void => setFileOverCanvas(false)
+    window.addEventListener('dragend', clear)
+    window.addEventListener('drop', clear)
+    return () => {
+      window.removeEventListener('dragend', clear)
+      window.removeEventListener('drop', clear)
+    }
+  }, [fileOverCanvas])
 
   useEffect(() => {
     registerZoomControls({ zoomBy, zoomTo })
@@ -120,14 +133,26 @@ export default function Canvas({ onScaleChange, registerZoomControls }: Props): 
       className={`canvas-viewport${canvasDropActive ? ' canvas-viewport--drop' : ''}`}
       ref={viewportRef}
       onDragOver={(e) => {
-        if (e.dataTransfer.types.includes('Files')) e.preventDefault()
+        if (!e.dataTransfer.types.includes('Files')) return
+        e.preventDefault()
+        // Boven een documentkaart stopt die kaart het event zelf af.
+        setFileOverCanvas(true)
+      }}
+      onDragLeave={(e) => {
+        if (!e.currentTarget.contains(e.relatedTarget as Node | null)) setFileOverCanvas(false)
       }}
       onDrop={(e) => {
         if (!e.dataTransfer.types.includes('Files')) return
         e.preventDefault()
+        setFileOverCanvas(false)
         void addDroppedDocuments(e.dataTransfer.files)
       }}
     >
+      {fileOverCanvas && groups.length > 0 && (
+        <div className="canvas-drop-hint">
+          Loslaten = <strong>nieuw document</strong> · laat los <strong>op een document</strong> om samen te voegen
+        </div>
+      )}
       <div className="canvas-content" ref={contentNodeRef}>
         <Suspense fallback={null}>
           {groups.map((group, i) => (
