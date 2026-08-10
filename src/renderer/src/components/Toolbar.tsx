@@ -588,10 +588,14 @@ export default function Toolbar({ zoomPct, onZoomIn, onZoomOut, onZoomReset, onZ
           )}
         </SidebarSection>
 
+        {/* Kort houden: bij een venster van 768 px hoog werd een langere tekst
+            middenin de zin afgekapt. De uitleg staat in de tooltip. */}
         {!fullToolbar && !collapsed && (
-          <p className="sidebar__hint">
-            Alle overige acties staan in <strong>Menu</strong> linksboven. Liever alles in de zijbalk? Zet
-            “Volledige werkbalk” aan bij Voorkeuren.
+          <p
+            className="sidebar__hint"
+            title="Liever alles in de zijbalk? Zet “Volledige werkbalk” aan bij Voorkeuren."
+          >
+            Meer acties in <strong>Menu</strong> linksboven.
           </p>
         )}
       </div>

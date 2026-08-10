@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { useStudioStore } from '../store'
-import { IconFile, IconForm, IconGridView, IconFolderOpen, IconStamp, IconUpload } from './icons'
+import { IconCompare, IconFile, IconForm, IconGridView, IconFolderOpen, IconStamp, IconUpload } from './icons'
 
 interface Props {
   onBrowse: () => void
@@ -67,6 +67,20 @@ export default function EmptyState({ onBrowse, onFilesDropped }: Props): JSX.Ele
     await importFiles([{ name: file.name, data: file.data }])
   }
 
+  /** Twee versies kiezen en meteen naast elkaar zetten (concept ↔ definitief). */
+  async function openAndCompare(): Promise<void> {
+    const files = await window.api.openPdfs()
+    if (!files.length) return
+    await importFiles(files)
+    const state = useStudioStore.getState()
+    if (state.groups.length < 2) {
+      addToast('info', 'Kies twee bestanden om te vergelijken — open het tweede document er nog bij')
+      return
+    }
+    state.setActiveEditorTab(null)
+    state.openCompare()
+  }
+
   async function openAndCombine(): Promise<void> {
     const files = await window.api.openPdfs()
     if (!files.length) return
@@ -113,6 +127,11 @@ export default function EmptyState({ onBrowse, onFilesDropped }: Props): JSX.Ele
             <IconGridView size={17} />
             <span className="home__action-label">Combineren of splitsen</span>
             <span className="home__action-hint">In het Overzicht</span>
+          </button>
+          <button type="button" className="home__action" onClick={() => void openAndCompare()}>
+            <IconCompare size={17} />
+            <span className="home__action-label">Twee versies vergelijken</span>
+            <span className="home__action-hint">Concept ↔ definitief</span>
           </button>
           <button type="button" className="home__action" onClick={() => setTemplatesDialogOpen(true)}>
             <IconForm size={17} />

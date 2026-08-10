@@ -1220,13 +1220,15 @@ export const useStudioStore = create<StudioState>((set, get) => ({
   setExportPermissions: (patch) => set((s) => ({ exportPermissions: { ...s.exportPermissions, ...patch } })),
   compare: { open: false, leftGroupId: null, rightGroupId: null },
   openCompare: () =>
-    set((s) => ({
-      compare: {
-        open: true,
-        leftGroupId: s.compare.leftGroupId ?? s.groups[0]?.id ?? null,
-        rightGroupId: s.compare.rightGroupId ?? s.groups[1]?.id ?? s.groups[0]?.id ?? null
-      }
-    })),
+    set((s) => {
+      // Standaard twee verschillende documenten: hetzelfde document links en
+      // rechts levert alleen een lege lijst op.
+      const known = s.groups.map((g) => g.id)
+      const left = known.includes(s.compare.leftGroupId ?? '') ? s.compare.leftGroupId : (s.groups[0]?.id ?? null)
+      let right = known.includes(s.compare.rightGroupId ?? '') ? s.compare.rightGroupId : null
+      if (!right || right === left) right = s.groups.find((g) => g.id !== left)?.id ?? left
+      return { compare: { open: true, leftGroupId: left, rightGroupId: right } }
+    }),
   closeCompare: () => set((s) => ({ compare: { ...s.compare, open: false } })),
   setCompareGroups: (side, groupId) =>
     set((s) => ({ compare: { ...s.compare, [side === 'left' ? 'leftGroupId' : 'rightGroupId']: groupId } })),

@@ -19,6 +19,10 @@ import ScanNotice from './ScanNotice'
 import type { DocGroup, PageRef, SourceFile } from '../types'
 
 const BASE_WIDTH = 460
+/** Horizontale padding van .compare-view__scroll (2 × 24 px). */
+const SCROLL_PADDING = 48
+/** Ruimte tussen de twee pagina's (.compare-row__panes gap). */
+const PANE_GAP = 24
 
 interface Mark {
   id: string
@@ -54,13 +58,16 @@ function ComparePane({
   size,
   marks,
   activeId,
-  width
+  width,
+  renderWidth
 }: {
   page: PageRef | undefined
   size: { width: number; height: number } | undefined
   marks: Mark[]
   activeId: string | null
   width: number
+  /** Resolutie waarop de pagina getekend wordt (volgt de zoom en het scherm). */
+  renderWidth: number
 }): JSX.Element {
   const sources = useStudioStore((s) => s.sources)
   const [thumb, setThumb] = useState<string | null>(null)
@@ -89,16 +96,18 @@ function ComparePane({
     return () => observer.disconnect()
   }, [])
 
+  // Opnieuw tekenen zodra er (flink) verder ingezoomd wordt, anders wordt de
+  // pagina bij 200% een vlek.
   useEffect(() => {
     let cancelled = false
     if (!source || !page || !visible) return
-    renderThumbnail(source, page.sourcePageIndex, page.rotation, Math.round(BASE_WIDTH * 2))
+    renderThumbnail(source, page.sourcePageIndex, page.rotation, renderWidth)
       .then((url) => !cancelled && setThumb(url))
       .catch(() => undefined)
     return () => {
       cancelled = true
     }
-  }, [source, page, visible])
+  }, [source, page, visible, renderWidth])
 
   const scale = width / pageSize.width
 
@@ -136,6 +145,7 @@ function CompareRow({
   rightMarks,
   activeId,
   width,
+  renderWidth,
   label
 }: {
   index: number
@@ -147,6 +157,7 @@ function CompareRow({
   rightMarks: Mark[]
   activeId: string | null
   width: number
+  renderWidth: number
   label: string
 }): JSX.Element {
   return (
@@ -156,8 +167,22 @@ function CompareRow({
         {label}
       </div>
       <div className="compare-row__panes">
-        <ComparePane page={left?.pages[index]} size={leftSize} marks={leftMarks} activeId={activeId} width={width} />
-        <ComparePane page={right?.pages[index]} size={rightSize} marks={rightMarks} activeId={activeId} width={width} />
+        <ComparePane
+          page={left?.pages[index]}
+          size={leftSize}
+          marks={leftMarks}
+          activeId={activeId}
+          width={width}
+          renderWidth={renderWidth}
+        />
+        <ComparePane
+          page={right?.pages[index]}
+          size={rightSize}
+          marks={rightMarks}
+          activeId={activeId}
+          width={width}
+          renderWidth={renderWidth}
+        />
       </div>
     </div>
   )
@@ -202,7 +227,9 @@ export default function CompareView(): JSX.Element | null {
   const groups = useStudioStore((s) => s.groups)
   const sources = useStudioStore((s) => s.sources)
 
-  const [zoom, setZoom] = useState(1)
+  /** null = passend in beeld; een getal is een handmatig gekozen zoom. */
+  const [zoom, setZoom] = useState<number | null>(null)
+  const [viewportWidth, setViewportWidth] = useState(0)
   const [diff, setDiff] = useState<DocumentDiff | null>(null)
   const [progress, setProgress] = useState<{ done: number; total: number } | null>(null)
   const [filter, setFilter] = useState<DiffFilter>(DEFAULT_DIFF_FILTER)
@@ -215,7 +242,25 @@ export default function CompareView(): JSX.Element | null {
   const left = groups.find((g) => g.id === compare.leftGroupId)
   const right = groups.find((g) => g.id === compare.rightGroupId)
   const maxPages = Math.max(left?.pages.length ?? 0, right?.pages.length ?? 0)
-  const paneWidth = Math.round(BASE_WIDTH * zoom)
+
+  // Zonder eigen zoomkeuze passen de twee pagina's samen precies in de strook,
+  // zodat er geen ruimte onbenut blijft en er niets onder het paneel schuift.
+  const fitZoom = viewportWidth > 0 ? Math.min(3, Math.max(0.4, (viewportWidth - SCROLL_PADDING - PANE_GAP) / 2 / BASE_WIDTH)) : 1
+  const effectiveZoom = zoom ?? fitZoom
+  const paneWidth = Math.round(BASE_WIDTH * effectiveZoom)
+  const dpr = Math.min(2, window.devicePixelRatio || 1)
+  // In stappen van 200 px, zodat kleine zoomstapjes niet alles opnieuw tekenen.
+  const renderWidth = Math.min(2600, Math.max(700, Math.ceil((paneWidth * dpr * 1.1) / 200) * 200))
+
+  useEffect(() => {
+    const el = scrollRef.current
+    if (!compare.open || !el || typeof ResizeObserver === 'undefined') return
+    const measure = (): void => setViewportWidth(el.clientWidth)
+    measure()
+    const observer = new ResizeObserver(measure)
+    observer.observe(el)
+    return () => observer.disconnect()
+  }, [compare.open, panelOpen])
 
   // Documentbrede vergelijking zodra beide documenten bekend zijn. Wisselen van
   // document breekt de lopende berekening netjes af.
@@ -314,11 +359,11 @@ export default function CompareView(): JSX.Element | null {
     const onWheel = (e: WheelEvent): void => {
       if (!e.ctrlKey && !e.metaKey) return
       e.preventDefault()
-      setZoom((z) => Math.min(3, Math.max(0.4, z * Math.exp(-e.deltaY * 0.0022))))
+      setZoom((z) => Math.min(3, Math.max(0.4, (z ?? fitZoom) * Math.exp(-e.deltaY * 0.0022))))
     }
     el.addEventListener('wheel', onWheel, { passive: false })
     return () => el.removeEventListener('wheel', onWheel)
-  }, [compare.open])
+  }, [compare.open, fitZoom])
 
   useEffect(() => {
     if (!compare.open) return
@@ -351,69 +396,98 @@ export default function CompareView(): JSX.Element | null {
   if (!compare.open) return null
 
   const pagesDiffer = Boolean(left && right && left.pages.length !== right.pages.length)
+  const sameDocument = Boolean(left && right && left.id === right.id)
 
   return (
     <div className={`compare-view${panelOpen ? '' : ' compare-view--wide'}`}>
       <div className="compare-view__bar">
         <select
           value={compare.leftGroupId ?? ''}
+          className={sameDocument ? 'compare-view__select--warn' : undefined}
           title="Oude versie (links)"
           onChange={(e) => setCompareGroups('left', e.target.value)}
         >
           {options.map((o) => (
             <option key={o.id} value={o.id}>
               {o.name}
+              {o.id === compare.rightGroupId ? ' (staat al rechts)' : ''}
             </option>
           ))}
         </select>
         <select
           value={compare.rightGroupId ?? ''}
+          className={sameDocument ? 'compare-view__select--warn' : undefined}
           title="Nieuwe versie (rechts)"
           onChange={(e) => setCompareGroups('right', e.target.value)}
         >
           {options.map((o) => (
             <option key={o.id} value={o.id}>
               {o.name}
+              {o.id === compare.leftGroupId ? ' (staat al links)' : ''}
             </option>
           ))}
         </select>
         <div className="compare-view__nav" title="Zoom (ook Ctrl + muiswiel)">
-          <button type="button" className="pill-btn pill-btn--icon" onClick={() => setZoom((z) => Math.max(0.4, z / 1.2))}>
+          <button
+            type="button"
+            className="pill-btn pill-btn--icon"
+            title="Kleiner"
+            onClick={() => setZoom((z) => Math.max(0.4, (z ?? fitZoom) / 1.2))}
+          >
             <IconMinus size={13} />
           </button>
-          <span>{Math.round(zoom * 100)}%</span>
-          <button type="button" className="pill-btn pill-btn--icon" onClick={() => setZoom((z) => Math.min(3, z * 1.2))}>
+          <span>{Math.round(effectiveZoom * 100)}%</span>
+          <button
+            type="button"
+            className="pill-btn pill-btn--icon"
+            title="Groter"
+            onClick={() => setZoom((z) => Math.min(3, (z ?? fitZoom) * 1.2))}
+          >
             <IconPlus size={13} />
           </button>
+          <button
+            type="button"
+            className={`pill-btn${zoom === null ? ' pill-btn--primary' : ''}`}
+            title="Beide pagina's passend naast elkaar"
+            onClick={() => setZoom(null)}
+          >
+            Passend
+          </button>
         </div>
-        <div className="compare-view__legend">
-          <span className="compare-legend compare-legend--changed">gewijzigd</span>
-          <span className="compare-legend compare-legend--added">toegevoegd</span>
-          <span className="compare-legend compare-legend--removed">verwijderd</span>
-          <span className="compare-legend compare-legend--number">bedrag</span>
+        {/* Compacte legenda: met de volledige tekst erbij liep de balk op een
+            laptopscherm over twee regels. De filterknoppen in het paneel dragen
+            dezelfde kleuren. */}
+        <div
+          className="compare-view__legend"
+          title="Geel = gewijzigd · groen = toegevoegd · rood = verwijderd · blauw = gewijzigd bedrag"
+        >
+          <span className="compare-legend compare-legend--changed" />
+          <span className="compare-legend compare-legend--added" />
+          <span className="compare-legend compare-legend--removed" />
+          <span className="compare-legend compare-legend--number" />
         </div>
         <button type="button" className="pill-btn" title="Nog een document openen om te vergelijken" onClick={() => void addDocument()}>
-          <IconFolderOpen size={14} /> Document toevoegen
+          <IconFolderOpen size={14} /> Toevoegen
         </button>
         <button
           type="button"
           className="pill-btn"
           disabled={!left || !right || !visible.some((c) => c.kind === 'number')}
-          title="Cijferwijzigingen (was/is/verschil/% mutatie) naar Excel — voor jaarrekeningen"
+          title="Jaar-op-jaar naar Excel: was, is, verschil en % mutatie — voor jaarrekeningen"
           onClick={() =>
             left && right && void import('../lib/yearCompare').then((m) => m.exportYearComparisonXlsx(left, right, visible))
           }
         >
-          Jaar-op-jaar (Excel)
+          Jaar-op-jaar
         </button>
         <button
           type="button"
           className="pill-btn"
           disabled={!left || !right || !diff}
-          title="De wijzigingen zoals ze nu in beeld staan als PDF-rapport opslaan (per hoofdstuk, met inhoudsopgave)"
+          title="Verschilrapport (PDF): de wijzigingen zoals ze nu in beeld staan, per hoofdstuk met inhoudsopgave"
           onClick={() => left && right && void exportDiffReport(left, right, sources, visible)}
         >
-          Verschilrapport (PDF)
+          Verschilrapport
         </button>
         <button
           type="button"
@@ -421,7 +495,7 @@ export default function CompareView(): JSX.Element | null {
           title={panelOpen ? 'Wijzigingenlijst verbergen' : 'Wijzigingenlijst tonen'}
           onClick={() => setPanelOpen((v) => !v)}
         >
-          {panelOpen ? 'Lijst verbergen' : `Lijst tonen${visible.length ? ` (${visible.length})` : ''}`}
+          {panelOpen ? 'Lijst verbergen' : `Lijst${visible.length ? ` (${visible.length})` : ''}`}
         </button>
         <button type="button" className="icon-btn" title="Vergelijken sluiten (Esc)" onClick={close}>
           <IconClose size={15} />
@@ -451,6 +525,7 @@ export default function CompareView(): JSX.Element | null {
                 rightMarks={marks?.right ?? []}
                 activeId={activeId}
                 width={paneWidth}
+                renderWidth={renderWidth}
                 label={progress ? ' — vergelijken…' : n ? ` — ${n} wijziging${n === 1 ? '' : 'en'}` : ' — gelijk'}
               />
             )
@@ -587,7 +662,14 @@ export default function CompareView(): JSX.Element | null {
               Kop-/voetteksten negeren{headCount ? ` (${headCount})` : ''}
             </label>
 
-            {pagesDiffer && (
+            {sameDocument && (
+              <p className="compare-side__note compare-side__note--warn">
+                Links en rechts staat hetzelfde document. Kies bovenaan twee verschillende documenten (of open eerst de
+                andere versie) om verschillen te zien.
+              </p>
+            )}
+
+            {!sameDocument && pagesDiffer && (
               <p className="compare-side__note">
                 Verschillend aantal pagina&apos;s: links {left?.pages.length}, rechts {right?.pages.length}. Pagina&apos;s
                 worden één-op-één vergeleken, dus een ingevoegde pagina verschuift de rest.
@@ -607,6 +689,7 @@ export default function CompareView(): JSX.Element | null {
                   type="button"
                   data-list-id={c.id}
                   className={`change-item change-item--${c.kind}${activeId === c.id ? ' change-item--active' : ''}`}
+                  title={changeTitle(c)}
                   onClick={() => goTo(c.id)}
                 >
                   <span className="change-item__head">

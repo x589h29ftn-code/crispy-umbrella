@@ -16,7 +16,15 @@ export const APP_CHANGELOG: { version: string; items: string[] }[] = [
       'Nieuw gereedschap Watermerk (Slim → Afwerken): kies met één klik CONCEPT, NIET VOOR PUBLICATIE of VOOR INTERN GEBRUIK, of typ je eigen tekst. Met doorzichtigheid, kleur (grijs, rood, blauw), schuin of horizontaal, eventueel alleen op de eerste pagina en desgewenst op alle documenten tegelijk — met een voorbeeld ernaast',
       'Het watermerk staat nu netjes gecentreerd en vult de pagina, ongeacht de lengte van de tekst (voorheen kon het scheef of half buiten de pagina staan). Op een documentkaart in het overzicht zie je met een merkje welk watermerk erop staat, en de drie vaste teksten zitten ook in het "…"-menu van de kaart',
       'Afbeeldingen kunnen nu rechtstreeks naar binnen: sleep een foto of schermafdruk (jpg, png, webp, gif, bmp) in de app en er wordt een PDF van gemaakt. Sleep je er meerdere in één keer in, dan worden ze samen één PDF met één pagina per afbeelding — handig voor bonnen of een gescande verklaring',
-      'Bij Voorkeuren kies je hoe een afbeelding een pagina wordt: netjes op een A4 (standaard, met marge) of precies op maat van de afbeelding zonder witte randen'
+      'Bij Voorkeuren kies je hoe een afbeelding een pagina wordt: netjes op een A4 (standaard, met marge) of precies op maat van de afbeelding zonder witte randen',
+      'Vergelijken opent voortaan passend: de twee pagina\'s vullen samen precies de breedte van het venster, bij elk formaat. Verberg je de wijzigingenlijst, dan worden ze meteen groter. Met de knop "Passend" ga je terug naar die stand (voorheen stond het vast op 100%, waardoor er ruimte onbenut bleef en de rechterpagina bij inzoomen onder het paneel verdween)',
+      'Bij inzoomen in Vergelijken wordt de pagina nu opnieuw en scherper getekend; boven 200% werd het beeld eerder een vlek',
+      'Vergelijken start met twee verschillende documenten. Kies je links en rechts hetzelfde, dan zeggen de keuzelijsten dat ("staat al rechts") en legt een melding uit waarom de lijst leeg is',
+      'De wijzigingenlijst laat de volledige regel als tooltip zien, zodat een lange gewijzigde tekst leesbaar is zonder eerst naar de pagina te springen',
+      'Nieuw op het startscherm: "Twee versies vergelijken" — kies twee bestanden en de vergelijking staat direct open',
+      'De sneltoetsen van Vergelijken (F3, Shift+F3, Alt+pijltjes, Ctrl+muiswiel) staan nu in het sneltoetsen-overzicht',
+      'De miniaturen in de leesstrook hebben een paginarand met schaduw; een pagina met alleen tekst bovenaan leek anders een los stukje tekst',
+      'Kleine oneffenheden: de hint onderaan de zijbalk werd op een laptopscherm middenin de zin afgekapt, en de balk van Vergelijken liep op smallere vensters over twee regels'
     ]
   },
   {

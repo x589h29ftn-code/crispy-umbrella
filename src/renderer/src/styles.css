@@ -2769,6 +2769,8 @@ button.group-row__date:hover {
   display: block;
   border-radius: 3px;
   background: #fff;
+  border: 1px solid rgba(120, 130, 145, 0.35);
+  box-shadow: 0 1px 5px rgba(0, 0, 0, 0.22);
 }
 
 .editor-rail__thumb--active,
@@ -3881,9 +3883,14 @@ button.group-row__date:hover {
 }
 .compare-view__legend {
   display: flex;
-  gap: 10px;
+  gap: 4px;
+  align-items: center;
   font-size: 11px;
   margin-left: auto;
+  padding: 3px 6px;
+  border-radius: 999px;
+  border: 1px solid var(--border);
+  cursor: help;
 }
 .compare-legend {
   display: inline-flex;
@@ -4161,6 +4168,15 @@ button.group-row__date:hover {
   border-radius: var(--radius-sm);
   background: var(--panel-2);
 }
+.compare-side__note--warn {
+  color: var(--text);
+  background: rgba(217, 160, 7, 0.14);
+  border: 1px solid rgba(217, 160, 7, 0.55);
+}
+.compare-view__select--warn {
+  border-color: var(--warning, #d9a007) !important;
+}
+
 .compare-side__list {
   flex: 1;
   min-height: 0;

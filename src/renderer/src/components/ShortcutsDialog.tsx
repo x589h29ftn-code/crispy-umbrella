@@ -25,6 +25,17 @@ const GROUPS: { title: string; items: [string, string][] }[] = [
     ]
   },
   {
+    title: 'Vergelijken',
+    items: [
+      ['F3', 'Volgende wijziging'],
+      ['Shift + F3', 'Vorige wijziging'],
+      ['Alt + ↓ / →', 'Volgende wijziging'],
+      ['Alt + ↑ / ←', 'Vorige wijziging'],
+      ['Ctrl + muiswiel', 'Zoomen'],
+      ['Esc', 'Vergelijken sluiten']
+    ]
+  },
+  {
     title: 'Bewerken',
     items: [
       ['Ctrl + Z', 'Ongedaan maken'],
