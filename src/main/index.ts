@@ -328,10 +328,30 @@ app.whenReady().then(() => {
       properties: ['openFile', 'multiSelections'],
       filters: [
         {
-          name: 'PDF- en Office-bestanden',
-          extensions: ['pdf', 'docx', 'doc', 'odt', 'rtf', 'xlsx', 'xls', 'ods', 'csv', 'pptx', 'ppt', 'odp']
+          name: 'PDF-, Office- en afbeeldingsbestanden',
+          extensions: [
+            'pdf',
+            'docx',
+            'doc',
+            'odt',
+            'rtf',
+            'xlsx',
+            'xls',
+            'ods',
+            'csv',
+            'pptx',
+            'ppt',
+            'odp',
+            'png',
+            'jpg',
+            'jpeg',
+            'webp',
+            'gif',
+            'bmp'
+          ]
         },
-        { name: 'PDF-bestanden', extensions: ['pdf'] }
+        { name: 'PDF-bestanden', extensions: ['pdf'] },
+        { name: 'Afbeeldingen', extensions: ['png', 'jpg', 'jpeg', 'webp', 'gif', 'bmp'] }
       ]
     })
     if (result.canceled) return []

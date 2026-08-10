@@ -2,6 +2,7 @@ import { create } from 'zustand'
 import { nanoid } from 'nanoid'
 import type { ExportPermissions } from './lib/pdfEngine'
 import type { NumberFormatChoice } from './lib/numberFormat'
+import { isImageFileName, type ImagePageMode } from './lib/imageToPdf'
 import type { Annotation, DocGroup, PageComment, PageRef, SignatureAsset, SignaturePlacement, SourceFile, Watermark } from './types'
 
 export interface LightboxState {
@@ -43,6 +44,7 @@ export type SmartTab =
   | 'compress'
   | 'markdown'
   | 'portfolio'
+  | 'watermark'
 
 export type DropTarget =
   | { type: 'slot'; groupId: string; index: number; edge: 'before' | 'after' }
@@ -53,20 +55,41 @@ const HISTORY_LIMIT = 50
 
 const OFFICE_EXTENSIONS = ['docx', 'doc', 'odt', 'rtf', 'xlsx', 'xls', 'ods', 'csv', 'pptx', 'ppt', 'odp']
 
-/** PDF plus alle Office-formaten die we naar PDF kunnen omzetten. */
+/** PDF plus alle Office- en afbeeldingsformaten die we naar PDF kunnen omzetten. */
 export function isImportableFileName(name: string): boolean {
   const ext = name.split('.').pop()?.toLowerCase() ?? ''
-  return ext === 'pdf' || OFFICE_EXTENSIONS.includes(ext)
+  return ext === 'pdf' || OFFICE_EXTENSIONS.includes(ext) || isImageFileName(name)
 }
 
-/** Word/Excel/PowerPoint-bestanden worden eerst (in het main-proces) naar PDF omgezet. */
+/**
+ * Word/Excel/PowerPoint-bestanden worden eerst (in het main-proces) naar PDF
+ * omgezet; afbeeldingen (foto van een bon, schermafdruk, gescande verklaring)
+ * worden in de app zelf tot één PDF gemaakt — elke afbeelding een pagina.
+ */
 async function prepareImportFiles(
   files: { name: string; data: Uint8Array; path?: string }[],
-  addToast: StudioState['addToast']
+  addToast: StudioState['addToast'],
+  imagePageMode: ImagePageMode
 ): Promise<{ name: string; data: Uint8Array; path?: string }[]> {
   const prepared: { name: string; data: Uint8Array; path?: string }[] = []
+  const images = files.filter((f) => isImageFileName(f.name))
+  if (images.length) {
+    try {
+      const { imagesToPdf } = await import('./lib/imageToPdf')
+      const data = await imagesToPdf(images, imagePageMode)
+      const name =
+        images.length === 1 ? `${images[0].name.replace(/\.[^.]+$/, '')}.pdf` : `Afbeeldingen (${images.length}).pdf`
+      prepared.push({ name, data })
+      if (images.length > 1) {
+        addToast('info', `${images.length} afbeeldingen samengevoegd tot één PDF ("${name}")`)
+      }
+    } catch {
+      addToast('error', images.length === 1 ? 'Kon de afbeelding niet omzetten naar PDF' : 'Kon de afbeeldingen niet omzetten naar PDF')
+    }
+  }
   for (const file of files) {
     const ext = file.name.split('.').pop()?.toLowerCase() ?? ''
+    if (isImageFileName(file.name)) continue // hierboven al samengevoegd
     if (!OFFICE_EXTENSIONS.includes(ext)) {
       prepared.push(file)
       continue
@@ -98,9 +121,15 @@ const TOOLBAR_HIDDEN_STORAGE_KEY = 'pdf-studio-toolbar-hidden'
 const RESTORE_SESSION_STORAGE_KEY = 'pdf-studio-restore-session'
 const FULL_TOOLBAR_STORAGE_KEY = 'pdf-studio-full-toolbar'
 const NUMBER_FORMAT_STORAGE_KEY = 'pdf-studio-number-format'
+const IMAGE_PAGE_MODE_STORAGE_KEY = 'pdf-studio-image-page-mode'
 const RAIL_WIDTH_STORAGE_KEY = 'pdf-studio-rail-width'
 const RAIL_COLLAPSED_STORAGE_KEY = 'pdf-studio-rail-collapsed'
 const TOOLS_COLLAPSED_STORAGE_KEY = 'pdf-studio-tools-collapsed'
+
+/** Afbeeldingen komen standaard netjes op een A4-pagina te staan. */
+function getInitialImagePageMode(): ImagePageMode {
+  return window.localStorage.getItem(IMAGE_PAGE_MODE_STORAGE_KEY) === 'fit' ? 'fit' : 'a4'
+}
 
 function getInitialReaderView(): 'scroll' | 'spread' | 'single' {
   const v = window.localStorage.getItem(READER_VIEW_STORAGE_KEY)
@@ -166,6 +195,8 @@ interface StudioState {
   fullToolbar: boolean
   /** Getalopmaak bij export naar Word en Excel (zoals in de PDF / 0 / 2 decimalen). */
   numberFormat: NumberFormatChoice
+  /** Hoe een toegevoegde afbeelding een PDF-pagina wordt (A4 of op maat). */
+  imagePageMode: ImagePageMode
   /** Zoom van het leestabblad (1 = passend), zodat de werkbalk hem ook kan bedienen. */
   editorZoom: number
   /** Breedte van de miniaturenstrook in het leestabblad (px). */
@@ -181,6 +212,7 @@ interface StudioState {
   setRestoreLastSession: (on: boolean) => void
   setFullToolbar: (on: boolean) => void
   setNumberFormat: (choice: NumberFormatChoice) => void
+  setImagePageMode: (mode: ImagePageMode) => void
   setEditorZoom: (zoom: number | ((z: number) => number)) => void
   setRailWidth: (width: number) => void
   setRailCollapsed: (collapsed: boolean) => void
@@ -491,6 +523,7 @@ export const useStudioStore = create<StudioState>((set, get) => ({
     const stored = window.localStorage.getItem(NUMBER_FORMAT_STORAGE_KEY)
     return stored === 'none' || stored === 'two' ? stored : 'auto'
   })(),
+  imagePageMode: getInitialImagePageMode(),
   editorZoom: 1,
   railWidth: ((): number => {
     const stored = Number(window.localStorage.getItem(RAIL_WIDTH_STORAGE_KEY))
@@ -527,6 +560,10 @@ export const useStudioStore = create<StudioState>((set, get) => ({
   setNumberFormat: (choice) => {
     window.localStorage.setItem(NUMBER_FORMAT_STORAGE_KEY, choice)
     set({ numberFormat: choice })
+  },
+  setImagePageMode: (mode) => {
+    window.localStorage.setItem(IMAGE_PAGE_MODE_STORAGE_KEY, mode)
+    set({ imagePageMode: mode })
   },
   setEditorZoom: (zoom) => {
     set((state) => {
@@ -756,7 +793,7 @@ export const useStudioStore = create<StudioState>((set, get) => ({
     if (!files.length) return
     set({ isImporting: true })
     try {
-      files = await prepareImportFiles(files, get().addToast)
+      files = await prepareImportFiles(files, get().addToast, get().imagePageMode)
       const newGroups: DocGroup[] = []
       const sources = new Map(get().sources)
       for (const { file, source, comments } of await loadImports(files, get().addToast, set)) {
@@ -804,7 +841,7 @@ export const useStudioStore = create<StudioState>((set, get) => ({
     if (!files.length) return
     set({ isImporting: true })
     try {
-      files = await prepareImportFiles(files, get().addToast)
+      files = await prepareImportFiles(files, get().addToast, get().imagePageMode)
       const sources = new Map(get().sources)
       const newPages: PageRef[] = []
       for (const { source, comments } of await loadImports(files, get().addToast, set)) {

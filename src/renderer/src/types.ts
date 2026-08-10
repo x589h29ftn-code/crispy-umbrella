@@ -152,6 +152,12 @@ export interface PageRef {
 export interface Watermark {
   text: string
   opacity: number
+  /** Schuin over de pagina (standaard) of horizontaal in het midden. */
+  style?: 'diagonal' | 'horizontal'
+  /** Kleurnaam uit lib/watermark.ts. */
+  color?: 'grijs' | 'rood' | 'blauw'
+  /** Alleen op de eerste pagina, bv. CONCEPT op het voorblad. */
+  firstPageOnly?: boolean
 }
 
 export interface DocGroup {

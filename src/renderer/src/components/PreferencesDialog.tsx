@@ -23,6 +23,8 @@ export default function PreferencesDialog(): JSX.Element | null {
   const setRestoreLastSession = useStudioStore((s) => s.setRestoreLastSession)
   const fullToolbar = useStudioStore((s) => s.fullToolbar)
   const setFullToolbar = useStudioStore((s) => s.setFullToolbar)
+  const imagePageMode = useStudioStore((s) => s.imagePageMode)
+  const setImagePageMode = useStudioStore((s) => s.setImagePageMode)
 
   if (!open) return null
 
@@ -80,6 +82,31 @@ export default function PreferencesDialog(): JSX.Element | null {
                 onClick={() => setEditorViewMode(mode)}
               >
                 {VIEW_LABELS[mode]}
+              </button>
+            ))}
+          </div>
+        </div>
+
+        <div className="prefs-row">
+          <div>
+            <div className="prefs-row__title">Afbeelding toevoegen als</div>
+            <div className="prefs-row__hint">
+              Een foto of schermafdruk wordt bij het openen een PDF-pagina — netjes op A4, of precies op maat zonder
+              witte randen.
+            </div>
+          </div>
+          <div className="prefs-segmented">
+            {([
+              ['a4', 'A4-pagina'],
+              ['fit', 'Op maat']
+            ] as const).map(([mode, label]) => (
+              <button
+                key={mode}
+                type="button"
+                className={`pill-btn${imagePageMode === mode ? ' pill-btn--primary' : ''}`}
+                onClick={() => setImagePageMode(mode)}
+              >
+                {label}
               </button>
             ))}
           </div>

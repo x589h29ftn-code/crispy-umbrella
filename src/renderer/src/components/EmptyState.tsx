@@ -98,7 +98,9 @@ export default function EmptyState({ onBrowse, onFilesDropped }: Props): JSX.Ele
             <IconUpload size={26} />
           </span>
           <span className="home__drop-title">Zet bestanden hier neer</span>
-          <span className="home__drop-hint">of klik om te bladeren — PDF, Word, Excel en PowerPoint</span>
+          <span className="home__drop-hint">
+            of klik om te bladeren — PDF, Word, Excel, PowerPoint en afbeeldingen (jpg, png)
+          </span>
         </button>
 
         <div className="home__actions">

@@ -1,103 +1,75 @@
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useStudioStore } from '../store'
-import { getPageVisualSize, getPdfMetadata, renderThumbnail, type PdfMetadata } from '../lib/pdfRender'
-import { diffPages, exportDiffReport, type PageDiff, type NumberChange } from '../lib/pdfDiff'
-import { IconClose, IconFolderOpen, IconMinus, IconPlus } from './icons'
+import { getPdfMetadata, renderThumbnail, type PdfMetadata } from '../lib/pdfRender'
+import {
+  DEFAULT_DIFF_FILTER,
+  diffDocuments,
+  exportDiffReport,
+  filterChanges,
+  formatDiffNumber,
+  summarizeChanges,
+  type ChangeEntry,
+  type ChangeKind,
+  type DiffBox,
+  type DiffFilter,
+  type DocumentDiff
+} from '../lib/pdfDiff'
+import { IconCheck, IconChevronLeft, IconChevronRight, IconClose, IconFolderOpen, IconMinus, IconPlus } from './icons'
 import ScanNotice from './ScanNotice'
 import type { DocGroup, PageRef, SourceFile } from '../types'
 
 const BASE_WIDTH = 460
 
+interface Mark {
+  id: string
+  kind: ChangeKind
+  box: DiffBox
+  title: string
+}
+
+const KIND_LABELS: Record<ChangeKind, string> = {
+  changed: 'Gewijzigd',
+  added: 'Toegevoegd',
+  removed: 'Verwijderd',
+  number: 'Bedrag',
+  'page-added': 'Pagina toegevoegd',
+  'page-removed': 'Pagina verwijderd'
+}
+
+/** Korte omschrijving van een wijziging voor de lijst en de tooltip. */
+function changeTitle(c: ChangeEntry): string {
+  if (c.kind === 'number') {
+    const mutation =
+      c.delta !== null && c.delta !== undefined
+        ? ` (${c.delta > 0 ? '+' : ''}${formatDiffNumber(c.delta)}${c.pct !== null && c.pct !== undefined ? `, ${c.pct > 0 ? '+' : ''}${c.pct}%` : ''})`
+        : ''
+    return `${c.label ?? 'Getal'}: ${formatDiffNumber(c.from)} → ${formatDiffNumber(c.to)}${mutation}`
+  }
+  if (c.kind === 'changed') return `Oud: ${c.before ?? ''} — Nieuw: ${c.after ?? ''}`
+  return c.after ?? c.before ?? KIND_LABELS[c.kind]
+}
+
 function ComparePane({
   page,
-  diffLines,
-  numberMarks = [],
+  size,
+  marks,
+  activeId,
   width
 }: {
   page: PageRef | undefined
-  diffLines: PageDiff['left']
-  numberMarks?: NumberChange[]
+  size: { width: number; height: number } | undefined
+  marks: Mark[]
+  activeId: string | null
   width: number
 }): JSX.Element {
   const sources = useStudioStore((s) => s.sources)
   const [thumb, setThumb] = useState<string | null>(null)
-  const [size, setSize] = useState({ width: 595, height: 842 })
-  const source: SourceFile | undefined = page ? sources.get(page.sourceId) : undefined
-
-  useEffect(() => {
-    let cancelled = false
-    if (!source || !page) {
-      setThumb(null)
-      return
-    }
-    renderThumbnail(source, page.sourcePageIndex, page.rotation, Math.round(BASE_WIDTH * 2))
-      .then((url) => !cancelled && setThumb(url))
-      .catch(() => undefined)
-    getPageVisualSize(source, page.sourcePageIndex, page.rotation)
-      .then((s) => !cancelled && setSize(s))
-      .catch(() => undefined)
-    return () => {
-      cancelled = true
-    }
-  }, [source, page])
-
-  const scale = width / size.width
-
-  return (
-    <div className="compare-pane">
-      <div className="compare-pane__page" style={{ width, height: size.height * scale }}>
-        {thumb ? <img src={thumb} alt="" draggable={false} style={{ width }} /> : <div className="compare-pane__ph" />}
-        {diffLines.map((d, i) => (
-          <div
-            key={i}
-            className="compare-mark compare-mark--diff"
-            style={{
-              left: d.box.x * scale,
-              top: d.box.y * scale,
-              width: d.box.width * scale,
-              height: d.box.height * scale
-            }}
-            title={d.text}
-          />
-        ))}
-        {numberMarks.map((n, i) => (
-          <div
-            key={`n${i}`}
-            className="compare-mark compare-mark--number"
-            style={{
-              left: n.box.x * scale,
-              top: n.box.y * scale,
-              width: n.box.width * scale,
-              height: n.box.height * scale
-            }}
-            title={`${n.label}: ${n.from} → ${n.to}`}
-          />
-        ))}
-      </div>
-    </div>
-  )
-}
-
-/** Eén paginapaar in de doorlopende vergelijking; de diff wordt pas berekend zodra de rij in beeld komt. */
-function CompareRow({
-  index,
-  left,
-  right,
-  width
-}: {
-  index: number
-  left: DocGroup | undefined
-  right: DocGroup | undefined
-  width: number
-}): JSX.Element {
-  const sources = useStudioStore((s) => s.sources)
-  const [diff, setDiff] = useState<PageDiff | null>(null)
   const [visible, setVisible] = useState(false)
   const rootRef = useRef<HTMLDivElement>(null)
+  const source: SourceFile | undefined = page ? sources.get(page.sourceId) : undefined
+  const pageSize = size ?? { width: 595, height: 842 }
 
-  const leftPage = left?.pages[index]
-  const rightPage = right?.pages[index]
-
+  // De afbeelding pas renderen zodra de pagina in de buurt van het scherm komt.
   useEffect(() => {
     const el = rootRef.current
     if (!el || typeof IntersectionObserver === 'undefined') {
@@ -118,40 +90,74 @@ function CompareRow({
   }, [])
 
   useEffect(() => {
-    if (!visible) return
     let cancelled = false
-    diffPages(
-      leftPage ? sources.get(leftPage.sourceId) : undefined,
-      leftPage,
-      rightPage ? sources.get(rightPage.sourceId) : undefined,
-      rightPage
-    )
-      .then((d) => !cancelled && setDiff(d))
+    if (!source || !page || !visible) return
+    renderThumbnail(source, page.sourcePageIndex, page.rotation, Math.round(BASE_WIDTH * 2))
+      .then((url) => !cancelled && setThumb(url))
       .catch(() => undefined)
     return () => {
       cancelled = true
     }
-  }, [visible, leftPage, rightPage, sources])
+  }, [source, page, visible])
+
+  const scale = width / pageSize.width
 
   return (
-    <div className="compare-row" ref={rootRef} data-page={index + 1}>
+    <div className="compare-pane" ref={rootRef}>
+      <div className="compare-pane__page" style={{ width, height: pageSize.height * scale }}>
+        {thumb ? <img src={thumb} alt="" draggable={false} style={{ width }} /> : <div className="compare-pane__ph" />}
+        {marks.map((m) => (
+          <div
+            key={m.id}
+            data-change-id={m.id}
+            className={`compare-mark compare-mark--${m.kind}${activeId === m.id ? ' compare-mark--active' : ''}`}
+            style={{
+              left: m.box.x * scale,
+              top: m.box.y * scale,
+              width: m.box.width * scale,
+              height: m.box.height * scale
+            }}
+            title={m.title}
+          />
+        ))}
+      </div>
+    </div>
+  )
+}
+
+/** Eén paginapaar in de doorlopende vergelijking. */
+function CompareRow({
+  index,
+  left,
+  right,
+  leftSize,
+  rightSize,
+  leftMarks,
+  rightMarks,
+  activeId,
+  width,
+  label
+}: {
+  index: number
+  left: DocGroup | undefined
+  right: DocGroup | undefined
+  leftSize: { width: number; height: number } | undefined
+  rightSize: { width: number; height: number } | undefined
+  leftMarks: Mark[]
+  rightMarks: Mark[]
+  activeId: string | null
+  width: number
+  label: string
+}): JSX.Element {
+  return (
+    <div className="compare-row" data-page={index + 1}>
       <div className="compare-row__head">
         Pagina {index + 1}
-        {diff
-          ? diff.changeCount > 0 || diff.numbers.length > 0
-            ? ` — ${diff.changeCount} wijziging${diff.changeCount === 1 ? '' : 'en'}${diff.numbers.length ? ` · ${diff.numbers.length} cijfer(s)` : ''}`
-            : ' — gelijk'
-          : ' — vergelijken…'}
+        {label}
       </div>
       <div className="compare-row__panes">
-        {visible ? (
-          <>
-            <ComparePane page={leftPage} diffLines={diff?.left ?? []} width={width} />
-            <ComparePane page={rightPage} diffLines={diff?.right ?? []} numberMarks={diff?.numbers ?? []} width={width} />
-          </>
-        ) : (
-          <div className="compare-pane__ph" style={{ width: width * 2 + 24, height: width * 1.41 }} />
-        )}
+        <ComparePane page={left?.pages[index]} size={leftSize} marks={leftMarks} activeId={activeId} width={width} />
+        <ComparePane page={right?.pages[index]} size={rightSize} marks={rightMarks} activeId={activeId} width={width} />
       </div>
     </div>
   )
@@ -197,53 +203,108 @@ export default function CompareView(): JSX.Element | null {
   const sources = useStudioStore((s) => s.sources)
 
   const [zoom, setZoom] = useState(1)
-  const [report, setReport] = useState<
-    { page: number; left: string[]; right: string[]; changed: number; numbers: NumberChange[] }[] | null
-  >(null)
-  const [reportBusy, setReportBusy] = useState(false)
+  const [diff, setDiff] = useState<DocumentDiff | null>(null)
+  const [progress, setProgress] = useState<{ done: number; total: number } | null>(null)
+  const [filter, setFilter] = useState<DiffFilter>(DEFAULT_DIFF_FILTER)
+  const [mode, setMode] = useState<'all' | 'numbers'>('all')
+  const [activeId, setActiveId] = useState<string | null>(null)
+  const [panelOpen, setPanelOpen] = useState(true)
   const scrollRef = useRef<HTMLDivElement>(null)
+  const listRef = useRef<HTMLDivElement>(null)
 
   const left = groups.find((g) => g.id === compare.leftGroupId)
   const right = groups.find((g) => g.id === compare.rightGroupId)
   const maxPages = Math.max(left?.pages.length ?? 0, right?.pages.length ?? 0)
   const paneWidth = Math.round(BASE_WIDTH * zoom)
 
-  async function addDocument(): Promise<void> {
-    if (typeof window.api.openPdfs !== 'function') return
-    const files = await window.api.openPdfs()
-    if (files.length) await useStudioStore.getState().importFiles(files)
-  }
-
-  /** Bouwt een verschiloverzicht over alle pagina's om in een venster te tonen. */
-  async function buildReport(): Promise<void> {
-    if (!left || !right || reportBusy) return
-    setReportBusy(true)
-    try {
-      const rows: { page: number; left: string[]; right: string[]; changed: number; numbers: NumberChange[] }[] = []
-      for (let i = 0; i < maxPages; i += 1) {
-        const lp = left.pages[i]
-        const rp = right.pages[i]
-        const d = await diffPages(
-          lp ? sources.get(lp.sourceId) : undefined,
-          lp,
-          rp ? sources.get(rp.sourceId) : undefined,
-          rp
-        ).catch(() => ({ left: [], right: [], changeCount: 0, numbers: [] }) as PageDiff)
-        if (d.changeCount > 0 || d.numbers.length > 0) {
-          rows.push({
-            page: i + 1,
-            left: d.left.filter((x) => x.kind !== 'added').map((x) => x.text),
-            right: d.right.filter((x) => x.kind !== 'removed').map((x) => x.text),
-            changed: d.changeCount,
-            numbers: d.numbers
-          })
-        }
-      }
-      setReport(rows)
-    } finally {
-      setReportBusy(false)
+  // Documentbrede vergelijking zodra beide documenten bekend zijn. Wisselen van
+  // document breekt de lopende berekening netjes af.
+  useEffect(() => {
+    if (!compare.open || !left || !right) {
+      setDiff(null)
+      return
     }
-  }
+    let cancelled = false
+    setDiff(null)
+    setActiveId(null)
+    setProgress({ done: 0, total: Math.max(left.pages.length, right.pages.length) })
+    diffDocuments(left, right, sources, (p) => !cancelled && setProgress(p), () => cancelled)
+      .then((result) => {
+        if (cancelled) return
+        setDiff(result)
+        setProgress(null)
+      })
+      .catch(() => {
+        if (!cancelled) setProgress(null)
+      })
+    return () => {
+      cancelled = true
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [compare.open, compare.leftGroupId, compare.rightGroupId, left?.pages.length, right?.pages.length])
+
+  const effectiveFilter: DiffFilter = useMemo(
+    () => (mode === 'numbers' ? { ...filter, changed: false, added: false, removed: false, numbers: true } : filter),
+    [filter, mode]
+  )
+
+  const visible = useMemo(
+    () => (diff ? filterChanges(diff.changes, effectiveFilter) : []),
+    [diff, effectiveFilter]
+  )
+
+  /** Aantallen per soort, met de kop-/voetteksten al buiten beschouwing gelaten. */
+  const counts = useMemo(
+    () => summarizeChanges(diff ? diff.changes.filter((c) => !filter.ignoreHeads || !c.head) : []),
+    [diff, filter.ignoreHeads]
+  )
+  const headCount = useMemo(() => (diff ? diff.changes.filter((c) => c.head).length : 0), [diff])
+
+  // Markeringen per pagina en per kant, uit de gefilterde lijst.
+  const marksByPage = useMemo(() => {
+    const map = new Map<number, { left: Mark[]; right: Mark[] }>()
+    for (const c of visible) {
+      let entry = map.get(c.page)
+      if (!entry) {
+        entry = { left: [], right: [] }
+        map.set(c.page, entry)
+      }
+      const title = changeTitle(c)
+      if (c.left) entry.left.push({ id: c.id, kind: c.kind, box: c.left, title })
+      if (c.right) entry.right.push({ id: c.id, kind: c.kind, box: c.right, title })
+    }
+    return map
+  }, [visible])
+
+  const countsByPage = useMemo(() => {
+    const map = new Map<number, number>()
+    for (const c of visible) map.set(c.page, (map.get(c.page) ?? 0) + 1)
+    return map
+  }, [visible])
+
+  /** Springt naar een wijziging: markering in beeld en regel in de lijst. */
+  const goTo = useCallback((id: string | null) => {
+    setActiveId(id)
+    if (!id) return
+    window.requestAnimationFrame(() => {
+      const scroller = scrollRef.current
+      const mark = scroller?.querySelector<HTMLElement>(`[data-change-id="${id}"]`)
+      if (mark) mark.scrollIntoView({ block: 'center', behavior: 'smooth' })
+      listRef.current?.querySelector<HTMLElement>(`[data-list-id="${id}"]`)?.scrollIntoView({ block: 'nearest' })
+    })
+  }, [])
+
+  const step = useCallback(
+    (delta: number) => {
+      if (!visible.length) return
+      const current = visible.findIndex((c) => c.id === activeId)
+      const next = current < 0 ? (delta > 0 ? 0 : visible.length - 1) : (current + delta + visible.length) % visible.length
+      goTo(visible[next].id)
+    },
+    [visible, activeId, goTo]
+  )
+
+  const activeIndex = visible.findIndex((c) => c.id === activeId)
 
   // Ctrl+wheel zoomt binnen de vergelijking (zoals in de leesweergave).
   useEffect(() => {
@@ -262,27 +323,54 @@ export default function CompareView(): JSX.Element | null {
   useEffect(() => {
     if (!compare.open) return
     const onKey = (e: KeyboardEvent): void => {
-      if (e.key === 'Escape') close()
+      if (e.key === 'Escape') {
+        close()
+        return
+      }
+      // F3 / Alt+pijltjes: naar de volgende of vorige wijziging.
+      if (e.key === 'F3' || (e.altKey && (e.key === 'ArrowDown' || e.key === 'ArrowRight'))) {
+        e.preventDefault()
+        step(e.shiftKey && e.key === 'F3' ? -1 : 1)
+      } else if (e.altKey && (e.key === 'ArrowUp' || e.key === 'ArrowLeft')) {
+        e.preventDefault()
+        step(-1)
+      }
     }
     window.addEventListener('keydown', onKey)
     return () => window.removeEventListener('keydown', onKey)
-  }, [compare.open, close])
+  }, [compare.open, close, step])
 
   const options = useMemo(() => groups.map((g) => ({ id: g.id, name: g.name })), [groups])
 
+  async function addDocument(): Promise<void> {
+    if (typeof window.api.openPdfs !== 'function') return
+    const files = await window.api.openPdfs()
+    if (files.length) await useStudioStore.getState().importFiles(files)
+  }
+
   if (!compare.open) return null
 
+  const pagesDiffer = Boolean(left && right && left.pages.length !== right.pages.length)
+
   return (
-    <div className="compare-view">
+    <div className={`compare-view${panelOpen ? '' : ' compare-view--wide'}`}>
       <div className="compare-view__bar">
-        <select value={compare.leftGroupId ?? ''} onChange={(e) => setCompareGroups('left', e.target.value)}>
+        <select
+          value={compare.leftGroupId ?? ''}
+          title="Oude versie (links)"
+          onChange={(e) => setCompareGroups('left', e.target.value)}
+        >
           {options.map((o) => (
             <option key={o.id} value={o.id}>
               {o.name}
             </option>
           ))}
         </select>
-        <select value={compare.rightGroupId ?? ''} onChange={(e) => setCompareGroups('right', e.target.value)}>
+        <select
+          value={compare.rightGroupId ?? ''}
+          title="Nieuwe versie (rechts)"
+          onChange={(e) => setCompareGroups('right', e.target.value)}
+        >
           {options.map((o) => (
             <option key={o.id} value={o.id}>
               {o.name}
@@ -299,8 +387,10 @@ export default function CompareView(): JSX.Element | null {
           </button>
         </div>
         <div className="compare-view__legend">
-          <span className="compare-legend compare-legend--diff">verschil</span>
-          <span className="compare-legend compare-legend--number">cijfer gewijzigd</span>
+          <span className="compare-legend compare-legend--changed">gewijzigd</span>
+          <span className="compare-legend compare-legend--added">toegevoegd</span>
+          <span className="compare-legend compare-legend--removed">verwijderd</span>
+          <span className="compare-legend compare-legend--number">bedrag</span>
         </div>
         <button type="button" className="pill-btn" title="Nog een document openen om te vergelijken" onClick={() => void addDocument()}>
           <IconFolderOpen size={14} /> Document toevoegen
@@ -308,19 +398,10 @@ export default function CompareView(): JSX.Element | null {
         <button
           type="button"
           className="pill-btn"
-          disabled={!left || !right || reportBusy}
-          title="Toon alle verschillen in een venster"
-          onClick={() => void buildReport()}
-        >
-          {reportBusy ? 'Bezig…' : 'Verschillen tonen'}
-        </button>
-        <button
-          type="button"
-          className="pill-btn"
-          disabled={!left || !right}
+          disabled={!left || !right || !visible.some((c) => c.kind === 'number')}
           title="Cijferwijzigingen (was/is/verschil/% mutatie) naar Excel — voor jaarrekeningen"
           onClick={() =>
-            left && right && void import('../lib/yearCompare').then((m) => m.exportYearComparisonXlsx(left, right, sources))
+            left && right && void import('../lib/yearCompare').then((m) => m.exportYearComparisonXlsx(left, right, visible))
           }
         >
           Jaar-op-jaar (Excel)
@@ -328,11 +409,19 @@ export default function CompareView(): JSX.Element | null {
         <button
           type="button"
           className="pill-btn"
-          disabled={!left || !right}
-          title="Alle verschillen als PDF-rapport opslaan (per hoofdstuk, met inhoudsopgave)"
-          onClick={() => left && right && void exportDiffReport(left, right, sources)}
+          disabled={!left || !right || !diff}
+          title="De wijzigingen zoals ze nu in beeld staan als PDF-rapport opslaan (per hoofdstuk, met inhoudsopgave)"
+          onClick={() => left && right && void exportDiffReport(left, right, sources, visible)}
         >
           Verschilrapport (PDF)
+        </button>
+        <button
+          type="button"
+          className="pill-btn"
+          title={panelOpen ? 'Wijzigingenlijst verbergen' : 'Wijzigingenlijst tonen'}
+          onClick={() => setPanelOpen((v) => !v)}
+        >
+          {panelOpen ? 'Lijst verbergen' : `Lijst tonen${visible.length ? ` (${visible.length})` : ''}`}
         </button>
         <button type="button" className="icon-btn" title="Vergelijken sluiten (Esc)" onClick={close}>
           <IconClose size={15} />
@@ -344,70 +433,220 @@ export default function CompareView(): JSX.Element | null {
       </div>
       <ScanNotice group={left} />
       {left?.id !== right?.id && <ScanNotice group={right} />}
-      <div className="compare-view__scroll" ref={scrollRef}>
-        {Array.from({ length: maxPages }, (_, i) => (
-          <CompareRow key={`${compare.leftGroupId}-${compare.rightGroupId}-${i}`} index={i} left={left} right={right} width={paneWidth} />
-        ))}
-        {maxPages === 0 && <p className="compare-view__empty">Kies links en rechts een document om te vergelijken.</p>}
-      </div>
 
-      {report && (
-        <div className="modal-overlay" onClick={() => setReport(null)}>
-          <div className="modal-card compare-report" onClick={(e) => e.stopPropagation()}>
-            <div className="modal-card__header">
-              <h3>Verschiloverzicht — {report.reduce((n, r) => n + r.changed, 0)} wijziging(en)</h3>
-              <button type="button" className="icon-btn icon-btn--chrome" title="Sluiten" onClick={() => setReport(null)}>
-                <IconClose size={14} />
-              </button>
+      <div className="compare-view__body">
+        <div className="compare-view__scroll" ref={scrollRef}>
+          {Array.from({ length: maxPages }, (_, i) => {
+            const marks = marksByPage.get(i)
+            const n = countsByPage.get(i) ?? 0
+            return (
+              <CompareRow
+                key={`${compare.leftGroupId}-${compare.rightGroupId}-${i}`}
+                index={i}
+                left={left}
+                right={right}
+                leftSize={diff?.pages[i]?.leftSize}
+                rightSize={diff?.pages[i]?.rightSize}
+                leftMarks={marks?.left ?? []}
+                rightMarks={marks?.right ?? []}
+                activeId={activeId}
+                width={paneWidth}
+                label={progress ? ' — vergelijken…' : n ? ` — ${n} wijziging${n === 1 ? '' : 'en'}` : ' — gelijk'}
+              />
+            )
+          })}
+          {maxPages === 0 && <p className="compare-view__empty">Kies links en rechts een document om te vergelijken.</p>}
+        </div>
+
+        {panelOpen && (
+          <aside className="compare-side" aria-label="Wijzigingen">
+            <div className="compare-side__head">
+              <div className="compare-side__title">
+                {progress ? (
+                  <>
+                    Vergelijken… pagina {progress.done} van {progress.total}
+                  </>
+                ) : diff ? (
+                  <>
+                    {visible.length} wijziging{visible.length === 1 ? '' : 'en'}
+                    {visible.length !== counts.total ? <span className="compare-side__of"> van {counts.total}</span> : null}
+                  </>
+                ) : (
+                  'Nog geen vergelijking'
+                )}
+              </div>
+              <div className="compare-side__stepper">
+                <button
+                  type="button"
+                  className="icon-btn icon-btn--chrome"
+                  title="Vorige wijziging (Shift+F3)"
+                  disabled={!visible.length}
+                  onClick={() => step(-1)}
+                >
+                  <IconChevronLeft size={14} />
+                </button>
+                <span className="compare-side__position">
+                  {visible.length ? `${activeIndex >= 0 ? activeIndex + 1 : '–'} / ${visible.length}` : '–'}
+                </span>
+                <button
+                  type="button"
+                  className="icon-btn icon-btn--chrome"
+                  title="Volgende wijziging (F3)"
+                  disabled={!visible.length}
+                  onClick={() => step(1)}
+                >
+                  <IconChevronRight size={14} />
+                </button>
+              </div>
             </div>
-            {report.length === 0 ? (
-              <p>De documenten zijn tekstueel gelijk.</p>
-            ) : (
-              <div className="compare-report__list">
-                {report.map((r) => (
-                  <div key={r.page} className="compare-report__page">
-                    <div className="compare-report__page-title">
-                      Pagina {r.page} — {r.changed} wijziging(en)
-                      {r.numbers.length > 0 ? ` · ${r.numbers.length} cijferwijziging(en)` : ''}
-                    </div>
-                    {r.numbers.length > 0 && (
-                      <div className="compare-report__numbers">
-                        {r.numbers.map((n, k) => (
-                          <div key={k} className="compare-report__number">
-                            <span className="compare-report__number-label">{n.label || 'Getal'}</span>
-                            <span className="compare-report__number-from">{n.from}</span>
-                            <span className="compare-report__number-arrow">→</span>
-                            <span className="compare-report__number-to">{n.to}</span>
-                          </div>
-                        ))}
-                      </div>
-                    )}
-                    <div className="compare-report__cols">
-                      <div className="compare-report__col compare-report__col--left">
-                        <div className="compare-report__col-head">{left?.name}</div>
-                        {r.left.map((t, i) => (
-                          <div key={i} className="compare-report__line">{t}</div>
-                        ))}
-                      </div>
-                      <div className="compare-report__col compare-report__col--right">
-                        <div className="compare-report__col-head">{right?.name}</div>
-                        {r.right.map((t, i) => (
-                          <div key={i} className="compare-report__line">{t}</div>
-                        ))}
-                      </div>
-                    </div>
-                  </div>
-                ))}
+
+            {progress && (
+              <div className="compare-side__progress">
+                <div
+                  className="compare-side__progress-bar"
+                  style={{ width: `${progress.total ? (progress.done / progress.total) * 100 : 0}%` }}
+                />
               </div>
             )}
-            <div className="modal-card__actions">
-              <button type="button" className="pill-btn pill-btn--primary" onClick={() => setReport(null)}>
-                Sluiten
+
+            <div className="compare-side__modes">
+              <button
+                type="button"
+                className={`compare-mode${mode === 'all' ? ' compare-mode--active' : ''}`}
+                onClick={() => setMode('all')}
+              >
+                Alles
+              </button>
+              <button
+                type="button"
+                className={`compare-mode${mode === 'numbers' ? ' compare-mode--active' : ''}`}
+                title="Alleen bedragen en aantallen, met verschil en % mutatie"
+                onClick={() => setMode('numbers')}
+              >
+                Alleen cijfers
               </button>
             </div>
-          </div>
-        </div>
-      )}
+
+            {mode === 'all' ? (
+              <div className="compare-side__chips">
+                {(
+                  [
+                    ['changed', 'Gewijzigd', counts.changed],
+                    ['added', 'Toegevoegd', counts.added + counts.pagesAdded],
+                    ['removed', 'Verwijderd', counts.removed + counts.pagesRemoved],
+                    ['numbers', 'Cijfers', counts.numbers]
+                  ] as [keyof DiffFilter, string, number][]
+                ).map(([key, label, n]) => (
+                  <button
+                    key={key}
+                    type="button"
+                    className={`compare-chip compare-chip--${key}${filter[key] ? ' compare-chip--on' : ''}`}
+                    title={`${label} aan- of uitzetten`}
+                    aria-pressed={Boolean(filter[key])}
+                    onClick={() => setFilter((f) => ({ ...f, [key]: !f[key] }))}
+                  >
+                    {filter[key] && <IconCheck size={11} />}
+                    {label}
+                    <span className="compare-chip__count">{n}</span>
+                  </button>
+                ))}
+              </div>
+            ) : (
+              <div className="compare-side__thresholds">
+                <label>
+                  Vanaf verschil
+                  <input
+                    type="number"
+                    min={0}
+                    step={100}
+                    value={filter.minAmount || ''}
+                    placeholder="0"
+                    onChange={(e) => setFilter((f) => ({ ...f, minAmount: Math.max(0, Number(e.target.value) || 0) }))}
+                  />
+                </label>
+                <label>
+                  Vanaf mutatie %
+                  <input
+                    type="number"
+                    min={0}
+                    step={1}
+                    value={filter.minPercent || ''}
+                    placeholder="0"
+                    onChange={(e) => setFilter((f) => ({ ...f, minPercent: Math.max(0, Number(e.target.value) || 0) }))}
+                  />
+                </label>
+              </div>
+            )}
+
+            <label className="compare-side__toggle" title="Paginanummers, kantoornaam en bestandsnaam in de marge overslaan">
+              <input
+                type="checkbox"
+                checked={filter.ignoreHeads}
+                onChange={(e) => setFilter((f) => ({ ...f, ignoreHeads: e.target.checked }))}
+              />
+              Kop-/voetteksten negeren{headCount ? ` (${headCount})` : ''}
+            </label>
+
+            {pagesDiffer && (
+              <p className="compare-side__note">
+                Verschillend aantal pagina&apos;s: links {left?.pages.length}, rechts {right?.pages.length}. Pagina&apos;s
+                worden één-op-één vergeleken, dus een ingevoegde pagina verschuift de rest.
+              </p>
+            )}
+
+            <div className="compare-side__list" ref={listRef}>
+              {!diff && !progress && <p className="compare-side__empty">Kies twee documenten om te vergelijken.</p>}
+              {diff && !visible.length && (
+                <p className="compare-side__empty">
+                  {counts.total ? 'Geen wijzigingen binnen de gekozen filters.' : 'Geen verschillen gevonden.'}
+                </p>
+              )}
+              {visible.map((c) => (
+                <button
+                  key={c.id}
+                  type="button"
+                  data-list-id={c.id}
+                  className={`change-item change-item--${c.kind}${activeId === c.id ? ' change-item--active' : ''}`}
+                  onClick={() => goTo(c.id)}
+                >
+                  <span className="change-item__head">
+                    <span className="change-item__kind">{KIND_LABELS[c.kind]}</span>
+                    <span className="change-item__page">p. {c.page + 1}</span>
+                  </span>
+                  {c.kind === 'number' ? (
+                    <span className="change-item__number">
+                      <span className="change-item__label">{c.label || 'Getal'}</span>
+                      <span className="change-item__values">
+                        <span className="change-item__from">{formatDiffNumber(c.from)}</span>
+                        <span className="change-item__arrow">→</span>
+                        <span className="change-item__to">{formatDiffNumber(c.to)}</span>
+                        {c.delta !== null && c.delta !== undefined && (
+                          <span className={`change-item__delta${c.delta < 0 ? ' change-item__delta--down' : ''}`}>
+                            {c.delta > 0 ? '+' : ''}
+                            {formatDiffNumber(c.delta)}
+                            {c.pct !== null && c.pct !== undefined ? ` · ${c.pct > 0 ? '+' : ''}${c.pct}%` : ''}
+                          </span>
+                        )}
+                      </span>
+                    </span>
+                  ) : c.kind === 'changed' ? (
+                    <span className="change-item__body">
+                      <span className="change-item__old">{c.before}</span>
+                      <span className="change-item__new">{c.after}</span>
+                    </span>
+                  ) : (
+                    <span className="change-item__body">
+                      <span className={c.kind === 'removed' || c.kind === 'page-removed' ? 'change-item__old' : 'change-item__new'}>
+                        {c.after ?? c.before}
+                      </span>
+                    </span>
+                  )}
+                </button>
+              ))}
+            </div>
+          </aside>
+        )}
+      </div>
     </div>
   )
 }

@@ -319,18 +319,17 @@ export default function Toolbar({ zoomPct, onZoomIn, onZoomOut, onZoomReset, onZ
             <span className="sidebar-btn__label">Bladwijzers</span>
           </button>
 
-          {fullToolbar && (
-            <button
-              type="button"
-              className="sidebar-btn"
-              disabled={groups.length < 1}
-              onClick={openCompare}
-              title="Twee documenten (of versies) naast elkaar vergelijken"
-            >
-              <IconCompare size={15} />
-              <span className="sidebar-btn__label">Vergelijken</span>
-            </button>
-          )}
+          {/* Vergelijken is dagelijks werk (concept naast definitief), dus altijd in beeld. */}
+          <button
+            type="button"
+            className="sidebar-btn"
+            disabled={groups.length < 1}
+            onClick={openCompare}
+            title="Twee documenten (of versies) naast elkaar vergelijken"
+          >
+            <IconCompare size={15} />
+            <span className="sidebar-btn__label">Vergelijken</span>
+          </button>
         </SidebarSection>
 
         <SidebarSection title="Documenten" collapsed={collapsed}>

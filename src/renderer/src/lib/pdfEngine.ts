@@ -26,6 +26,7 @@ import openSansItalicUrl from '../assets/fonts/OpenSans-Italic.ttf?url'
 import openSansBoldItalicUrl from '../assets/fonts/OpenSans-BoldItalic.ttf?url'
 import { getOcr } from './ocrStore'
 import { arrowHeadPoints, trianglePoints, calloutPoints } from './shapes'
+import { WATERMARK_COLORS } from './watermark'
 import type {
   AnnotationFont,
   DocGroup,
@@ -33,7 +34,8 @@ import type {
   PageRef,
   RedactAnnotation,
   SourceFile,
-  TextAnnotation
+  TextAnnotation,
+  Watermark
 } from '../types'
 // pdf.js-only rendering & coordinate helpers live in pdfRender so the startup
 // path can use them without evaluating this pdf-lib-heavy module. We re-export
@@ -793,8 +795,8 @@ async function buildPdf(group: DocGroup, sources: Map<string, SourceFile>, optio
       }
     }
 
-    if (group.watermark && font) {
-      drawWatermark(targetPage, group.watermark.text, group.watermark.opacity, font)
+    if (group.watermark && font && (!group.watermark.firstPageOnly || i === 0)) {
+      drawWatermark(targetPage, group.watermark, font)
     }
     if (group.pageNumbers && font) {
       drawPageNumber(targetPage, i + 1, total, font)
@@ -838,18 +840,34 @@ async function buildPdf(group: DocGroup, sources: Map<string, SourceFile>, optio
   return out.save()
 }
 
-function drawWatermark(page: PDFPage, text: string, opacity: number, font: PDFFont): void {
+/**
+ * Watermerk (CONCEPT, NIET VOOR PUBLICATIE, …) midden op de pagina. De
+ * lettergrootte wordt uitgerekend zodat de tekst de pagina vult zonder eraf te
+ * lopen, en het geheel staat precies gecentreerd — ook schuin.
+ */
+function drawWatermark(page: PDFPage, watermark: Watermark, font: PDFFont): void {
+  const text = watermark.text.trim()
+  if (!text) return
   const { width, height } = page.getSize()
-  const size = Math.min(width, height) / Math.max(8, text.length * 0.6)
+  const diagonal = watermark.style !== 'horizontal'
+  const angle = diagonal ? Math.PI / 4 : 0
+  // Beschikbare lengte langs de tekstrichting, met marge aan beide kanten.
+  const room = diagonal ? Math.min(width, height) * 1.24 : width * 0.86
+  const probe = font.widthOfTextAtSize(text, 100)
+  const size = Math.max(10, Math.min(170, (100 * room) / Math.max(1, probe)))
   const textWidth = font.widthOfTextAtSize(text, size)
+  // pdf-lib draait om het startpunt, dus dat punt een halve regel terugleggen.
+  const cx = width / 2
+  const cy = height / 2
+  const [r, g, b] = WATERMARK_COLORS[watermark.color ?? 'grijs']
   page.drawText(text, {
-    x: width / 2 - textWidth / 2,
-    y: height / 2,
+    x: cx - (textWidth / 2) * Math.cos(angle) + size * 0.34 * Math.sin(angle),
+    y: cy - (textWidth / 2) * Math.sin(angle) - size * 0.34 * Math.cos(angle),
     size,
     font,
-    color: rgb(0.5, 0.5, 0.5),
-    opacity: Math.max(0, Math.min(1, opacity)),
-    rotate: degrees(45)
+    color: rgb(r, g, b),
+    opacity: Math.max(0.02, Math.min(1, watermark.opacity)),
+    rotate: degrees((angle * 180) / Math.PI)
   })
 }
 

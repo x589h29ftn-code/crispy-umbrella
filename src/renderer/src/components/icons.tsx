@@ -169,6 +169,27 @@ export function IconCalendar({ size = 16, className }: IconProps): JSX.Element {
   )
 }
 
+/** Pagina met een schuine tekstbalk erover: watermerk. */
+export function IconWatermark({ size = 16, className }: IconProps): JSX.Element {
+  return (
+    <svg width={size} height={size} viewBox="0 0 24 24" className={className} {...base}>
+      <path d="M6 3h9l4 4v14H6z" />
+      <path d="M8.5 16.5l7-7" strokeWidth="2.4" opacity="0.9" />
+    </svg>
+  )
+}
+
+/** Foto/afbeelding. */
+export function IconImage({ size = 16, className }: IconProps): JSX.Element {
+  return (
+    <svg width={size} height={size} viewBox="0 0 24 24" className={className} {...base}>
+      <rect x="3" y="4.5" width="18" height="15" rx="2" />
+      <circle cx="8.5" cy="10" r="1.6" />
+      <path d="M4 17.5l5-5 4 4 2.5-2.5 4.5 4" />
+    </svg>
+  )
+}
+
 export function IconStamp({ size = 16, className }: IconProps): JSX.Element {
   return (
     <svg width={size} height={size} viewBox="0 0 24 24" className={className} {...base}>

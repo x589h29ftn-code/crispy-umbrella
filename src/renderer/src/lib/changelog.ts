@@ -4,6 +4,22 @@
  */
 export const APP_CHANGELOG: { version: string; items: string[] }[] = [
   {
+    version: '1.12.0',
+    items: [
+      'Vergelijken heeft er een wijzigingenpaneel bij: bovenaan staat hoeveel er is gewijzigd, daaronder alle wijzigingen op een rij. Klik een regel aan en beide documenten springen naar die plek, of loop ze af met de pijltjes en met F3 (Shift+F3 = terug). De teller laat zien waar je bent: "4 / 17"',
+      'Kleurcodering en filters bij Vergelijken: geel = gewijzigd, groen = toegevoegd, rood = verwijderd, blauw = gewijzigd bedrag. Met de knopjes zet je een soort wijziging aan of uit, zodat je bijvoorbeeld alleen de bedragen ziet',
+      'Kop- en voetteksten worden bij Vergelijken standaard genegeerd. Een gewijzigd jaartal in de voettekst of "pagina 3 van 48" op elke pagina liet voorheen het hele document oplichten; het aantal genegeerde regels staat bij het vinkje, dus je kunt ze altijd terugzetten',
+      'Nieuwe cijfermodus bij Vergelijken: alleen bedragen en aantallen, met was, is, het verschil én de mutatie in procenten. Met een drempel ("vanaf verschil" en "vanaf mutatie %") filter je de ruis van een paar euro weg — precies de controle die je bij een jaarrekening doet',
+      'Een regel waarvan alleen het bedrag wijzigde staat nu één keer in de lijst (als cijferwijziging) in plaats van twee keer. Ook worden toegevoegde en verwijderde pagina\'s als zodanig gemeld',
+      'Het verschilrapport (PDF) en de jaar-op-jaar-export (Excel) volgen nu precies wat je in beeld hebt: dezelfde filters, dezelfde drempels — en ze zijn een stuk sneller omdat de vergelijking niet meer opnieuw wordt gedaan',
+      '"Vergelijken" staat nu altijd in de zijbalk in plaats van alleen bij "Volledige werkbalk"',
+      'Nieuw gereedschap Watermerk (Slim → Afwerken): kies met één klik CONCEPT, NIET VOOR PUBLICATIE of VOOR INTERN GEBRUIK, of typ je eigen tekst. Met doorzichtigheid, kleur (grijs, rood, blauw), schuin of horizontaal, eventueel alleen op de eerste pagina en desgewenst op alle documenten tegelijk — met een voorbeeld ernaast',
+      'Het watermerk staat nu netjes gecentreerd en vult de pagina, ongeacht de lengte van de tekst (voorheen kon het scheef of half buiten de pagina staan). Op een documentkaart in het overzicht zie je met een merkje welk watermerk erop staat, en de drie vaste teksten zitten ook in het "…"-menu van de kaart',
+      'Afbeeldingen kunnen nu rechtstreeks naar binnen: sleep een foto of schermafdruk (jpg, png, webp, gif, bmp) in de app en er wordt een PDF van gemaakt. Sleep je er meerdere in één keer in, dan worden ze samen één PDF met één pagina per afbeelding — handig voor bonnen of een gescande verklaring',
+      'Bij Voorkeuren kies je hoe een afbeelding een pagina wordt: netjes op een A4 (standaard, met marge) of precies op maat van de afbeelding zonder witte randen'
+    ]
+  },
+  {
     version: '1.11.0',
     items: [
       'Miniaturen in het leestabblad zijn nu instelbaar: sleep de rand van de strook, of gebruik de − en + in het kopje "Pagina\'s". De strook klapt ook in (en weer uit) met het pijltje, net als het gereedschapspaneel rechts — dat kan nu ook ingeklapt worden',

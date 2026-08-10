@@ -25,9 +25,11 @@ import {
   IconScissors,
   IconSparkles,
   IconTrash,
-  IconType
+  IconType,
+  IconWatermark
 } from './icons'
 import CompressPanel from './CompressPanel'
+import WatermarkPanel from './WatermarkPanel'
 import NumberFormatPicker from './NumberFormatPicker'
 import MarkdownPanel from './MarkdownPanel'
 
@@ -351,6 +353,18 @@ export default function SmartDialog(): JSX.Element | null {
       ]
     },
     {
+      title: 'Afwerken',
+      tools: [
+        {
+          key: 'watermark',
+          label: 'Watermerk',
+          hint: 'CONCEPT of eigen tekst over de pagina',
+          icon: <IconWatermark size={15} />,
+          blocked: activeGroup ? undefined : 'Open eerst een document'
+        }
+      ]
+    },
+    {
       title: 'Eruit halen',
       tools: [
         {
@@ -611,6 +625,8 @@ export default function SmartDialog(): JSX.Element | null {
         )}
 
         {tab === 'compress' && <CompressPanel />}
+
+        {tab === 'watermark' && <WatermarkPanel />}
 
         {tab === 'markdown' && <MarkdownPanel group={activeGroup} />}
 

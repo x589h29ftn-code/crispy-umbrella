@@ -4,6 +4,7 @@ import { isImportableFileName, useStudioStore } from '../store'
 import { useClickOutside } from '../hooks/useClickOutside'
 import { usePressDrag } from '../hooks/usePressDrag'
 import { beginGroupDrag, cancelDrag, finishDrag, updateDrag } from '../lib/dragController'
+import { DEFAULT_WATERMARK, WATERMARK_PRESETS } from '../lib/watermark'
 import type { DocGroup, SourceFile } from '../types'
 import PageThumb from './PageThumb'
 import AddTile from './AddTile'
@@ -197,6 +198,14 @@ export default function GroupRow({ group, index, isLast, sources, isActive }: Pr
         <span className="group-row__count">
           {group.pages.length} {group.pages.length === 1 ? 'pagina' : "pagina's"}
         </span>
+        {group.watermark && (
+          <span
+            className="group-row__watermark-badge"
+            title={`Watermerk "${group.watermark.text}" komt op elke export van dit document`}
+          >
+            {group.watermark.text}
+          </span>
+        )}
         <div className="group-row__menu-wrap" ref={menuRef}>
           <button
             type="button"
@@ -279,14 +288,38 @@ export default function GroupRow({ group, index, isLast, sources, isActive }: Pr
             <div className="dropdown-menu" onClick={(e) => e.stopPropagation()}>
               {menuView === 'watermark' && (
                 <div className="dropdown-menu__editor">
+                  {/* De drie teksten die we in de praktijk gebruiken, één klik. */}
+                  <div className="dropdown-menu__presets">
+                    {WATERMARK_PRESETS.map((text) => (
+                      <button
+                        key={text}
+                        type="button"
+                        className={`watermark-preset${watermarkDraft === text ? ' watermark-preset--active' : ''}`}
+                        onClick={() => setWatermarkDraft(text)}
+                      >
+                        {text}
+                      </button>
+                    ))}
+                  </div>
                   <input
                     autoFocus
                     type="text"
-                    placeholder="Watermerktekst, bv. CONCEPT"
+                    placeholder="…of eigen tekst"
                     value={watermarkDraft}
                     onChange={(e) => setWatermarkDraft(e.target.value)}
                   />
                   <div className="dropdown-menu__editor-actions">
+                    <button
+                      type="button"
+                      className="text-btn"
+                      title="Meer instellingen: doorzichtigheid, kleur, richting"
+                      onClick={() => {
+                        closeMenu()
+                        setSmartDialogOpen(true, 'watermark')
+                      }}
+                    >
+                      Meer opties…
+                    </button>
                     {group.watermark && (
                       <button
                         type="button"
@@ -305,7 +338,11 @@ export default function GroupRow({ group, index, isLast, sources, isActive }: Pr
                       className="pill-btn pill-btn--primary"
                       onClick={() => {
                         if (watermarkDraft.trim())
-                          setGroupWatermark(group.id, { text: watermarkDraft.trim(), opacity: 0.25 })
+                          setGroupWatermark(group.id, {
+                            ...DEFAULT_WATERMARK,
+                            ...group.watermark,
+                            text: watermarkDraft.trim()
+                          })
                         closeMenu()
                       }}
                     >
