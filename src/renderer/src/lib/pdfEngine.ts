@@ -214,7 +214,7 @@ function insideRedaction(px: number, py: number, redaction: RedactAnnotation, ro
   return u >= -1 && u <= redaction.width + 1 && v >= -1 && v <= redaction.height + 1
 }
 
-const REDACT_RASTER_SCALE = 200 / 72 // ~200 DPI
+const REDACT_RASTER_SCALE = 240 / 72 // ~240 DPI: leesbaar én scherp genoeg om af te drukken
 
 /**
  * True redaction: the page is re-rendered to an image with the redaction
@@ -229,10 +229,32 @@ async function rasterizeRedactedPage(
   src: SourceFile,
   pageRef: PageRef,
   redactions: RedactAnnotation[],
-  invisibleFont: PDFFont
+  invisibleFont: PDFFont,
+  formValues?: Record<string, string | boolean>
 ): Promise<{ page: PDFPage; offsetX: number; offsetY: number }> {
   const doc = await getPdfJsDocument(src)
   const pdfJsPage = await doc.getPage(pageRef.sourcePageIndex + 1)
+
+  // Ingevulde formuliervelden staan in onze eigen opslag, niet in de bron. Zet
+  // ze in de pdf.js-opslag zodat ze meegetekend worden — anders zou een
+  // ingevuld formulier waarop je iets redigeert leeg uit de export komen.
+  let renderForms = false
+  if (formValues && Object.keys(formValues).length) {
+    try {
+      const annotations = await pdfJsPage.getAnnotations({ intent: 'display' })
+      for (const annotation of annotations as { id?: string; fieldName?: string }[]) {
+        if (!annotation.id || !annotation.fieldName) continue
+        const value = formValues[annotation.fieldName]
+        if (value === undefined) continue
+        doc.annotationStorage.setValue(annotation.id, {
+          value: typeof value === 'boolean' ? value : String(value)
+        })
+        renderForms = true
+      }
+    } catch {
+      // Geen (leesbare) velden op deze pagina — gewoon zonder formulieren renderen.
+    }
+  }
   const totalRotation = (pdfJsPage.rotate + pageRef.rotation) % 360
   const rasterViewport = pdfJsPage.getViewport({ scale: REDACT_RASTER_SCALE, rotation: 0 })
   const compViewport = pdfJsPage.getViewport({ scale: 1, rotation: totalRotation })
@@ -246,7 +268,12 @@ async function rasterizeRedactedPage(
   if (!ctx) throw new Error('Canvas 2D context unavailable')
   ctx.fillStyle = '#ffffff'
   ctx.fillRect(0, 0, canvas.width, canvas.height)
-  await pdfJsPage.render({ canvasContext: ctx, viewport: rasterViewport }).promise
+  await pdfJsPage.render({
+    canvasContext: ctx,
+    viewport: rasterViewport,
+    // 2 = ENABLE_FORMS: teken ook de (ingevulde) formuliervelden mee.
+    ...(renderForms ? { annotationMode: 2 } : {})
+  }).promise
 
   // Burn the boxes into the pixels — after this the covered content is gone.
   for (const redaction of redactions) {
@@ -270,10 +297,15 @@ async function rasterizeRedactedPage(
     ctx.fill()
   }
 
-  const { bytes } = dataUrlToBytes(canvas.toDataURL('image/jpeg', 0.9))
+  // Tekstpagina's comprimeren als PNG vaak net zo goed als JPEG, maar dan
+  // zonder artefacten rond de letters. Alleen bij een duidelijk groter bestand
+  // (foto's, scans) valt de keuze op JPEG.
+  const jpegBytes = dataUrlToBytes(canvas.toDataURL('image/jpeg', 0.9)).bytes
+  const pngBytes = dataUrlToBytes(canvas.toDataURL('image/png')).bytes
+  const usePng = pngBytes.length <= jpegBytes.length * 1.6
   canvas.width = 0
   canvas.height = 0
-  const image = await out.embedJpg(bytes)
+  const image = usePng ? await out.embedPng(pngBytes) : await out.embedJpg(jpegBytes)
 
   const [x0, y0, x1, y1] = pdfJsPage.view
   const width = x1 - x0
@@ -290,16 +322,18 @@ async function rasterizeRedactedPage(
     const [a, b, , , e, f] = item.transform
     const size = Math.hypot(a, b) || 10
     const itemWidth = item.width || size * item.str.length * 0.5
-    // AVG: het geredigeerde beeld is definitief zwart, maar we mogen de tekst
-    // eronder NIET onzichtbaar terugplaatsen. Test daarom het hele tekstvak
-    // dicht af (over de breedte én hoogte, met marge) i.p.v. drie punten —
-    // zo lekt ook een woord dat maar deels onder het vlak valt niet.
+    // AVG: het beeld is definitief zwart gemaakt, maar de tekst eronder mag
+    // ook niet onzichtbaar terugkomen. We toetsen de kernband van de letters
+    // (basislijn tot ongeveer hoofdletterhoogte) dicht over de hele breedte af:
+    // raakt het vlak die band ergens, dan gaat het hele fragment eruit. De
+    // stok- en staartzones tellen bewust niet mee, anders wist een streepje in
+    // de witruimte tússen twee regels de tekst van beide regels — die staat dan
+    // nog wel zichtbaar in beeld, maar niet meer in de tekstlaag.
     const steps = Math.max(3, Math.ceil(itemWidth / (size * 0.4)))
-    const margin = size * 0.35
     let redacted = false
     for (let sx = 0; sx <= steps && !redacted; sx += 1) {
       const px = e + (itemWidth * sx) / steps
-      for (const py of [f - margin, f + size * 0.35, f + size * 0.8]) {
+      for (const py of [f + size * 0.12, f + size * 0.4, f + size * 0.68]) {
         if (redactions.some((r) => insideRedaction(px, py, r, rotateDeg))) {
           redacted = true
           break
@@ -503,7 +537,14 @@ async function buildPdf(group: DocGroup, sources: Map<string, SourceFile>, optio
     let oy = 0
     if (redactions.length) {
       const invisibleFont = await getFont({ kind: 'standard', ref: StandardFonts.Helvetica })
-      const flattened = await rasterizeRedactedPage(out, src, page, redactions, invisibleFont)
+      const flattened = await rasterizeRedactedPage(
+        out,
+        src,
+        page,
+        redactions,
+        invisibleFont,
+        options.formValues?.[page.sourceId]
+      )
       targetPage = flattened.page
       ox = flattened.offsetX
       oy = flattened.offsetY

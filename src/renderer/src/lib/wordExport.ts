@@ -1,14 +1,95 @@
-import { Document, Packer, Paragraph, TextRun } from 'docx'
-import { getTextLineBoxes, type TextLineBox } from './textLines'
+import {
+  AlignmentType,
+  BorderStyle,
+  Document,
+  HeadingLevel,
+  LevelFormat,
+  Packer,
+  Paragraph,
+  Table,
+  TableCell,
+  TableRow,
+  TextRun,
+  WidthType
+} from 'docx'
+import { analyzeDocument, DEFAULT_STRUCTURE_OPTIONS, type Block } from './docStructure'
 import { useStudioStore } from '../store'
-import type { DocGroup, SourceFile } from '../types'
+import type { DocGroup } from '../types'
+
+const HEADINGS = [HeadingLevel.HEADING_1, HeadingLevel.HEADING_2, HeadingLevel.HEADING_3, HeadingLevel.HEADING_4]
+
+/** Getallen rechts uitlijnen in tabellen, net als in Excel. */
+function looksNumeric(text: string): boolean {
+  return /^[€\s]*-?\(?\d[\d.,\s]*\)?-?\s*%?$/.test(text.trim()) && /\d/.test(text)
+}
+
+function tableToDocx(grid: string[][]): Table {
+  const border = { style: BorderStyle.SINGLE, size: 2, color: 'D0D5DD' }
+  const borders = { top: border, bottom: border, left: border, right: border }
+  const rows = grid.map((cells, rowIndex) => {
+    const header = rowIndex === 0
+    return new TableRow({
+      tableHeader: header,
+      children: cells.map(
+        (cell) =>
+          new TableCell({
+            borders,
+            shading: header ? { fill: 'EFF2F7' } : undefined,
+            children: [
+              new Paragraph({
+                alignment: !header && looksNumeric(cell) ? AlignmentType.RIGHT : AlignmentType.LEFT,
+                spacing: { before: 20, after: 20 },
+                children: [new TextRun({ text: cell, bold: header, size: 20 })]
+              })
+            ]
+          })
+      )
+    })
+  })
+  return new Table({ rows, width: { size: 100, type: WidthType.PERCENTAGE } })
+}
+
+function blockToDocx(block: Block): (Paragraph | Table)[] {
+  switch (block.kind) {
+    case 'heading':
+      return [
+        new Paragraph({
+          heading: HEADINGS[Math.min(HEADINGS.length, block.level) - 1],
+          spacing: { before: 240, after: 120 },
+          children: [new TextRun({ text: block.text })]
+        })
+      ]
+    case 'paragraph':
+      return [
+        new Paragraph({
+          spacing: { after: 120 },
+          children: [new TextRun({ text: block.text, bold: block.bold })]
+        })
+      ]
+    case 'list':
+      return block.items.map(
+        (item) =>
+          new Paragraph({
+            spacing: { after: 60 },
+            ...(block.ordered
+              ? { numbering: { reference: 'genummerd', level: Math.min(2, item.indent) } }
+              : { bullet: { level: Math.min(2, item.indent) } }),
+            children: [new TextRun({ text: item.text })]
+          })
+      )
+    case 'table':
+      return [tableToDocx(block.grid), new Paragraph({ text: '', spacing: { after: 120 } })]
+    case 'note':
+      return [new Paragraph({ children: [new TextRun({ text: block.text, italics: true, color: '888888' })] })]
+  }
+}
 
 /**
- * Exporteert het actieve document naar een bewerkbaar Word-bestand (.docx) met
- * behoud van opmaak: elke tekstregel wordt een alinea met de oorspronkelijke
- * lettergrootte, koppen (duidelijk groter dan de basistekst) worden vet, en
- * elke pagina eindigt met een pagina-einde. Zo houd je in Word dezelfde
- * indeling in plaats van één blok platte tekst.
+ * Exporteert het actieve document naar een bewerkbaar Word-bestand (.docx) mét
+ * structuur: koppen worden echte Word-kopstijlen (dus bruikbaar in het
+ * navigatievenster en voor een inhoudsopgave), opsommingen worden echte
+ * lijsten, herkende tabellen worden echte Word-tabellen, en alinea's lopen door
+ * in plaats van per regel af te breken.
  */
 export async function exportGroupWord(): Promise<void> {
   const state = useStudioStore.getState()
@@ -18,54 +99,47 @@ export async function exportGroupWord(): Promise<void> {
     return
   }
   try {
-    // Per pagina de regels met hun lettergrootte ophalen.
-    const pages: TextLineBox[][] = []
-    for (const page of group.pages) {
-      const source: SourceFile | undefined = state.sources.get(page.sourceId)
-      if (!source) continue
-      const lines = await getTextLineBoxes(source, page.sourcePageIndex, page.rotation).catch(() => [] as TextLineBox[])
-      pages.push(lines.filter((l) => l.str.trim()))
-    }
-    if (!pages.some((p) => p.length)) {
+    const { pages, stats } = await analyzeDocument(group, state.sources, DEFAULT_STRUCTURE_OPTIONS, group.name)
+    if (stats.words === 0) {
       state.addToast('info', 'Geen tekstlaag gevonden — voer eerst OCR uit voor gescande documenten')
       return
     }
 
-    // Basis-lettergrootte = mediaan; regels die duidelijk groter zijn gelden als kop (vet).
-    const sizes = pages.flat().map((l) => l.fontSize).sort((a, b) => a - b)
-    const bodySize = sizes.length ? sizes[Math.floor(sizes.length / 2)] : 11
-    const headingThreshold = bodySize * 1.25
-
-    const paragraphs: Paragraph[] = []
-    pages.forEach((lines, pageIdx) => {
-      lines.forEach((line) => {
-        const isHeading = line.fontSize >= headingThreshold
-        // docx rekent in halve punten; behoud de echte grootte van de PDF-regel.
-        const halfPoints = Math.max(12, Math.round(line.fontSize * 2))
-        paragraphs.push(
-          new Paragraph({
-            spacing: { after: isHeading ? 120 : 60 },
-            children: [new TextRun({ text: line.str, size: halfPoints, bold: isHeading })]
-          })
-        )
-      })
+    const children: (Paragraph | Table)[] = []
+    pages.forEach((blocks, pageIndex) => {
+      for (const block of blocks) children.push(...blockToDocx(block))
       // Pagina-einde tussen pagina's (niet na de laatste).
-      if (pageIdx < pages.length - 1) paragraphs.push(new Paragraph({ children: [], pageBreakBefore: true }))
+      if (pageIndex < pages.length - 1) children.push(new Paragraph({ children: [], pageBreakBefore: true }))
     })
 
     const doc = new Document({
       creator: 'PDF Studio',
       title: group.name,
-      sections: [{ children: paragraphs }]
+      numbering: {
+        config: [
+          {
+            reference: 'genummerd',
+            levels: [0, 1, 2].map((level) => ({
+              level,
+              format: LevelFormat.DECIMAL,
+              text: `%${level + 1}.`,
+              alignment: AlignmentType.START,
+              style: { paragraph: { indent: { left: 360 * (level + 1), hanging: 260 } } }
+            }))
+          }
+        ]
+      },
+      sections: [{ children }]
     })
     const blob = await Packer.toBlob(doc)
     const bytes = new Uint8Array(await blob.arrayBuffer())
     const base = group.name.replace(/\.pdf$/i, '').replace(/[\\/:*?"<>|]/g, '_').trim() || 'document'
     const result = await window.api.saveFile(`${base}.docx`, bytes, 'docx')
     if (result.saved) {
+      const parts = [`${stats.headings} koppen`, `${stats.tables} tabellen`, `${stats.listItems} lijstregels`]
       state.addToast(
         'success',
-        `Word-document opgeslagen als "${base}.docx"`,
+        `Word-document opgeslagen als "${base}.docx" (${parts.join(' · ')})`,
         result.path && typeof window.api.openPath === 'function'
           ? { label: 'Open Word-bestand', run: () => void window.api.openPath!(result.path!) }
           : undefined

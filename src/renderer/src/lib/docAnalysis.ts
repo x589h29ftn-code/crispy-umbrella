@@ -118,8 +118,18 @@ function sanitize(s: string): string {
   return s.replace(/[\\/:*?"<>|]/g, ' ').replace(/\s+/g, ' ').trim()
 }
 
-/** Stelt een bestandsnaam voor op basis van type, datum en leverancier/bedrag. */
-export function suggestName(fields: DocFields, fallback: string): string {
+/**
+ * Stelt een bestandsnaam voor op basis van type, datum en leverancier/bedrag.
+ * Bij een document dat niet als factuur/afschrift/loonstrook herkend wordt, is
+ * de titel bovenaan de pagina ("Jaarrekening 2025") een betere naam dan het
+ * generieke "Document" met de kantoornaam eronder.
+ */
+export function suggestName(fields: DocFields, fallback: string, heading?: string | null): string {
+  const title = heading?.trim()
+  if (fields.type === 'document' && title && title.length >= 4 && title.length <= 60) {
+    const named = sanitize([fields.date, title].filter(Boolean).join(' '))
+    if (named.length > 4) return named
+  }
   const parts: string[] = []
   if (fields.date) parts.push(fields.date)
   parts.push(DOC_TYPE_LABELS[fields.type])

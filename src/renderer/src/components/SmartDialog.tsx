@@ -8,6 +8,7 @@ import { exportTablesToXlsx } from '../lib/tableExport'
 import { exportGroupText } from '../lib/textExport'
 import { getGroupBookmarks } from '../lib/bookmarks'
 import { getTextLineBoxes } from '../lib/textLines'
+import { analyzeDocument, DEFAULT_STRUCTURE_OPTIONS, type Block } from '../lib/docStructure'
 import ScanNotice from './ScanNotice'
 import type { DocGroup } from '../types'
 import { useModalDialog } from '../hooks/useModalDialog'
@@ -57,6 +58,7 @@ export default function SmartDialog(): JSX.Element | null {
     if (open && requestedTab) setTab(requestedTab)
   }, [open, requestedTab])
   const [busy, setBusy] = useState(false)
+  const [rawPages, setRawPages] = useState(false)
   const [suggestions, setSuggestions] = useState<{ groupId: string; current: string; type: string; suggested: string }[]>([])
   const [blanks, setBlanks] = useState<{ pageId: string; groupName: string; pageNumber: number }[]>([])
   const [blankSelected, setBlankSelected] = useState<Set<string>>(new Set())
@@ -117,7 +119,17 @@ export default function SmartDialog(): JSX.Element | null {
       for (const group of groups) {
         const text = await getGroupText(group, sources)
         const fields = extractFields(text)
-        out.push({ groupId: group.id, current: group.name, type: DOC_TYPE_LABELS[fields.type], suggested: suggestName(fields, group.name) })
+        // De eerste kop van het document is vaak de beste naam ("Jaarrekening 2025").
+        const structure = await analyzeDocument(group, sources, DEFAULT_STRUCTURE_OPTIONS).catch(() => null)
+        const heading = structure?.pages
+          .flat()
+          .find((b): b is Extract<Block, { kind: 'heading' }> => b.kind === 'heading')?.text
+        out.push({
+          groupId: group.id,
+          current: group.name,
+          type: DOC_TYPE_LABELS[fields.type],
+          suggested: suggestName(fields, group.name, heading)
+        })
       }
       if (!cancelled) {
         setSuggestions(out)
@@ -591,10 +603,19 @@ export default function SmartDialog(): JSX.Element | null {
         {tab === 'table' && (
           <div className="smart-card__body">
             <p className="smart-card__intro">
-              Herkent de tabellen in "{activeGroup?.name ?? '—'}" (rijen en kolommen op basis van de tekstposities)
-              en zet ze in een Excel-bestand — één werkblad per pagina. Ideaal voor cijferoverzichten en
-              jaarrekeningen. Werkt op de tekstlaag; voor scans eerst OCR draaien.
+              Zoekt de tabellen in "{activeGroup?.name ?? '—'}" (rijen en kolommen op basis van de tekstposities) en
+              zet elke tabel op een eigen werkblad, genoemd naar het kopje erboven. Bedragen, percentages en datums
+              komen als échte waarden binnen. Werkt op de tekstlaag; voor scans eerst OCR draaien.
             </p>
+            <label className="prefs-check">
+              <input type="checkbox" checked={rawPages} onChange={(e) => setRawPages(e.target.checked)} />
+              <span>
+                <span className="prefs-row__title">Ook pagina’s zonder herkende tabel meenemen</span>
+                <span className="prefs-row__hint">
+                  Zet die pagina’s als ruw raster op een eigen werkblad — handig als een tabel niet herkend wordt.
+                </span>
+              </span>
+            </label>
             <div className="modal-card__actions">
               <button
                 type="button"
@@ -602,7 +623,7 @@ export default function SmartDialog(): JSX.Element | null {
                 disabled={busy || !activeGroup}
                 onClick={() => {
                   setBusy(true)
-                  void exportTablesToXlsx()
+                  void exportTablesToXlsx({ includeRawPages: rawPages })
                     .then((r) => {
                       // saveWorkbook toont zelf de melding met "Open Excel-bestand"-knop.
                       if (r.ok) setOpen(false)
