@@ -1,4 +1,4 @@
-import { Suspense, lazy, useEffect, useMemo, useRef, useState } from 'react'
+import { Suspense, lazy, useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useAutoAnimate } from '@formkit/auto-animate/react'
 import { isImportableFileName, useStudioStore } from '../store'
 import { usePanZoom, type PanZoomTransform } from '../hooks/usePanZoom'
@@ -74,21 +74,34 @@ export default function Canvas({ onScaleChange, registerZoomControls }: Props): 
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
-  // On the first import into an empty canvas, zoom in so the thumbnails are
-  // immediately readable (fit the widest row to the window), instead of
-  // requiring a manual zoom + pan.
+  /**
+   * Bij de eerste import inzoomen zodat de miniaturen meteen leesbaar zijn.
+   * We kijken naar de hóógte: een document met veel pagina's is altijd breder
+   * dan het venster, dus op de breedte passen leverde altijd 100% op — precies
+   * waarom de pagina's zo klein bleven. Nu vult één rij de hoogte van het
+   * canvas en scroll je horizontaal door de pagina's.
+   */
   const hadGroupsRef = useRef(false)
+  const fitToHeight = useCallback(() => {
+    const viewport = viewportRef.current
+    const content = contentRef.current
+    if (!viewport || !content) return
+    const row = content.querySelector<HTMLElement>('.group-row')
+    const rowHeight = row?.offsetHeight ?? content.offsetHeight
+    const available = viewport.clientHeight - 2 * CONTENT_MARGIN
+    if (rowHeight <= 0 || available <= 0) return
+    const byHeight = available / rowHeight
+    const byWidth = (viewport.clientWidth - 2 * CONTENT_MARGIN) / Math.max(1, content.offsetWidth)
+    // Past alles al breed in beeld? Dan die maat aanhouden, anders vullend maken.
+    zoomTo(Math.min(3.2, Math.max(1, byWidth >= 1 ? Math.max(byWidth, byHeight) : byHeight)))
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
+
   useEffect(() => {
     const hasGroups = groups.length > 0
     if (hasGroups && !hadGroupsRef.current) {
-      // Measure after the row entry animation (180ms) so offsetWidth is final.
-      const timer = window.setTimeout(() => {
-        const viewport = viewportRef.current
-        const content = contentRef.current
-        if (!viewport || !content) return
-        const fit = (viewport.clientWidth - 2 * CONTENT_MARGIN) / Math.max(1, content.offsetWidth)
-        zoomTo(Math.min(2.2, Math.max(1, fit)))
-      }, 240)
+      // Meten na de rij-animatie (180 ms), zodat de afmetingen definitief zijn.
+      const timer = window.setTimeout(fitToHeight, 240)
       hadGroupsRef.current = hasGroups
       return () => window.clearTimeout(timer)
     }
@@ -222,15 +235,22 @@ export default function Canvas({ onScaleChange, registerZoomControls }: Props): 
         </div>
       )}
 
-      {Math.abs(scalePct - 100) > 1 && (
-        <button
-          type="button"
-          className={`zoom-reset-btn${showHScroll ? ' zoom-reset-btn--lifted' : ''}`}
-          onClick={() => zoomTo(1)}
-          title="Terug naar origineel formaat"
-        >
-          {scalePct}% · Origineel
-        </button>
+      {groups.length > 0 && (
+        <div className={`canvas-zoom-actions${showHScroll ? ' canvas-zoom-actions--lifted' : ''}`}>
+          <button type="button" className="zoom-reset-btn" onClick={fitToHeight} title="Pagina's passend in beeld">
+            Passend
+          </button>
+          {Math.abs(scalePct - 100) > 1 && (
+            <button
+              type="button"
+              className="zoom-reset-btn"
+              onClick={() => zoomTo(1)}
+              title="Terug naar origineel formaat"
+            >
+              {scalePct}% · Origineel
+            </button>
+          )}
+        </div>
       )}
     </div>
   )

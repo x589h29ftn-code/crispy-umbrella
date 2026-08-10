@@ -10,6 +10,7 @@ export default function StatusBar(): JSX.Element | null {
   const activeEditorTab = useStudioStore((s) => s.activeEditorTab)
   const selectedCount = useStudioStore((s) => s.selectedPageIds.size)
   const canvasScale = useStudioStore((s) => s.canvasScale)
+  const editorZoom = useStudioStore((s) => s.editorZoom)
   const presentationMode = useStudioStore((s) => s.presentationMode)
 
   if (presentationMode || !groups.length) return null
@@ -38,7 +39,9 @@ export default function StatusBar(): JSX.Element | null {
         </>
       )}
       <span className="statusbar__spacer" />
-      <span className="statusbar__item">{Math.round(canvasScale * 100)}%</span>
+      <span className="statusbar__item" title={activeEditorTab ? 'Zoom van het document' : 'Zoom van het overzicht'}>
+        {Math.round((activeEditorTab ? editorZoom : canvasScale) * 100)}%
+      </span>
     </footer>
   )
 }

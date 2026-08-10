@@ -98,6 +98,9 @@ const TOOLBAR_HIDDEN_STORAGE_KEY = 'pdf-studio-toolbar-hidden'
 const RESTORE_SESSION_STORAGE_KEY = 'pdf-studio-restore-session'
 const FULL_TOOLBAR_STORAGE_KEY = 'pdf-studio-full-toolbar'
 const NUMBER_FORMAT_STORAGE_KEY = 'pdf-studio-number-format'
+const RAIL_WIDTH_STORAGE_KEY = 'pdf-studio-rail-width'
+const RAIL_COLLAPSED_STORAGE_KEY = 'pdf-studio-rail-collapsed'
+const TOOLS_COLLAPSED_STORAGE_KEY = 'pdf-studio-tools-collapsed'
 
 function getInitialReaderView(): 'scroll' | 'spread' | 'single' {
   const v = window.localStorage.getItem(READER_VIEW_STORAGE_KEY)
@@ -163,6 +166,14 @@ interface StudioState {
   fullToolbar: boolean
   /** Getalopmaak bij export naar Word en Excel (zoals in de PDF / 0 / 2 decimalen). */
   numberFormat: NumberFormatChoice
+  /** Zoom van het leestabblad (1 = passend), zodat de werkbalk hem ook kan bedienen. */
+  editorZoom: number
+  /** Breedte van de miniaturenstrook in het leestabblad (px). */
+  railWidth: number
+  /** Miniaturenstrook ingeklapt. */
+  railCollapsed: boolean
+  /** Gereedschapspaneel rechts ingeklapt. */
+  toolsCollapsed: boolean
 
   setFormValue: (sourceId: string, fieldName: string, value: string | boolean) => void
   setFlattenForms: (flatten: boolean) => void
@@ -170,6 +181,10 @@ interface StudioState {
   setRestoreLastSession: (on: boolean) => void
   setFullToolbar: (on: boolean) => void
   setNumberFormat: (choice: NumberFormatChoice) => void
+  setEditorZoom: (zoom: number | ((z: number) => number)) => void
+  setRailWidth: (width: number) => void
+  setRailCollapsed: (collapsed: boolean) => void
+  setToolsCollapsed: (collapsed: boolean) => void
   setAuthorName: (name: string) => void
   /** Herstelt een vorige sessie (alleen wanneer er nog niets geopend is). */
   restoreSession: (payload: {
@@ -476,6 +491,13 @@ export const useStudioStore = create<StudioState>((set, get) => ({
     const stored = window.localStorage.getItem(NUMBER_FORMAT_STORAGE_KEY)
     return stored === 'none' || stored === 'two' ? stored : 'auto'
   })(),
+  editorZoom: 1,
+  railWidth: ((): number => {
+    const stored = Number(window.localStorage.getItem(RAIL_WIDTH_STORAGE_KEY))
+    return Number.isFinite(stored) && stored >= 90 ? Math.min(420, stored) : 160
+  })(),
+  railCollapsed: window.localStorage.getItem(RAIL_COLLAPSED_STORAGE_KEY) === '1',
+  toolsCollapsed: window.localStorage.getItem(TOOLS_COLLAPSED_STORAGE_KEY) === '1',
 
   setFormValue: (sourceId, fieldName, value) => {
     set((state) => ({
@@ -505,6 +527,25 @@ export const useStudioStore = create<StudioState>((set, get) => ({
   setNumberFormat: (choice) => {
     window.localStorage.setItem(NUMBER_FORMAT_STORAGE_KEY, choice)
     set({ numberFormat: choice })
+  },
+  setEditorZoom: (zoom) => {
+    set((state) => {
+      const next = typeof zoom === 'function' ? zoom(state.editorZoom) : zoom
+      return { editorZoom: Math.min(5, Math.max(0.2, next)) }
+    })
+  },
+  setRailWidth: (width) => {
+    const clamped = Math.min(420, Math.max(90, Math.round(width)))
+    window.localStorage.setItem(RAIL_WIDTH_STORAGE_KEY, String(clamped))
+    set({ railWidth: clamped })
+  },
+  setRailCollapsed: (collapsed) => {
+    window.localStorage.setItem(RAIL_COLLAPSED_STORAGE_KEY, collapsed ? '1' : '0')
+    set({ railCollapsed: collapsed })
+  },
+  setToolsCollapsed: (collapsed) => {
+    window.localStorage.setItem(TOOLS_COLLAPSED_STORAGE_KEY, collapsed ? '1' : '0')
+    set({ toolsCollapsed: collapsed })
   },
 
   restoreSession: (payload) => {

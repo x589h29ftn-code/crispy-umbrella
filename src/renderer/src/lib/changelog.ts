@@ -6,6 +6,10 @@ export const APP_CHANGELOG: { version: string; items: string[] }[] = [
   {
     version: '1.11.0',
     items: [
+      'Miniaturen in het leestabblad zijn nu instelbaar: sleep de rand van de strook, of gebruik de − en + in het kopje "Pagina\'s". De strook klapt ook in (en weer uit) met het pijltje, net als het gereedschapspaneel rechts — dat kan nu ook ingeklapt worden',
+      'Het overzicht opent voortaan vullend: de pagina\'s worden zo groot getoond dat een rij de hoogte van het canvas vult (voorheen bleef het op 100% met piepkleine miniaturen, omdat een document met veel pagina\'s nooit op de breedte paste). Met de knop "Passend" zet je dat op elk moment terug',
+      'Elke documentkaart in het overzicht heeft nu een knop "Opslaan als PDF", zodat je het (samengevoegde of gesplitste) document meteen kunt wegschrijven',
+      'Opgelost: de zoombalk links deed niets in een leestabblad en liep niet mee met Ctrl+scrollen. Hij bedient nu het venster waar je in zit — het document in een leestabblad, het overzicht daarbuiten — en dat geldt ook voor het percentage in de statusbalk',
       'De app start voortaan leeg: de PDF\'s van de vorige keer worden niet meer automatisch geopend, ook niet in het overzicht voor samenvoegen en splitsen. Wil je dat wél, zet dan "Vorige sessie herstellen bij opstarten" aan bij Voorkeuren',
       'Nieuw startscherm: een ruime sleepzone met daaronder de knoppen Openen, Combineren of splitsen, Sjablonen en Ondertekenen, plus je recent geopende bestanden met map en datum ("Vandaag", "Gisteren")',
       'Opgeruimde zijbalk: de acties staan gegroepeerd onder kopjes (Bestand, Bekijken, Documenten, Extra), het middendeel schuift mee en Exporteer PDF, Exporteer zip en Voorkeuren staan vast onderaan — vóór deze versie vielen die knoppen bij een normaal venster buiten beeld en waren ze onbereikbaar. Wil je alles zoals vroeger in de zijbalk? Zet "Volledige werkbalk" aan bij Voorkeuren',

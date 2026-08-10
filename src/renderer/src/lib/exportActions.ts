@@ -52,6 +52,31 @@ export async function buildActiveGroupPdf(): Promise<{ bytes: Uint8Array; name: 
   return { bytes, name: sanitizeFileName(group.name) }
 }
 
+/** Slaat één document (uit het overzicht) op als PDF via het opslaan-venster. */
+export async function exportGroupPdf(groupId: string): Promise<void> {
+  const state = useStudioStore.getState()
+  const group = state.groups.find((g) => g.id === groupId)
+  if (!group || !group.pages.length || state.busyExport) return
+  state.setBusyExport('pdf')
+  try {
+    const bytes = await maybeEncrypt(await exportGroup(group, state.sources, exportOptions()))
+    const result = await window.api.savePdf(`${sanitizeFileName(group.name)}.pdf`, bytes)
+    if (result.saved) {
+      state.addToast(
+        'success',
+        `"${group.name}" opgeslagen als PDF`,
+        result.path && typeof window.api.openPath === 'function'
+          ? { label: 'Openen', run: () => void window.api.openPath!(result.path!) }
+          : undefined
+      )
+    }
+  } catch {
+    state.addToast('error', `Opslaan van "${group.name}" is mislukt`)
+  } finally {
+    useStudioStore.getState().setBusyExport(null)
+  }
+}
+
 /** Exports the active document as a single PDF via a save dialog. */
 export async function exportActivePdf(): Promise<void> {
   const state = useStudioStore.getState()

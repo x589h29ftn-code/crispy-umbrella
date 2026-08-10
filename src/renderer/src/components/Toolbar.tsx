@@ -107,6 +107,17 @@ export default function Toolbar({ zoomPct, onZoomIn, onZoomOut, onZoomReset, onZ
   const setToolbarHidden = useStudioStore((s) => s.setToolbarHidden)
   const trashCount = useStudioStore((s) => s.trash.length)
   const fullToolbar = useStudioStore((s) => s.fullToolbar)
+  // In een leestabblad hoort de zoomrij bij het document, niet bij het overzicht;
+  // anders lijkt de balk kapot zodra je met Ctrl+scrollen inzoomt.
+  const activeEditorTab = useStudioStore((s) => s.activeEditorTab)
+  const editorZoom = useStudioStore((s) => s.editorZoom)
+  const setEditorZoom = useStudioStore((s) => s.setEditorZoom)
+  const readingZoom = activeEditorTab !== null
+  const shownZoomPct = readingZoom ? Math.round(editorZoom * 100) : zoomPct
+  const zoomOut = (): void => (readingZoom ? setEditorZoom((z) => z / 1.2) : onZoomOut())
+  const zoomIn = (): void => (readingZoom ? setEditorZoom((z) => z * 1.2) : onZoomIn())
+  const zoomReset = (): void => (readingZoom ? setEditorZoom(1) : onZoomReset())
+  const zoomTo = (scale: number): void => (readingZoom ? setEditorZoom(scale) : onZoomTo(scale))
   const [showPasswordField, setShowPasswordField] = useState(false)
   const [sigMenuOpen, setSigMenuOpen] = useState(false)
   const [collapsed, setCollapsed] = useState(() => window.localStorage.getItem(SIDEBAR_STORAGE_KEY) === '1')
@@ -213,15 +224,30 @@ export default function Toolbar({ zoomPct, onZoomIn, onZoomOut, onZoomReset, onZ
       </div>
 
       <div className="sidebar__row">
-        <button type="button" className="pill-btn pill-btn--icon" onClick={onZoomOut} title="Uitzoomen">
+        <button
+          type="button"
+          className="pill-btn pill-btn--icon"
+          onClick={zoomOut}
+          title={readingZoom ? 'Uitzoomen in het document' : 'Uitzoomen in het overzicht'}
+        >
           <IconMinus size={14} />
         </button>
         {!collapsed && (
-          <button type="button" className="toolbar__zoom-pct" onClick={onZoomReset} title="Zoom herstellen (100%)">
-            {zoomPct}%
+          <button
+            type="button"
+            className="toolbar__zoom-pct"
+            onClick={zoomReset}
+            title={readingZoom ? 'Zoom van het document herstellen' : 'Zoom van het overzicht herstellen (100%)'}
+          >
+            {shownZoomPct}%
           </button>
         )}
-        <button type="button" className="pill-btn pill-btn--icon" onClick={onZoomIn} title="Inzoomen">
+        <button
+          type="button"
+          className="pill-btn pill-btn--icon"
+          onClick={zoomIn}
+          title={readingZoom ? 'Inzoomen in het document' : 'Inzoomen in het overzicht'}
+        >
           <IconPlus size={14} />
         </button>
       </div>
@@ -233,9 +259,9 @@ export default function Toolbar({ zoomPct, onZoomIn, onZoomOut, onZoomReset, onZ
           min={25}
           max={500}
           step={5}
-          value={Math.min(500, Math.max(25, zoomPct))}
-          title="Zoom"
-          onChange={(e) => onZoomTo(Number(e.target.value) / 100)}
+          value={Math.min(500, Math.max(25, shownZoomPct))}
+          title={readingZoom ? 'Zoom van het document' : 'Zoom van het overzicht'}
+          onChange={(e) => zoomTo(Number(e.target.value) / 100)}
         />
       )}
 

@@ -72,6 +72,7 @@ function RailThumb({
   page,
   source,
   index,
+  width,
   active,
   dragging,
   onClick,
@@ -81,6 +82,8 @@ function RailThumb({
 }: {
   page: PageRef
   source: SourceFile | undefined
+  /** Breedte van de strook: bepaalt hoe scherp de miniatuur gerenderd wordt. */
+  width: number
   index: number
   active: boolean
   dragging: boolean
@@ -101,7 +104,10 @@ function RailThumb({
   useEffect(() => {
     let cancelled = false
     if (!source) return
-    renderThumbnail(source, page.sourcePageIndex, page.rotation, 180)
+    // Renderbreedte volgt de strook (op halve stappen, zodat slepen niet
+    // bij elke pixel opnieuw rendert) en telt de schermdichtheid mee.
+    const target = Math.round((Math.ceil(width / 40) * 40 - 24) * Math.min(2, window.devicePixelRatio || 1))
+    renderThumbnail(source, page.sourcePageIndex, page.rotation, Math.max(120, target))
       .then((url) => {
         if (!cancelled) setThumb(url)
       })
@@ -109,7 +115,7 @@ function RailThumb({
     return () => {
       cancelled = true
     }
-  }, [source, page.sourcePageIndex, page.rotation])
+  }, [source, page.sourcePageIndex, page.rotation, width])
   return (
     <button
       type="button"
@@ -156,10 +162,18 @@ export default function EditorView({ groupId }: Props): JSX.Element | null {
   // In volledig scherm kun je de miniaturenstrip los aan-/uitzetten (standaard
   // uit voor snelheid); de inhoudsopgave gebruikt het bestaande bladwijzerpaneel.
   const [presentThumbs, setPresentThumbs] = useState(false)
+  const railWidth = useStudioStore((s) => s.railWidth)
+  const setRailWidth = useStudioStore((s) => s.setRailWidth)
+  const railCollapsed = useStudioStore((s) => s.railCollapsed)
+  const setRailCollapsed = useStudioStore((s) => s.setRailCollapsed)
+  const toolsCollapsed = useStudioStore((s) => s.toolsCollapsed)
+  const setToolsCollapsed = useStudioStore((s) => s.setToolsCollapsed)
+  const railResize = useRef<{ startX: number; startWidth: number } | null>(null)
 
   const [mode, setMode] = useState<EditorMode>('view')
   const [selection, setSelection] = useState<EditorSelection | null>(null)
-  const [zoom, setZoom] = useState(1)
+  const zoom = useStudioStore((s) => s.editorZoom)
+  const setZoom = useStudioStore((s) => s.setEditorZoom)
   const [currentPage, setCurrentPage] = useState(0)
   const [centerWidth, setCenterWidth] = useState(800)
   const [centerHeight, setCenterHeight] = useState(600)
@@ -478,8 +492,63 @@ export default function EditorView({ groupId }: Props): JSX.Element | null {
       {/* De miniatuurstrip is duur om te tekenen; in volledig scherm laten we
           hem standaard weg (dat scheelt bij grote documenten flink in snelheid),
           maar met de knop "Miniaturen" toont de gebruiker hem daar alsnog. */}
-      {(!presentationMode || presentThumbs) && (
-      <div className="editor-rail">
+      {(!presentationMode || presentThumbs) && railCollapsed && (
+        <button
+          type="button"
+          className="editor-rail-restore"
+          title="Miniaturen tonen"
+          onClick={() => setRailCollapsed(false)}
+        >
+          <IconChevronRight size={14} />
+        </button>
+      )}
+      {(!presentationMode || presentThumbs) && !railCollapsed && (
+      <div className="editor-rail" style={{ width: railWidth }}>
+        <div className="editor-rail__head">
+          <span className="editor-rail__title">Pagina's</span>
+          <button
+            type="button"
+            className="icon-btn icon-btn--chrome"
+            title="Miniaturen kleiner"
+            disabled={railWidth <= 90}
+            onClick={() => setRailWidth(railWidth - 40)}
+          >
+            <IconMinus size={13} />
+          </button>
+          <button
+            type="button"
+            className="icon-btn icon-btn--chrome"
+            title="Miniaturen groter"
+            disabled={railWidth >= 420}
+            onClick={() => setRailWidth(railWidth + 40)}
+          >
+            <IconPlus size={13} />
+          </button>
+          <button
+            type="button"
+            className="icon-btn icon-btn--chrome"
+            title="Miniaturen inklappen"
+            onClick={() => setRailCollapsed(true)}
+          >
+            <IconChevronLeft size={14} />
+          </button>
+        </div>
+        <div
+          className="editor-rail__resizer"
+          title="Sleep om de miniaturen breder of smaller te maken"
+          onPointerDown={(e) => {
+            e.currentTarget.setPointerCapture(e.pointerId)
+            railResize.current = { startX: e.clientX, startWidth: railWidth }
+          }}
+          onPointerMove={(e) => {
+            const drag = railResize.current
+            if (drag) setRailWidth(drag.startWidth + (e.clientX - drag.startX))
+          }}
+          onPointerUp={(e) => {
+            if (e.currentTarget.hasPointerCapture(e.pointerId)) e.currentTarget.releasePointerCapture(e.pointerId)
+            railResize.current = null
+          }}
+        />
         {group.pages.map((page, i) => (
           <div key={page.id} className="editor-rail__slot">
             {railDrag && railDrag.toIndex === i && <div className="editor-rail__indicator" />}
@@ -487,6 +556,7 @@ export default function EditorView({ groupId }: Props): JSX.Element | null {
               page={page}
               source={sources.get(page.sourceId)}
               index={i}
+              width={railWidth}
               active={
                 viewMode === 'single'
                   ? i === currentPage
@@ -629,8 +699,28 @@ export default function EditorView({ groupId }: Props): JSX.Element | null {
         </div>
       </div>
 
-      <aside className="editor-tools">
-        <div className="editor-tools__title">Gereedschap</div>
+      {toolsCollapsed && (
+        <button
+          type="button"
+          className="editor-tools-restore"
+          title="Gereedschap tonen"
+          onClick={() => setToolsCollapsed(false)}
+        >
+          <IconChevronLeft size={14} />
+        </button>
+      )}
+      <aside className={`editor-tools${toolsCollapsed ? ' editor-tools--collapsed' : ''}`}>
+        <div className="editor-tools__title">
+          <span>Gereedschap</span>
+          <button
+            type="button"
+            className="icon-btn icon-btn--chrome"
+            title="Gereedschap inklappen"
+            onClick={() => setToolsCollapsed(true)}
+          >
+            <IconChevronRight size={14} />
+          </button>
+        </div>
         {MODES.map((m) => (
           <button
             key={m.key}

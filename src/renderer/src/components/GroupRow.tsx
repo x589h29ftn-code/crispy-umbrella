@@ -11,6 +11,7 @@ import {
   IconCalendar,
   IconCheck,
   IconClose,
+  IconDownload,
   IconFolderOpen,
   IconGrip,
   IconHash,
@@ -69,6 +70,7 @@ export default function GroupRow({ group, index, isLast, sources, isActive }: Pr
   const setSmartDialogOpen = useStudioStore((s) => s.setSmartDialogOpen)
   const setActiveGroupStore = useStudioStore((s) => s.setActiveGroup)
   const otherGroups = useStudioStore((s) => s.groups.filter((g) => g.id !== group.id))
+  const busyExport = useStudioStore((s) => s.busyExport)
 
   // Encoded drop indicator position for this row: page index * 2 (+1 for the
   // "after" edge), or -1 when the drag isn't targeting this document.
@@ -206,6 +208,18 @@ export default function GroupRow({ group, index, isLast, sources, isActive }: Pr
             }}
           >
             <IconTab size={16} />
+          </button>
+          <button
+            type="button"
+            className="icon-btn icon-btn--chrome group-row__action"
+            disabled={busyExport !== null}
+            title="Dit document opslaan als PDF"
+            onClick={(e) => {
+              e.stopPropagation()
+              void import('../lib/exportActions').then((m) => m.exportGroupPdf(group.id))
+            }}
+          >
+            <IconDownload size={16} />
           </button>
           <button
             type="button"
