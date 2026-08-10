@@ -4,14 +4,8 @@
  */
 export const APP_CHANGELOG: { version: string; items: string[] }[] = [
   {
-    version: '1.10.0',
+    version: '1.11.0',
     items: [
-      'Nieuw: menu linksboven (knop "Menu"), zoals in Adobe — met openen, bestanden combineren/splitsen, opslaan (als), alles exporteren, OneDrive, afdrukken, delen (mailen, reMarkable, los venster), ondertekenen, sjablonen, vergelijken, privacy-scan, slimme documenten, zoeken, voorkeuren en meer, netjes gegroepeerd; inclusief recent geopende bestanden',
-      'Nieuw: Ondertekenen (knop "Ondertekenen") — een dashboard in ValidSign-stijl waarin je ziet wat je verstuurd hebt en of de tweede partij al getekend heeft. Maak een ondertekenverzoek van het huidige document of een gekozen bestand, plaats per ondertekenaar een tekenvak op de pagina, en volg de status (Concept, Verzonden, Gedeeltelijk, Ondertekend)',
-      'Zelf ondertekenen kan op twee manieren tegelijk: een zichtbare handtekening-afbeelding én een echte digitale ondertekening (PAdES). Voor de gratis start maak je bij "Certificaat" een zelf-ondertekend certificaat aan; later kun je een AATL/gekwalificeerd .p12-certificaat importeren voor een vertrouwde handtekening',
-      'Laat een tweede partij op een andere plek in het document tekenen: verstuur het via je eigen Outlook (ontvanger, onderwerp en begeleidende tekst worden vooraf ingevuld) en importeer het getekende bestand terug in het dashboard — de status springt dan automatisch op "Ondertekend"',
-      'Herinneringen: bij een verzonden, nog niet getekend document toont het dashboard "x dagen geleden verzonden" en een knop die een herinneringsmail via Outlook klaarzet',
-      'Elk dossier heeft een tijdlijn (aangemaakt, zelf-getekend, verzonden, herinnering, geïmporteerd) en de dossiers worden — net als de sjablonen — in de gedeelde bibliotheekmap bewaard, zodat het hele kantoor hetzelfde overzicht heeft',
       'De app start voortaan leeg: de PDF\'s van de vorige keer worden niet meer automatisch geopend, ook niet in het overzicht voor samenvoegen en splitsen. Wil je dat wél, zet dan "Vorige sessie herstellen bij opstarten" aan bij Voorkeuren',
       'Nieuw startscherm: een ruime sleepzone met daaronder de knoppen Openen, Combineren of splitsen, Sjablonen en Ondertekenen, plus je recent geopende bestanden met map en datum ("Vandaag", "Gisteren")',
       'Opgeruimde zijbalk: de acties staan gegroepeerd onder kopjes (Bestand, Bekijken, Documenten, Extra), het middendeel schuift mee en Exporteer PDF, Exporteer zip en Voorkeuren staan vast onderaan — vóór deze versie vielen die knoppen bij een normaal venster buiten beeld en waren ze onbereikbaar. Wil je alles zoals vroeger in de zijbalk? Zet "Volledige werkbalk" aan bij Voorkeuren',
@@ -41,6 +35,17 @@ export const APP_CHANGELOG: { version: string; items: string[] }[] = [
       'Comprimeren vernieuwd (Slim → Comprimeren): een schuifregelaar van "Kleinst (mailen)" tot "Vrijwel origineel" met daarbij direct de geschatte bestandsgrootte, het verwachte percentage winst én een voorbeeld van een pagina op die instelling, zodat je vóóraf ziet of het nog leesbaar is',
       'Comprimeren kan nu pagina\'s met tekst ongemoeid laten: die blijven scherp en doorzoekbaar en alleen de scans worden verkleind. Optioneel alles naar grijstinten, wat bij scans van zwarte tekst nog fors scheelt (in onze test: 2,0 MB → 0,4 MB)',
       'Bij het slepen van pagina\'s licht het doeldocument op en zie je precies tussen welke pagina\'s ze komen. Opgelost: de selectiebalk onderin ving de muis af, waardoor pagina\'s daar niet losgelaten konden worden'
+    ]
+  },
+  {
+    version: '1.10.0',
+    items: [
+      'Nieuw: menu linksboven (knop "Menu"), zoals in Adobe — met openen, bestanden combineren/splitsen, opslaan (als), alles exporteren, OneDrive, afdrukken, delen (mailen, reMarkable, los venster), ondertekenen, sjablonen, vergelijken, privacy-scan, slimme documenten, zoeken, voorkeuren en meer, netjes gegroepeerd; inclusief recent geopende bestanden',
+      'Nieuw: Ondertekenen (knop "Ondertekenen") — een dashboard in ValidSign-stijl waarin je ziet wat je verstuurd hebt en of de tweede partij al getekend heeft. Maak een ondertekenverzoek van het huidige document of een gekozen bestand, plaats per ondertekenaar een tekenvak op de pagina, en volg de status (Concept, Verzonden, Gedeeltelijk, Ondertekend)',
+      'Zelf ondertekenen kan op twee manieren tegelijk: een zichtbare handtekening-afbeelding én een echte digitale ondertekening (PAdES). Voor de gratis start maak je bij "Certificaat" een zelf-ondertekend certificaat aan; later kun je een AATL/gekwalificeerd .p12-certificaat importeren voor een vertrouwde handtekening',
+      'Laat een tweede partij op een andere plek in het document tekenen: verstuur het via je eigen Outlook (ontvanger, onderwerp en begeleidende tekst worden vooraf ingevuld) en importeer het getekende bestand terug in het dashboard — de status springt dan automatisch op "Ondertekend"',
+      'Herinneringen: bij een verzonden, nog niet getekend document toont het dashboard "x dagen geleden verzonden" en een knop die een herinneringsmail via Outlook klaarzet',
+      'Elk dossier heeft een tijdlijn (aangemaakt, zelf-getekend, verzonden, herinnering, geïmporteerd) en de dossiers worden — net als de sjablonen — in de gedeelde bibliotheekmap bewaard, zodat het hele kantoor hetzelfde overzicht heeft'
     ]
   },
   {
