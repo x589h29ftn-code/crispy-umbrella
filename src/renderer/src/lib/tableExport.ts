@@ -88,6 +88,7 @@ export async function exportTablesToXlsx(
   const group: DocGroup | undefined = state.groups.find((g) => g.id === state.activeGroupId) ?? state.groups[0]
   if (!group) return { ok: false, sheets: 0, reason: 'Geen document' }
 
+  const numberFormat = state.numberFormat
   const XLSX = await import('xlsx-js-style')
   const wb = XLSX.utils.book_new()
   const used = new Set<string>()
@@ -99,7 +100,7 @@ export async function exportTablesToXlsx(
     for (const block of blocks) {
       if (block.kind !== 'table') continue
       const header = looksLikeHeader(block.grid)
-      const ws = makeSheet(XLSX, block.grid, { header })
+      const ws = makeSheet(XLSX, block.grid, { header, numberFormat })
       XLSX.utils.book_append_sheet(wb, ws, sheetName(block.caption, pageIndex + 1, used).slice(0, 31))
       sheets += 1
     }
@@ -114,7 +115,7 @@ export async function exportTablesToXlsx(
       const items = await getTextItems(source, page.sourcePageIndex).catch(() => [] as TextItem[])
       const grid = itemsToGrid(items)
       if (!grid.length) continue
-      const ws = makeSheet(XLSX, grid)
+      const ws = makeSheet(XLSX, grid, { numberFormat })
       XLSX.utils.book_append_sheet(wb, ws, sheetName(`Pagina ${i + 1} (ruw)`, i + 1, used).slice(0, 31))
       sheets += 1
     }

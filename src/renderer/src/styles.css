@@ -5502,3 +5502,21 @@ button.group-row__date:hover {
     padding-top: var(--space-3);
   }
 }
+
+/* Keuze voor getalopmaak bij de Word- en Excel-export. */
+.number-format {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin: var(--space-3) 0;
+  padding: var(--space-3);
+  background: var(--panel-2);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+}
+
+.number-format__head {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+}

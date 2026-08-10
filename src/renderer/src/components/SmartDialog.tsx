@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react'
 import { nanoid } from 'nanoid'
 import { useStudioStore, type SmartTab } from '../store'
 import { extractFields, getGroupText, suggestName, DOC_TYPE_LABELS } from '../lib/docAnalysis'
-import { cleanupScannedPage, isBlankPage } from '../lib/scanTools'
+import { cleanupScannedPage, hasTextLayer, isBlankPage } from '../lib/scanTools'
 import { exportDataToCsv } from '../lib/dataExport'
 import { exportTablesToXlsx } from '../lib/tableExport'
 import { exportGroupText } from '../lib/textExport'
@@ -28,6 +28,7 @@ import {
   IconType
 } from './icons'
 import CompressPanel from './CompressPanel'
+import NumberFormatPicker from './NumberFormatPicker'
 import MarkdownPanel from './MarkdownPanel'
 
 type Tab = SmartTab
@@ -59,6 +60,7 @@ export default function SmartDialog(): JSX.Element | null {
   }, [open, requestedTab])
   const [busy, setBusy] = useState(false)
   const [rawPages, setRawPages] = useState(false)
+  const [cleanTextPages, setCleanTextPages] = useState(false)
   const [suggestions, setSuggestions] = useState<{ groupId: string; current: string; type: string; suggested: string }[]>([])
   const [blanks, setBlanks] = useState<{ pageId: string; groupName: string; pageNumber: number }[]>([])
   const [blankSelected, setBlankSelected] = useState<Set<string>>(new Set())
@@ -90,6 +92,16 @@ export default function SmartDialog(): JSX.Element | null {
         .sort((a, b) => a.index - b.index)
       const segs: typeof segments = []
       if (cuts.length >= 2) {
+        // Pagina's vóór de eerste bladwijzer (voorblad, inhoudsopgave) horen
+        // ook ergens bij — zonder dit eerste segment verdwenen ze bij het
+        // splitsen, omdat het oorspronkelijke document vervangen wordt.
+        if (cuts[0].index > 0) {
+          segs.push({
+            name: cuts[0].index === 1 ? 'Voorblad' : `Voorwerk (pagina 1-${cuts[0].index})`,
+            firstPage: 1,
+            pageIds: activeGroup.pages.slice(0, cuts[0].index).map((p) => p.id)
+          })
+        }
         for (let i = 0; i < cuts.length; i += 1) {
           const start = cuts[i].index
           const end = i + 1 < cuts.length ? cuts[i + 1].index : activeGroup.pages.length
@@ -205,19 +217,38 @@ export default function SmartDialog(): JSX.Element | null {
     setBusy(true)
     try {
       const entries: { pageId: string; source: import('../types').SourceFile }[] = []
+      let skippedText = 0
+      let unchanged = 0
       for (const page of group.pages) {
         const source = sources.get(page.sourceId)
         if (!source) continue
+        // Opschonen maakt van een pagina een afbeelding. Bij een pagina met een
+        // echte tekstlaag kost dat de doorzoekbaarheid én kwaliteit, dus die
+        // slaan we over tenzij je er uitdrukkelijk om vraagt.
+        if (!cleanTextPages && (await hasTextLayer(source, page).catch(() => false))) {
+          skippedText += 1
+          continue
+        }
         const result = await cleanupScannedPage(source, page, options, nanoid()).catch(() => null)
         if (result) entries.push({ pageId: page.id, source: result.source })
+        else unchanged += 1
       }
       if (entries.length) {
         applyCleanedPages(entries)
-        addToast('success', `${entries.length} pagina('s) opgeschoond`)
+        const extra = [
+          skippedText ? `${skippedText} met tekstlaag overgeslagen` : '',
+          unchanged ? `${unchanged} was al recht` : ''
+        ].filter(Boolean)
+        addToast('success', `${entries.length} pagina('s) opgeschoond${extra.length ? ` — ${extra.join(', ')}` : ''}`)
+        setOpen(false)
+      } else if (skippedText) {
+        addToast(
+          'info',
+          `Alle ${skippedText} pagina('s) hebben een tekstlaag en zijn overgeslagen — opschonen is voor scans. Vink "Ook pagina's met tekst" aan om het toch te doen.`
+        )
       } else {
-        addToast('error', 'Opschonen is niet gelukt')
+        addToast('info', 'Er viel niets op te schonen: de pagina’s staan al recht.')
       }
-      setOpen(false)
     } finally {
       setBusy(false)
     }
@@ -476,9 +507,19 @@ export default function SmartDialog(): JSX.Element | null {
         {tab === 'cleanup' && (
           <div className="smart-card__body">
             <p className="smart-card__intro">
-              Schoont de pagina's van "{activeGroup?.name ?? '—'}" op: rechtzetten en achtergrond witter / tekst
-              zwarter maken. Handig voor gescande stukken.
+              Schoont de gescande pagina's van "{activeGroup?.name ?? '—'}" op: rechtzetten en achtergrond witter /
+              tekst zwarter maken. De pagina wordt daarbij een afbeelding, dus pagina's met een echte tekstlaag slaan
+              we over — die blijven scherp en doorzoekbaar.
             </p>
+            <label className="prefs-check">
+              <input type="checkbox" checked={cleanTextPages} onChange={(e) => setCleanTextPages(e.target.checked)} />
+              <span>
+                <span className="prefs-row__title">Ook pagina’s met tekst opschonen</span>
+                <span className="prefs-row__hint">
+                  Alleen doen bij een slecht ingescand document; de tekstlaag (zoeken, kopiëren, export) gaat verloren.
+                </span>
+              </span>
+            </label>
             <div className="modal-card__actions">
               <button
                 type="button"
@@ -607,6 +648,7 @@ export default function SmartDialog(): JSX.Element | null {
               zet elke tabel op een eigen werkblad, genoemd naar het kopje erboven. Bedragen, percentages en datums
               komen als échte waarden binnen. Werkt op de tekstlaag; voor scans eerst OCR draaien.
             </p>
+            <NumberFormatPicker />
             <label className="prefs-check">
               <input type="checkbox" checked={rawPages} onChange={(e) => setRawPages(e.target.checked)} />
               <span>
@@ -641,9 +683,10 @@ export default function SmartDialog(): JSX.Element | null {
         {tab === 'text' && (
           <div className="smart-card__body">
             <p className="smart-card__intro">
-              Haalt alle tekst uit "{activeGroup?.name ?? '—'}" en slaat die op als tekstbestand, als bewerkbaar
-              Word-document (.docx, met behoud van lettergroottes en koppen) of als Word-compatibele .rtf.
+              Haalt de tekst uit "{activeGroup?.name ?? '—'}". Het Word-document krijgt echte kopstijlen,
+              opsommingen en tabellen; .txt en .rtf zijn platte tekst.
             </p>
+            <NumberFormatPicker />
             <div className="modal-card__actions">
               <button
                 type="button"

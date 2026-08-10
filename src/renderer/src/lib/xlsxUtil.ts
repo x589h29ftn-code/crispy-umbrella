@@ -1,14 +1,12 @@
 import { useStudioStore } from '../store'
+import { excelNumberFormat, parseDutchNumber, type NumberFormatChoice } from './numberFormat'
 
 interface ParsedCell {
   v: string | number | Date
   z?: string
 }
 
-// Getalopmaak met duizendtal-scheiding; negatieven rood (financiële conventie).
-const FMT_INT = '#,##0;[Red]-#,##0'
-const FMT_DEC = '#,##0.00;[Red]-#,##0.00'
-const FMT_EUR = '€ #,##0.00;[Red]-€ #,##0.00'
+// Datumopmaak; de getalopmaak komt uit numberFormat (gedeeld met de Word-export).
 const FMT_DATE = 'dd-mm-jjjj'
 
 /**
@@ -18,7 +16,7 @@ const FMT_DATE = 'dd-mm-jjjj'
  * boekhoudkundige negatieven: "(1.234)" en "1.234-" (bedrag tussen haakjes of
  * met een min-teken erachter) worden als negatief getal gelezen.
  */
-export function cellFromText(raw: string): ParsedCell {
+export function cellFromText(raw: string, choice: NumberFormatChoice = 'auto'): ParsedCell {
   const s = String(raw ?? '').trim()
   if (!s) return { v: '' }
   // Datum: d-m-jjjj / d/m/jj → echte Excel-datum (sorteerbaar, rekenbaar).
@@ -31,23 +29,8 @@ export function cellFromText(raw: string): ParsedCell {
       return { v: date, z: FMT_DATE }
     }
   }
-  const isPct = /%$/.test(s)
-  const isCur = /€|EUR/i.test(s)
-  // Boekhoudkundige negatieven: (1.234) of 1.234- .
-  const paren = /^\(.*\)$/.test(s)
-  const trailingMinus = /-\s*$/.test(s.replace(/[)\s]*$/, '')) || /\d[-]$/.test(s.replace(/[€\s%)]|EUR/gi, ''))
-  let numPart = s.replace(/[€\s%()]|EUR/gi, '').replace(/-\s*$/, '')
-  const negative = paren || trailingMinus || /^-/.test(numPart)
-  numPart = numPart.replace(/^-/, '')
-  if (/^\d{1,3}(\.\d{3})*(,\d+)?$/.test(numPart) || /^\d+(,\d+)?$/.test(numPart)) {
-    let value = Number(numPart.replace(/\./g, '').replace(',', '.'))
-    if (Number.isFinite(value)) {
-      if (negative) value = -value
-      if (isPct) return { v: value / 100, z: '0.0%' }
-      if (isCur) return { v: value, z: FMT_EUR }
-      return { v: value, z: Number.isInteger(value) ? FMT_INT : FMT_DEC }
-    }
-  }
+  const parsed = parseDutchNumber(s)
+  if (parsed) return { v: parsed.value, z: excelNumberFormat(parsed, choice) }
   return { v: s }
 }
 
@@ -67,8 +50,14 @@ const HEADER_STYLE = {
 }
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
-export function makeSheet(XLSX: any, rows: (string | number)[][], opts: { header?: boolean } = {}): any {
-  const parsed = rows.map((row) => row.map((c) => (typeof c === 'number' ? { v: c } : cellFromText(String(c)))))
+export function makeSheet(
+  XLSX: any,
+  rows: (string | number)[][],
+  opts: { header?: boolean; numberFormat?: NumberFormatChoice } = {}
+): any {
+  const parsed = rows.map((row) =>
+    row.map((c) => (typeof c === 'number' ? { v: c } : cellFromText(String(c), opts.numberFormat ?? 'auto')))
+  )
   // cellDates zorgt dat Date-waarden echte datumcellen worden (niet als getal/tekst).
   const ws = XLSX.utils.aoa_to_sheet(
     parsed.map((r) => r.map((c) => c.v)),

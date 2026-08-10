@@ -1,6 +1,7 @@
 import { create } from 'zustand'
 import { nanoid } from 'nanoid'
 import type { ExportPermissions } from './lib/pdfEngine'
+import type { NumberFormatChoice } from './lib/numberFormat'
 import type { Annotation, DocGroup, PageComment, PageRef, SignatureAsset, SignaturePlacement, SourceFile, Watermark } from './types'
 
 export interface LightboxState {
@@ -96,6 +97,7 @@ const CLEAN_META_STORAGE_KEY = 'pdf-studio-clean-metadata'
 const TOOLBAR_HIDDEN_STORAGE_KEY = 'pdf-studio-toolbar-hidden'
 const RESTORE_SESSION_STORAGE_KEY = 'pdf-studio-restore-session'
 const FULL_TOOLBAR_STORAGE_KEY = 'pdf-studio-full-toolbar'
+const NUMBER_FORMAT_STORAGE_KEY = 'pdf-studio-number-format'
 
 function getInitialReaderView(): 'scroll' | 'spread' | 'single' {
   const v = window.localStorage.getItem(READER_VIEW_STORAGE_KEY)
@@ -159,12 +161,15 @@ interface StudioState {
    * Standaard uit — de zijbalk toont dan de kernacties en de rest staat in het Menu.
    */
   fullToolbar: boolean
+  /** Getalopmaak bij export naar Word en Excel (zoals in de PDF / 0 / 2 decimalen). */
+  numberFormat: NumberFormatChoice
 
   setFormValue: (sourceId: string, fieldName: string, value: string | boolean) => void
   setFlattenForms: (flatten: boolean) => void
   setCleanMetadata: (clean: boolean) => void
   setRestoreLastSession: (on: boolean) => void
   setFullToolbar: (on: boolean) => void
+  setNumberFormat: (choice: NumberFormatChoice) => void
   setAuthorName: (name: string) => void
   /** Herstelt een vorige sessie (alleen wanneer er nog niets geopend is). */
   restoreSession: (payload: {
@@ -467,6 +472,10 @@ export const useStudioStore = create<StudioState>((set, get) => ({
   cleanMetadata: window.localStorage.getItem(CLEAN_META_STORAGE_KEY) === '1',
   restoreLastSession: window.localStorage.getItem(RESTORE_SESSION_STORAGE_KEY) === '1',
   fullToolbar: window.localStorage.getItem(FULL_TOOLBAR_STORAGE_KEY) === '1',
+  numberFormat: ((): NumberFormatChoice => {
+    const stored = window.localStorage.getItem(NUMBER_FORMAT_STORAGE_KEY)
+    return stored === 'none' || stored === 'two' ? stored : 'auto'
+  })(),
 
   setFormValue: (sourceId, fieldName, value) => {
     set((state) => ({
@@ -492,6 +501,10 @@ export const useStudioStore = create<StudioState>((set, get) => ({
   setFullToolbar: (on) => {
     window.localStorage.setItem(FULL_TOOLBAR_STORAGE_KEY, on ? '1' : '0')
     set({ fullToolbar: on })
+  },
+  setNumberFormat: (choice) => {
+    window.localStorage.setItem(NUMBER_FORMAT_STORAGE_KEY, choice)
+    set({ numberFormat: choice })
   },
 
   restoreSession: (payload) => {
@@ -877,20 +890,21 @@ export const useStudioStore = create<StudioState>((set, get) => ({
       const source = state.groups[idx]
       if (!source) return state
       const byId = new Map(source.pages.map((p) => [p.id, p]))
-      const newGroups: DocGroup[] = segments
-        .map((seg) => {
-          const pages = seg.pageIds.map((id) => byId.get(id)).filter((p): p is PageRef => Boolean(p))
-          return { name: seg.name, pages }
-        })
-        .filter((s) => s.pages.length)
-        .map((s) => ({
+      const newGroups: DocGroup[] = []
+      for (const seg of segments) {
+        const pages = seg.pageIds.map((id) => byId.get(id)).filter((p): p is PageRef => Boolean(p))
+        if (!pages.length) continue
+        newGroups.push({
           id: nanoid(),
-          name: nextGroupName(state.groups, s.name),
-          pages: s.pages,
+          // Ook tegen de al gemaakte segmenten aftoetsen: twee bladwijzers met
+          // dezelfde titel leverden anders twee documenten met dezelfde naam op.
+          name: nextGroupName([...state.groups, ...newGroups], seg.name),
+          pages,
           watermark: source.watermark,
           pageNumbers: source.pageNumbers,
           documentDate: source.documentDate
-        }))
+        })
+      }
       if (!newGroups.length) return state
       const groups = [...state.groups.slice(0, idx), ...newGroups, ...state.groups.slice(idx + 1)]
       return { ...finalizeGroups(state, groups), ...pruneSelection(state, groups), activeGroupId: newGroups[0].id }

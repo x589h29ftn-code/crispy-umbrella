@@ -1,9 +1,20 @@
 import { createImagePageSource, getPagePointSize, renderPageToCanvas } from './pdfEngine'
 import type { PageRef, SourceFile } from '../types'
 
-/** True als een pagina vrijwel volledig wit is (nauwelijks inkt). */
+/** Heeft deze pagina een bruikbare tekstlaag? Dan is rasteren zonde. */
+export async function hasTextLayer(source: SourceFile, page: PageRef): Promise<boolean> {
+  const { getTextItems } = await import('./textLines')
+  const items = await getTextItems(source, page.sourcePageIndex).catch(() => [])
+  return items.reduce((n, i) => n + i.str.trim().length, 0) > 80
+}
+
+/**
+ * True als een pagina vrijwel volledig wit is (nauwelijks inkt). Op 520 px
+ * breed in plaats van 220: bij die lagere resolutie viel een pagina met één
+ * regel tekst soms binnen de drempel en werd hij als leeg voorgesteld.
+ */
 export async function isBlankPage(source: SourceFile, page: PageRef): Promise<boolean> {
-  const canvas = await renderPageToCanvas(source, page.sourcePageIndex, page.rotation, 220)
+  const canvas = await renderPageToCanvas(source, page.sourcePageIndex, page.rotation, 520)
   const ctx = canvas.getContext('2d')!
   const { data } = ctx.getImageData(0, 0, canvas.width, canvas.height)
   let dark = 0
@@ -14,7 +25,7 @@ export async function isBlankPage(source: SourceFile, page: PageRef): Promise<bo
   }
   canvas.width = 0
   canvas.height = 0
-  return dark / total < 0.004
+  return dark / total < 0.0025
 }
 
 /** Schat de scheefstand (graden) via een projectieprofiel op een kleine grijswaarde-bitmap. */
@@ -84,6 +95,14 @@ export async function cleanupScannedPage(
     angle = estimateSkew(gray, sw, sh)
     small.width = 0
     small.height = 0
+  }
+
+  if (!options.contrast && Math.abs(angle) < 0.25) {
+    // Rechte pagina en geen contrastcorrectie gevraagd: rasteren zou alleen
+    // kwaliteit en tekstlaag kosten zonder iets op te lossen.
+    canvas.width = 0
+    canvas.height = 0
+    return null
   }
 
   // Werkcanvas: witte achtergrond, gedraaide pagina erop.

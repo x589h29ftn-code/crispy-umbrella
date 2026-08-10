@@ -13,6 +13,7 @@ import {
   WidthType
 } from 'docx'
 import { analyzeDocument, DEFAULT_STRUCTURE_OPTIONS, type Block } from './docStructure'
+import { reformatNumberText, type NumberFormatChoice } from './numberFormat'
 import { useStudioStore } from '../store'
 import type { DocGroup } from '../types'
 
@@ -23,15 +24,16 @@ function looksNumeric(text: string): boolean {
   return /^[€\s]*-?\(?\d[\d.,\s]*\)?-?\s*%?$/.test(text.trim()) && /\d/.test(text)
 }
 
-function tableToDocx(grid: string[][]): Table {
+function tableToDocx(grid: string[][], numberFormat: NumberFormatChoice): Table {
   const border = { style: BorderStyle.SINGLE, size: 2, color: 'D0D5DD' }
   const borders = { top: border, bottom: border, left: border, right: border }
   const rows = grid.map((cells, rowIndex) => {
     const header = rowIndex === 0
     return new TableRow({
       tableHeader: header,
-      children: cells.map(
-        (cell) =>
+      children: cells.map((raw) => {
+        const cell = header ? raw : reformatNumberText(raw, numberFormat)
+        return (
           new TableCell({
             borders,
             shading: header ? { fill: 'EFF2F7' } : undefined,
@@ -43,13 +45,14 @@ function tableToDocx(grid: string[][]): Table {
               })
             ]
           })
-      )
+        )
+      })
     })
   })
   return new Table({ rows, width: { size: 100, type: WidthType.PERCENTAGE } })
 }
 
-function blockToDocx(block: Block): (Paragraph | Table)[] {
+function blockToDocx(block: Block, numberFormat: NumberFormatChoice): (Paragraph | Table)[] {
   switch (block.kind) {
     case 'heading':
       return [
@@ -78,7 +81,7 @@ function blockToDocx(block: Block): (Paragraph | Table)[] {
           })
       )
     case 'table':
-      return [tableToDocx(block.grid), new Paragraph({ text: '', spacing: { after: 120 } })]
+      return [tableToDocx(block.grid, numberFormat), new Paragraph({ text: '', spacing: { after: 120 } })]
     case 'note':
       return [new Paragraph({ children: [new TextRun({ text: block.text, italics: true, color: '888888' })] })]
   }
@@ -107,7 +110,7 @@ export async function exportGroupWord(): Promise<void> {
 
     const children: (Paragraph | Table)[] = []
     pages.forEach((blocks, pageIndex) => {
-      for (const block of blocks) children.push(...blockToDocx(block))
+      for (const block of blocks) children.push(...blockToDocx(block, state.numberFormat))
       // Pagina-einde tussen pagina's (niet na de laatste).
       if (pageIndex < pages.length - 1) children.push(new Paragraph({ children: [], pageBreakBefore: true }))
     })
