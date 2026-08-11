@@ -4,7 +4,7 @@
  */
 export const APP_CHANGELOG: { version: string; items: string[] }[] = [
   {
-    version: '1.12.0',
+    version: '1.12.1',
     items: [
       'Vergelijken heeft er een wijzigingenpaneel bij: bovenaan staat hoeveel er is gewijzigd, daaronder alle wijzigingen op een rij. Klik een regel aan en beide documenten springen naar die plek, of loop ze af met de pijltjes en met F3 (Shift+F3 = terug). De teller laat zien waar je bent: "4 / 17"',
       'Kleurcodering en filters bij Vergelijken: geel = gewijzigd, groen = toegevoegd, rood = verwijderd, blauw = gewijzigd bedrag. Met de knopjes zet je een soort wijziging aan of uit, zodat je bijvoorbeeld alleen de bedragen ziet',
