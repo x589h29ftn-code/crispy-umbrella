@@ -4,6 +4,17 @@
  */
 export const APP_CHANGELOG: { version: string; items: string[] }[] = [
   {
+    version: '1.12.2',
+    items: [
+      'Soepeler scrollen door grote documenten. Een pagina werd pas gerenderd op het moment dat hij al in beeld schoof, waardoor je bij het scrollen eerst een grijs vlak zag: de kijkmarge werd afgekapt door de scrollende lijst. Nu wordt er twee pagina\'s vooruit en achteruit gerenderd, en staat er direct na een sprong in het document beeld op alle pagina\'s in zicht (gemeten op een document van 100 pagina\'s: 2 van de 2 pagina\'s meteen gevuld, voorheen 0 van de 2)',
+      'Tijdens het scrollen wordt eerst een snelle voorvertoning getekend en pas daarna de scherpe versie, zodat de hoofdthread niet meer volloopt met pagina\'s waar je al voorbij bent. Op een document van 100 pagina\'s met een viermaal vertraagde processor: geen enkele hapering meer bij snel doorscrollen (was 11) en het langste beeldstop ging van 167 naar 50 milliseconden. Bij een sprong naar het midden van 317 naar 67 milliseconden',
+      'Pagina\'s in beeld krijgen voorrang bij het renderen; pagina\'s die alleen in de kijkmarge staan wachten kort, zodat snel doorscrollen geen werk meer verspilt',
+      'De selecteerbare tekstlaag wordt alleen nog voor de pagina\'s in beeld opgebouwd (en weer opgeruimd zodra je verder bent) in plaats van voor elke pagina die ooit geladen is — bij een groot document liepen dat duizenden onzichtbare tekstelementen die het scrollen zwaarder maakten',
+      'Het paginaformaat wordt niet meer voor alle pagina\'s tegelijk opgevraagd bij het openen, maar pas als een pagina in de buurt komt; tot die tijd houdt de plaatshouder de verhouding van de eerste pagina aan',
+      'Zelfde verbetering in het overzicht en in Vergelijken: ook daar werden miniaturen pas gerenderd als ze al in beeld stonden'
+    ]
+  },
+  {
     version: '1.12.1',
     items: [
       'Vergelijken heeft er een wijzigingenpaneel bij: bovenaan staat hoeveel er is gewijzigd, daaronder alle wijzigingen op een rij. Klik een regel aan en beide documenten springen naar die plek, of loop ze af met de pijltjes en met F3 (Shift+F3 = terug). De teller laat zien waar je bent: "4 / 17"',

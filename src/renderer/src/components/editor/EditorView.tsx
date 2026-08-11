@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { useStudioStore } from '../../store'
+import { noteScroll } from '../../lib/scrollGate'
 import { usePressDrag } from '../../hooks/usePressDrag'
 import {
   getPageVisualSize,
@@ -278,6 +279,16 @@ export default function EditorView({ groupId }: Props): JSX.Element | null {
     }
     return thumbs.length
   }
+
+  // Terwijl er gescrold wordt, tekenen de pagina's alleen een snelle
+  // voorvertoning (zie lib/scrollGate). Passieve listener: het scrollen zelf
+  // blijft daarmee volledig aan de browser.
+  useEffect(() => {
+    const el = centerRef.current?.querySelector('.editor-pages') as HTMLElement | null
+    if (!el) return
+    el.addEventListener('scroll', noteScroll, { passive: true })
+    return () => el.removeEventListener('scroll', noteScroll)
+  }, [viewMode])
 
   // Ctrl+wheel zooms (smooth, proportional to scroll speed); a plain wheel in
   // the single/spread views flips pages when there's nothing left to scroll,
@@ -690,6 +701,7 @@ export default function EditorView({ groupId }: Props): JSX.Element | null {
               pageNumber={group.pages.indexOf(page) + 1}
               source={sources.get(page.sourceId)}
               cssWidth={pageWidth}
+              fallbackRatio={pageBaseSize ? pageBaseSize.height / pageBaseSize.width : undefined}
               mode={mode}
               settings={settings}
               selection={selection}

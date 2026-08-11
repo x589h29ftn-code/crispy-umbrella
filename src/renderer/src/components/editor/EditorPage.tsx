@@ -15,6 +15,7 @@ import {
 import { ANNOTATION_FONT_CSS } from '../../lib/annotationStyle'
 import { bandTextRects, getTextLineBoxes, type TextLineBox } from '../../lib/textLines'
 import { renderTextSelectionLayer, selectionLineRects, type SelectionLineRect } from '../../lib/textLayer'
+import { isScrolling, onScrollState } from '../../lib/scrollGate'
 import { findSearchHitRects, type SearchHitRect } from '../../lib/searchHits'
 import { useStudioStore } from '../../store'
 import { formatCommentTime } from '../Lightbox'
@@ -72,6 +73,9 @@ export interface EditorSelection {
 
 const MIN_HIGHLIGHT_SIZE_PX = 5
 
+/** Resolutie van de snelle voorvertoning die tijdens het scrollen wordt getoond. */
+const PREVIEW_RENDER_WIDTH = 400
+
 interface DragTarget {
   kind: 'move' | 'resize'
   type: 'signature' | 'annotation'
@@ -102,6 +106,9 @@ interface Props {
   pageNumber: number
   source: SourceFile | undefined
   cssWidth: number
+  /** Hoogte/breedte van de eerste pagina: maat voor de placeholder zolang het
+   *  echte paginaformaat nog niet is opgehaald. */
+  fallbackRatio?: number
   mode: EditorMode
   settings: ToolSettings
   selection: EditorSelection | null
@@ -118,6 +125,7 @@ export default function EditorPage({
   pageNumber,
   source,
   cssWidth,
+  fallbackRatio,
   mode,
   settings,
   selection,
@@ -137,7 +145,8 @@ export default function EditorPage({
   const clearFocusComment = useStudioStore((s) => s.clearFocusComment)
   const authorName = useStudioStore((s) => s.authorName)
 
-  const [image, setImage] = useState<string | null>(null)
+  /** Getekende pagina + de resolutie waarop dat gebeurde (voorvertoning of scherp). */
+  const [image, setImage] = useState<{ url: string; width: number } | null>(null)
   const [pageVisualSize, setPageVisualSize] = useState<{ width: number; height: number } | null>(null)
   const [boxes, setBoxes] = useState<Record<string, SignatureVisualBox>>({})
   const [annoBoxes, setAnnoBoxes] = useState<Record<string, SignatureVisualBox>>({})
@@ -170,6 +179,11 @@ export default function EditorPage({
   // Virtualisatie: pas als de pagina (bijna) in beeld komt, doen we het zware
   // werk (op hoge resolutie renderen + tekstlaag). Zo blijft scrollen door een
   // groot document soepel; de placeholder houdt intussen de juiste hoogte vast.
+  //
+  // Belangrijk: de scrollende lijst is zelf de "root". Zonder die root rekende
+  // de browser tegen het venster en werd de kijkmarge afgekapt door de lijst —
+  // een pagina werd dan pas gerenderd op het moment dat hij al in beeld stond,
+  // met een grijs vlak tot de render klaar was.
   const rootRef = useRef<HTMLDivElement>(null)
   const [active, setActive] = useState(false)
   useEffect(() => {
@@ -179,17 +193,37 @@ export default function EditorPage({
       return
     }
     const observer = new IntersectionObserver((entries) => setActive(entries.some((e) => e.isIntersecting)), {
-      rootMargin: '1400px 0px'
+      root: el.closest('.editor-pages'),
+      rootMargin: '1800px 0px'
     })
     observer.observe(el)
     return () => observer.disconnect()
   }, [])
 
-  // Paginaformaat altijd ophalen (goedkoop, gecachet) zodat de placeholder de
-  // juiste hoogte reserveert — anders klappen alle pagina's samen bovenaan.
+  /** Echt in beeld (kleine marge): bepaalt wie voorrang krijgt en waar de
+   *  selecteerbare tekstlaag staat. */
+  const [visible, setVisible] = useState(false)
+  useEffect(() => {
+    const el = rootRef.current
+    if (!el || typeof IntersectionObserver === 'undefined') {
+      setVisible(true)
+      return
+    }
+    const observer = new IntersectionObserver((entries) => setVisible(entries.some((e) => e.isIntersecting)), {
+      root: el.closest('.editor-pages'),
+      rootMargin: '250px 0px'
+    })
+    observer.observe(el)
+    return () => observer.disconnect()
+  }, [])
+
+  // Paginaformaat pas ophalen als de pagina in de buurt komt. Bij een document
+  // van honderd pagina's kostte "altijd ophalen" honderd pdf.js-taken vóór de
+  // eerste pagina in beeld stond; de placeholder gebruikt tot die tijd de
+  // verhouding van de eerste pagina (vrijwel altijd hetzelfde formaat).
   useEffect(() => {
     let cancelled = false
-    if (!source) return
+    if (!source || !active) return
     getPageVisualSize(source, page.sourcePageIndex, page.rotation)
       .then((size) => {
         if (!cancelled) setPageVisualSize(size)
@@ -198,7 +232,7 @@ export default function EditorPage({
     return () => {
       cancelled = true
     }
-  }, [source, page.sourcePageIndex, page.rotation])
+  }, [source, page.sourcePageIndex, page.rotation, active])
 
   // Render at a resolution quantized to the display width. Tijdens (Ctrl-)zoomen
   // schaalt de browser de bestaande afbeelding mee; de dure her-render op de
@@ -213,10 +247,32 @@ export default function EditorPage({
     const timer = window.setTimeout(() => setRenderWidth(targetRenderWidth), 200)
     return () => window.clearTimeout(timer)
   }, [targetRenderWidth, image])
+
+  // Wordt er gescrold? Alleen pagina's in de buurt hoeven dat te weten.
+  const [scrolling, setScrolling] = useState(isScrolling)
+  useEffect(() => {
+    if (!active) return
+    setScrolling(isScrolling())
+    return onScrollState(setScrolling)
+  }, [active])
+
+  /**
+   * Tijdens het scrollen eerst een kleine, snelle versie tekenen (±40 ms in
+   * plaats van enkele honderden), zodat je inhoud ziet in plaats van grijze
+   * vlakken. Zodra het scrollen stilvalt komt de scherpe versie eroverheen.
+   */
+  const wantedWidth = scrolling || !image ? PREVIEW_RENDER_WIDTH : renderWidth
+  const haveWidth = image?.width ?? 0
   useEffect(() => {
     let cancelled = false
-    if (!source || !active) return
-    renderThumbnail(source, page.sourcePageIndex, page.rotation, renderWidth)
+    if (!source || !active || haveWidth >= wantedWidth) return
+    // Pagina's die alleen in de kijkmarge staan wachten kort: zo krijgen de
+    // pagina's in beeld de renderplekken als eerste, en doen we geen werk voor
+    // pagina's waar je meteen weer voorbij scrolt.
+    const delay = visible ? 0 : 180
+    const timer = window.setTimeout(() => {
+      if (cancelled) return
+      renderThumbnail(source, page.sourcePageIndex, page.rotation, wantedWidth)
       .then(async (url) => {
         // Decodeer de afbeelding buiten beeld af, zodat het tonen ervan tijdens
         // het scrollen niet meer hapert (geen synchrone decode op het scrollpad).
@@ -227,13 +283,15 @@ export default function EditorPage({
         } catch {
           /* decode niet ondersteund of afgebroken — toon alsnog */
         }
-        if (!cancelled) setImage(url)
+        if (!cancelled) setImage({ url, width: wantedWidth })
       })
       .catch(() => undefined)
+    }, delay)
     return () => {
       cancelled = true
+      window.clearTimeout(timer)
     }
-  }, [source, page.sourcePageIndex, page.rotation, renderWidth, active])
+  }, [source, page.sourcePageIndex, page.rotation, wantedWidth, haveWidth, active, visible])
 
   useEffect(() => {
     let cancelled = false
@@ -311,20 +369,24 @@ export default function EditorPage({
     }
   }, [source, page.id, page.sourcePageIndex, page.rotation, searchHighlight])
 
-  // Selectable text layer (kopiëren + tekst-volgend markeren) in view mode.
+  // Selecteerbare tekstlaag (kopiëren + tekst-volgend markeren) in view mode.
+  // Alleen voor de pagina's die in beeld staan: pdf.js maakt hiervoor per
+  // tekstfragment een element, en honderd pagina's aan onzichtbare spans maakte
+  // het scrollen merkbaar zwaarder.
   useEffect(() => {
     const el = textLayerRef.current
-    if (!el || !source || !image) return
-    let cancelled = false
+    if (!el || !source) return
+    if (!visible || !image || image.width <= PREVIEW_RENDER_WIDTH) {
+      if (el.childElementCount) el.replaceChildren()
+      return
+    }
     const timer = window.setTimeout(() => {
       renderTextSelectionLayer(el, source, page.sourcePageIndex, page.rotation, scale).catch(() => undefined)
     }, 150)
     return () => {
-      cancelled = true
-      void cancelled
       window.clearTimeout(timer)
     }
-  }, [source, image, page.sourcePageIndex, page.rotation, scale])
+  }, [source, image, visible, page.sourcePageIndex, page.rotation, scale])
 
   useEffect(() => {
     let cancelled = false
@@ -1088,13 +1150,18 @@ export default function EditorPage({
   const openComment = page.comments.find((c) => c.id === openCommentId)
   const openPin = openComment ? commentPins[openComment.id] : null
 
-  const placeholderRatio = pageVisualSize ? pageVisualSize.height / pageVisualSize.width : 1.4142
+  const placeholderRatio = pageVisualSize
+    ? pageVisualSize.height / pageVisualSize.width
+    : (fallbackRatio ?? 1.4142)
+  const reservedHeight = Math.round(cssWidth * placeholderRatio)
   return (
     <div
       ref={rootRef}
       className="editor-page"
       data-page-id={page.id}
-      style={{ width: cssWidth, minHeight: image ? undefined : Math.round(cssWidth * placeholderRatio) }}
+      // Altijd een hoogte vastleggen: zo kan de browser pagina's buiten beeld
+      // overslaan (content-visibility) zonder dat de lijst gaat verspringen.
+      style={{ width: cssWidth, minHeight: reservedHeight, containIntrinsicHeight: `auto ${reservedHeight}px` }}
     >
       <div
         className={`editor-page__surface${modeClass}`}
@@ -1104,9 +1171,9 @@ export default function EditorPage({
         onClick={onStageClick}
       >
         {image ? (
-          <img ref={imgRef} src={image} alt={`Pagina ${pageNumber}`} draggable={false} decoding="async" />
+          <img ref={imgRef} src={image.url} alt={`Pagina ${pageNumber}`} draggable={false} decoding="async" />
         ) : (
-          <div className="editor-page__loading" style={{ height: Math.round(cssWidth * placeholderRatio) }} />
+          <div className="editor-page__loading" style={{ height: reservedHeight }} />
         )}
         <div
           ref={textLayerRef}

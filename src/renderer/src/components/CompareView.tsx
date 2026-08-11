@@ -90,7 +90,9 @@ function ComparePane({
           observer.disconnect()
         }
       },
-      { rootMargin: '900px 0px' }
+      // Root = de scrollende strook, anders geldt de kijkmarge niet en zie je
+      // bij het scrollen eerst grijze vlakken.
+      { root: el.closest('.compare-view__scroll'), rootMargin: '1200px 0px' }
     )
     observer.observe(el)
     return () => observer.disconnect()

@@ -146,7 +146,9 @@ export default function PageThumb({ page, source, index }: Props): JSX.Element {
           observer.disconnect()
         }
       },
-      { rootMargin: '600px 0px' }
+      // De scrollende omgeving als root; anders knipt die de kijkmarge af en
+      // wordt een miniatuur pas gerenderd als hij al in beeld staat.
+      { root: el.closest('.canvas-viewport'), rootMargin: '700px' }
     )
     observer.observe(el)
     return () => observer.disconnect()
