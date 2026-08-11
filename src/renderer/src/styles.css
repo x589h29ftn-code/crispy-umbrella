@@ -5,6 +5,8 @@
   --panel-2: #232327;
   --panel-hover: #2b2b30;
   --border: #313136;
+  /* Hoogte van de bovenste rij: tabbalk en de kop van de zijbalk lopen gelijk. */
+  --topbar-h: 38px;
   --border-soft: rgba(255, 255, 255, 0.06);
   --text: #f2f2f3;
   --text-dim: #9a9aa1;
@@ -116,6 +118,15 @@ body {
   min-width: 0;
   display: flex;
   flex-direction: column;
+}
+
+/* Werkgebied tussen de tabbalk en de statusbalk; de zijpanelen (opmerkingen,
+   bladwijzers) staan hierin en duwen het document opzij in plaats van eroverheen. */
+.app-main__stage {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  position: relative;
 }
 
 /* Statusbalk onderaan het hoofdvenster */
@@ -301,6 +312,7 @@ body {
 /* Canvas */
 .canvas-viewport {
   flex: 1;
+  min-width: 0;
   position: relative;
   overflow: hidden;
   background:
@@ -1501,7 +1513,7 @@ body.is-dragging .selection-bar {
   height: 100%;
   min-height: 0;
   flex-shrink: 0;
-  padding: var(--space-3) var(--space-2);
+  padding: 0 var(--space-2) var(--space-3);
   background: var(--panel);
   box-shadow: 1px 0 0 var(--border-soft), var(--shadow-sm);
   position: relative;
@@ -1588,7 +1600,13 @@ body.is-dragging .selection-bar {
   align-items: center;
   justify-content: space-between;
   gap: var(--space-2);
-  min-height: 26px;
+  /* Zelfde hoogte als de tabbalk ernaast, en dezelfde onderlijn die
+     doorloopt — anders lijkt de Menu-knop boven het venster te zweven. */
+  height: var(--topbar-h);
+  box-sizing: border-box;
+  margin: 0 calc(-1 * var(--space-2)) var(--space-2);
+  padding: 0 var(--space-2);
+  box-shadow: 0 1px 0 var(--border-soft);
 }
 
 .sidebar--collapsed .sidebar__top {
@@ -2534,18 +2552,17 @@ button.group-row__date:hover {
 }
 
 .comments-panel {
-  position: absolute;
-  top: var(--space-3);
-  right: var(--space-3);
-  bottom: var(--space-3);
+  position: relative;
+  flex: 0 0 320px;
   width: 320px;
+  max-width: 50%;
+  height: 100%;
   background: var(--panel);
-  border-radius: var(--radius-md);
-  box-shadow: var(--shadow-lg);
+  box-shadow: -1px 0 0 var(--border);
   z-index: 55;
   display: flex;
   flex-direction: column;
-  animation: dropdown-in 0.12s ease;
+  overflow: hidden;
 }
 
 .comments-panel__head {
@@ -2687,6 +2704,8 @@ button.group-row__date:hover {
   align-items: flex-end;
   gap: 4px;
   padding: 6px 8px 0;
+  min-height: var(--topbar-h);
+  box-sizing: border-box;
   background: var(--panel);
   box-shadow: 0 1px 0 var(--border-soft);
   overflow-x: auto;
@@ -2702,7 +2721,9 @@ button.group-row__date:hover {
   border: none;
   border-radius: 8px 8px 0 0;
   color: var(--text-dim);
-  padding: 7px 10px 7px 12px;
+  /* Verticaal krap gehouden: met de grotere sluitknop blijft het tabblad zo
+     even hoog als de kop van de zijbalk ernaast (--topbar-h). */
+  padding: 4px 6px 4px 12px;
   font-size: 12.5px;
   cursor: pointer;
   white-space: nowrap;
@@ -2731,13 +2752,30 @@ button.group-row__date:hover {
 }
 
 .tab-strip__close {
-  width: 18px;
-  height: 18px;
+  width: 24px;
+  height: 24px;
+  flex: 0 0 auto;
+  border-radius: 6px;
+}
+.tab-strip__close:hover {
+  background: var(--danger-soft, rgba(229, 72, 77, 0.16));
+  color: var(--danger, #e5484d);
+}
+/* Tabblad dat versleept wordt en de plek waar het terechtkomt. */
+.tab-strip__tab--dragging {
+  opacity: 0.45;
+}
+.tab-strip__tab--drop-before {
+  box-shadow: inset 3px 0 0 var(--accent);
+}
+.tab-strip__tab--drop-after {
+  box-shadow: inset -3px 0 0 var(--accent);
 }
 
 /* ---------- Editorweergave ---------- */
 .editor-view {
   flex: 1;
+  min-width: 0;
   min-height: 0;
   display: flex;
   background: var(--bg);
@@ -2807,6 +2845,8 @@ button.group-row__date:hover {
 .editor-center__bar {
   display: flex;
   align-items: center;
+  flex-wrap: wrap;
+  row-gap: var(--space-1);
   gap: var(--space-3);
   padding: var(--space-2) var(--space-3);
   background: var(--panel);
@@ -2824,6 +2864,8 @@ button.group-row__date:hover {
 
 .editor-center__views .editbar__mode {
   color: var(--text-dim);
+  /* Niet over twee regels afbreken als er een zijpaneel open staat. */
+  white-space: nowrap;
 }
 
 .editor-center__views .editbar__mode:hover {
@@ -3198,10 +3240,25 @@ button.group-row__date:hover {
 
 .comments-panel__settings {
   display: flex;
-  align-items: flex-end;
+  flex-direction: column;
   gap: var(--space-2);
   padding: var(--space-2) var(--space-3);
   border-bottom: 1px solid var(--border);
+}
+
+/* Twee exportknoppen die samen de breedte vullen; de volledige uitleg staat in
+   de tooltip, zodat de tekst in het paneel niet afgekapt wordt. */
+.comments-panel__exports {
+  display: flex;
+  gap: var(--space-2);
+}
+.comments-panel__exports .pill-btn {
+  flex: 1 1 0;
+  min-width: 0;
+  justify-content: center;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 .comments-panel__author {
@@ -4943,15 +5000,18 @@ button.group-row__date:hover {
   gap: 7px;
   width: 100%;
   padding: 5px 8px;
-  border: 1px solid var(--border-soft);
+  border: 1px solid transparent;
   border-radius: var(--radius-sm);
-  background: var(--panel-2);
+  background: transparent;
   color: var(--text);
   font-size: 13px;
   font-weight: 600;
   cursor: pointer;
 }
-.app-menu__btn:hover,
+.app-menu__btn:hover {
+  background: var(--panel-2);
+  border-color: var(--border-soft);
+}
 .app-menu__btn--active {
   background: var(--panel-hover);
   border-color: var(--accent);

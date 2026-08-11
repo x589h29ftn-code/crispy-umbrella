@@ -36,6 +36,9 @@ export function CommentsTimeline(): JSX.Element {
 
   return (
     <>
+      {/* Naam op een eigen regel en de twee exportknoppen daaronder: samen op
+          één regel liepen ze buiten het paneel (320 px) en werd de tekst
+          afgekapt. */}
       <div className="comments-panel__settings">
         <label className="comments-panel__author">
           <span>Je naam</span>
@@ -47,23 +50,25 @@ export function CommentsTimeline(): JSX.Element {
             title="Wordt bij nieuwe opmerkingen en in de PDF-export als auteur gezet"
           />
         </label>
-        <button
-          type="button"
-          className="pill-btn"
-          disabled={items.length === 0}
-          title="Exporteer alle opmerkingen als overzichts-PDF"
-          onClick={() => void exportCommentSummary()}
-        >
-          Overzicht exporteren
-        </button>
-        <button
-          type="button"
-          className="pill-btn"
-          title="Exporteer alle gemarkeerde tekst als overzichts-PDF"
-          onClick={() => void exportHighlightSummary()}
-        >
-          Markeringen exporteren
-        </button>
+        <div className="comments-panel__exports">
+          <button
+            type="button"
+            className="pill-btn"
+            disabled={items.length === 0}
+            title="Exporteer alle opmerkingen als overzichts-PDF"
+            onClick={() => void exportCommentSummary()}
+          >
+            Opmerkingen (PDF)
+          </button>
+          <button
+            type="button"
+            className="pill-btn"
+            title="Exporteer alle gemarkeerde tekst als overzichts-PDF"
+            onClick={() => void exportHighlightSummary()}
+          >
+            Markeringen (PDF)
+          </button>
+        </div>
       </div>
       {items.length === 0 ? (
         <div className="comments-panel__empty">

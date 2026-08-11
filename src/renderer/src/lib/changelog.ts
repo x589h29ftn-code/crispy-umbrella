@@ -24,7 +24,12 @@ export const APP_CHANGELOG: { version: string; items: string[] }[] = [
       'Nieuw op het startscherm: "Twee versies vergelijken" — kies twee bestanden en de vergelijking staat direct open',
       'De sneltoetsen van Vergelijken (F3, Shift+F3, Alt+pijltjes, Ctrl+muiswiel) staan nu in het sneltoetsen-overzicht',
       'De miniaturen in de leesstrook hebben een paginarand met schaduw; een pagina met alleen tekst bovenaan leek anders een los stukje tekst',
-      'Kleine oneffenheden: de hint onderaan de zijbalk werd op een laptopscherm middenin de zin afgekapt, en de balk van Vergelijken liep op smallere vensters over twee regels'
+      'Kleine oneffenheden: de hint onderaan de zijbalk werd op een laptopscherm middenin de zin afgekapt, en de balk van Vergelijken liep op smallere vensters over twee regels',
+      'Tabbladen zijn te slepen om ze op de gewenste volgorde te zetten; tijdens het slepen zie je met een blauw streepje waar het tabblad terechtkomt',
+      'Het kruisje om een tabblad te sluiten is groter (24 bij 24 pixels) en kleurt rood bij aanwijzen',
+      'Het opmerkingen- en bladwijzerpaneel staat nu naast het document in plaats van eroverheen: het overlapt de tabbalk, de documentbalk en het gereedschap niet meer, en het document schuift netjes op',
+      'In het opmerkingenpaneel stonden de twee exportknoppen naast het naamveld, waardoor "Markeringen exporteren" buiten het paneel viel. De naam staat nu op een eigen regel met daaronder "Opmerkingen (PDF)" en "Markeringen (PDF)"',
+      'De kop van de zijbalk ("Menu") staat op dezelfde hoogte als de tabbalk, met een doorlopende scheidingslijn, en de Menu-knop is geen los omlijnd blokje meer — dat zag eruit alsof hij boven het venster zweefde'
     ]
   },
   {

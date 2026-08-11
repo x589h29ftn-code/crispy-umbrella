@@ -229,6 +229,8 @@ interface StudioState {
   setSearchHighlight: (value: { pageId: string; query: string } | null) => void
   openEditorTab: (groupId: string) => void
   closeEditorTab: (groupId: string) => void
+  /** Tabblad naar een andere plek in de tabbalk slepen. */
+  moveEditorTab: (groupId: string, targetIndex: number) => void
   setActiveEditorTab: (groupId: string | null) => void
   setEditorViewMode: (mode: 'scroll' | 'spread' | 'single') => void
   setSearchOpen: (open: boolean) => void
@@ -628,6 +630,17 @@ export const useStudioStore = create<StudioState>((set, get) => ({
           ? (editorTabs[editorTabs.length - 1] ?? null)
           : state.activeEditorTab
       return { editorTabs, activeEditorTab }
+    })
+  },
+
+  /** Sleep een tabblad naar een andere plek; het Overzicht blijft altijd vooraan. */
+  moveEditorTab: (groupId, targetIndex) => {
+    set((state) => {
+      if (!state.editorTabs.includes(groupId)) return {}
+      const rest = state.editorTabs.filter((id) => id !== groupId)
+      const index = Math.max(0, Math.min(rest.length, targetIndex))
+      rest.splice(index, 0, groupId)
+      return { editorTabs: rest }
     })
   },
 

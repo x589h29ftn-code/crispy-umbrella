@@ -189,18 +189,23 @@ export default function App(): JSX.Element {
       )}
       <main className="app-main">
         <TabStrip />
-        {activeEditorTab ? (
+        {/* Alles tussen de tabbalk en de statusbalk. De zijpanelen staan hierin,
+            zodat ze de tabbalk en de werkbalk van het document niet meer
+            overlappen maar er netjes naast komen. */}
+        <div className="app-main__stage">
+          {activeEditorTab ? (
+            <Suspense fallback={null}>
+              <EditorView groupId={activeEditorTab} />
+            </Suspense>
+          ) : (
+            <Canvas onScaleChange={onScaleChange} registerZoomControls={registerZoomControls} />
+          )}
           <Suspense fallback={null}>
-            <EditorView groupId={activeEditorTab} />
+            {searchOpen && <SearchPanel />}
+            {commentsPanelOpen && <CommentsPanel />}
+            {bookmarksPanelOpen && <BookmarksPanel />}
           </Suspense>
-        ) : (
-          <Canvas onScaleChange={onScaleChange} registerZoomControls={registerZoomControls} />
-        )}
-        <Suspense fallback={null}>
-          {searchOpen && <SearchPanel />}
-          {commentsPanelOpen && <CommentsPanel />}
-          {bookmarksPanelOpen && <BookmarksPanel />}
-        </Suspense>
+        </div>
         <StatusBar />
       </main>
       <Suspense fallback={null}>
