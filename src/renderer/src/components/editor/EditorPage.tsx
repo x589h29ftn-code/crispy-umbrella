@@ -12,7 +12,7 @@ import {
   visualRectToContentRect,
   type SignatureVisualBox
 } from '../../lib/pdfEngine'
-import { ANNOTATION_FONT_CSS } from '../../lib/annotationStyle'
+import { ANNOTATION_FONT_CSS, textDecorationOf } from '../../lib/annotationStyle'
 import { bandTextRects, getTextLineBoxes, type TextLineBox } from '../../lib/textLines'
 import { renderTextSelectionLayer, selectionLineRects, type SelectionLineRect } from '../../lib/textLayer'
 import { isScrolling, onScrollState } from '../../lib/scrollGate'
@@ -60,6 +60,11 @@ export interface ToolSettings {
   textBold: boolean
   textItalic: boolean
   textColor: string
+  /** Uitlijning van de regels binnen het tekstblok. */
+  textAlign: 'left' | 'center' | 'right'
+  textUnderline: boolean
+  /** Streep door de tekst. */
+  textStrike: boolean
   shapeKind: ShapeKind
   shapeColor: string
   shapeWidth: number
@@ -740,7 +745,10 @@ export default function EditorPage({
       size: style.size,
       bold: style.bold,
       italic: style.italic,
-      color: style.color
+      color: style.color,
+      align: settings.textAlign,
+      underline: settings.textUnderline,
+      strike: settings.textStrike
     }
     addAnnotation(page.id, annotation)
     onSelect({ pageId: page.id, annotationId: annotation.id })
@@ -1098,7 +1106,9 @@ export default function EditorPage({
               fontSize: annotation.size * scale,
               lineHeight: TEXT_LINE_HEIGHT,
               fontWeight: annotation.bold ? 700 : 400,
-              fontStyle: annotation.italic ? 'italic' : 'normal'
+              fontStyle: annotation.italic ? 'italic' : 'normal',
+              textAlign: annotation.align ?? 'left',
+              textDecorationLine: textDecorationOf(annotation) || undefined
             }}
           >
             {annotation.text}
@@ -1497,7 +1507,10 @@ export default function EditorPage({
                 fontSize: (textEditor.style?.size ?? settings.textSize) * scale,
                 lineHeight: TEXT_LINE_HEIGHT,
                 fontWeight: (textEditor.style?.bold ?? settings.textBold) ? 700 : 400,
-                fontStyle: (textEditor.style?.italic ?? settings.textItalic) ? 'italic' : 'normal'
+                fontStyle: (textEditor.style?.italic ?? settings.textItalic) ? 'italic' : 'normal',
+                textAlign: settings.textAlign,
+                textDecorationLine:
+                  textDecorationOf({ underline: settings.textUnderline, strike: settings.textStrike }) || undefined
               }}
               onChange={(e) => setTextEditor({ ...textEditor, value: e.target.value })}
               onKeyDown={(e) => {

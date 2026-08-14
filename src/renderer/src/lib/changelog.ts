@@ -4,6 +4,16 @@
  */
 export const APP_CHANGELOG: { version: string; items: string[] }[] = [
   {
+    version: '1.13.0',
+    items: [
+      'Veertien kleuren voor tekst in plaats van vier: zwart, grijs, wit, donkerrood, rood, oranje, okergeel, groen, turquoise, blauw, donkerblauw, paars, framboos en bruin. Wijs een kleur aan en je ziet de naam. Wit is er bij voor tekst over een donker vlak, en dezelfde kleuren gelden ook voor vormen en stempels',
+      'Nieuwe opmaakknoppen bij het tekstgereedschap: onderstrepen (U) en een streep door de tekst (S), naast de bestaande vet en cursief',
+      'Tekst uitlijnen: links, gecentreerd of rechts. Bij een tekstblok van meerdere regels worden de regels ten opzichte van elkaar uitgelijnd — handig voor een adres of een ondertekenblok',
+      'Alle opmaak werkt ook op tekst die er al staat: klik de tekst aan en wijzig kleur, uitlijning of streep. En het geldt in beide weergaven, zowel in het leestabblad als in het volledige scherm',
+      'De opmaak komt precies zo in de opgeslagen PDF terecht: de strepen worden echte lijnen in de kleur van de tekst, en gecentreerde regels staan in de PDF ook echt gecentreerd (gecontroleerd op een blok van drie regels: alle drie hetzelfde midden)'
+    ]
+  },
+  {
     version: '1.12.2',
     items: [
       'Soepeler scrollen door grote documenten. Een pagina werd pas gerenderd op het moment dat hij al in beeld schoof, waardoor je bij het scrollen eerst een grijs vlak zag: de kijkmarge werd afgekapt door de scrollende lijst. Nu wordt er twee pagina\'s vooruit en achteruit gerenderd, en staat er direct na een sprong in het document beeld op alle pagina\'s in zicht (gemeten op een document van 100 pagina\'s: 2 van de 2 pagina\'s meteen gevuld, voorheen 0 van de 2)',

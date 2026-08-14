@@ -756,17 +756,42 @@ async function buildPdf(group: DocGroup, sources: Map<string, SourceFile>, optio
         const theta = (rotateDeg * Math.PI) / 180
         const upX = -Math.sin(theta)
         const upY = Math.cos(theta)
+        // Leesrichting van de tekst: nodig om uit te lijnen en om de streep
+        // onder/door de tekst de juiste kant op te tekenen.
+        const rightX = Math.cos(theta)
+        const rightY = Math.sin(theta)
+        const widths = lines.map((line) => (line ? textFont.widthOfTextAtSize(line, annotation.size) : 0))
+        const blockWidth = Math.max(0, ...widths)
+        const align = annotation.align ?? 'left'
+        const color = hexToRgb(annotation.color)
+        const ruleThickness = Math.max(0.5, annotation.size * 0.06)
         for (let line = 0; line < lines.length; line += 1) {
           if (!lines[line]) continue
           const offset = (lines.length - 1 - line) * lineHeight + annotation.size * TEXT_BASELINE_FACTOR
+          const indent = align === 'center' ? (blockWidth - widths[line]) / 2 : align === 'right' ? blockWidth - widths[line] : 0
+          const baseX = annotation.x - ox + upX * offset + rightX * indent
+          const baseY = annotation.y - oy + upY * offset + rightY * indent
           targetPage.drawText(lines[line], {
-            x: annotation.x - ox + upX * offset,
-            y: annotation.y - oy + upY * offset,
+            x: baseX,
+            y: baseY,
             size: annotation.size,
             font: textFont,
-            color: hexToRgb(annotation.color),
+            color,
             rotate: degrees(rotateDeg)
           })
+          // Onderstrepen net onder de basislijn, doorhalen halverwege de x-hoogte.
+          for (const rule of [
+            annotation.underline ? -annotation.size * 0.13 : null,
+            annotation.strike ? annotation.size * 0.28 : null
+          ]) {
+            if (rule === null) continue
+            targetPage.drawLine({
+              start: { x: baseX + upX * rule, y: baseY + upY * rule },
+              end: { x: baseX + upX * rule + rightX * widths[line], y: baseY + upY * rule + rightY * widths[line] },
+              color,
+              thickness: ruleThickness
+            })
+          }
         }
       }
     }

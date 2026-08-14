@@ -44,6 +44,11 @@ export interface TextAnnotation {
   bold: boolean
   italic: boolean
   color: string
+  /** Regels uitlijnen binnen het tekstblok (standaard links). */
+  align?: 'left' | 'center' | 'right'
+  underline?: boolean
+  /** Streep door de tekst. */
+  strike?: boolean
 }
 
 export interface InkAnnotation {

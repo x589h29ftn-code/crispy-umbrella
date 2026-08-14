@@ -169,6 +169,33 @@ export function IconCalendar({ size = 16, className }: IconProps): JSX.Element {
   )
 }
 
+/** Tekst links uitlijnen. */
+export function IconAlignLeft({ size = 16, className }: IconProps): JSX.Element {
+  return (
+    <svg width={size} height={size} viewBox="0 0 24 24" className={className} {...base}>
+      <path d="M4 6h16M4 10.5h10M4 15h13M4 19.5h8" />
+    </svg>
+  )
+}
+
+/** Tekst centreren. */
+export function IconAlignCenter({ size = 16, className }: IconProps): JSX.Element {
+  return (
+    <svg width={size} height={size} viewBox="0 0 24 24" className={className} {...base}>
+      <path d="M4 6h16M7 10.5h10M5.5 15h13M8 19.5h8" />
+    </svg>
+  )
+}
+
+/** Tekst rechts uitlijnen. */
+export function IconAlignRight({ size = 16, className }: IconProps): JSX.Element {
+  return (
+    <svg width={size} height={size} viewBox="0 0 24 24" className={className} {...base}>
+      <path d="M4 6h16M10 10.5h10M7 15h13M12 19.5h8" />
+    </svg>
+  )
+}
+
 /** Pagina met een schuine tekstbalk erover: watermerk. */
 export function IconWatermark({ size = 16, className }: IconProps): JSX.Element {
   return (

@@ -10,6 +10,8 @@ import {
 import {
   ANNOTATION_FONT_LABELS,
   HIGHLIGHT_COLORS,
+  TEXT_ALIGNMENTS,
+  TEXT_COLOR_LABELS,
   INK_WIDTHS,
   TEXT_COLORS
 } from '../../lib/annotationStyle'
@@ -17,6 +19,9 @@ import { ShapePreviewIcon, SHAPE_LABELS, STAMP_PRESETS } from '../../lib/shapes'
 import type { AnnotationFont, PageRef, ShapeKind, SourceFile } from '../../types'
 import EditorPage, { type EditorMode, type EditorSelection, type ToolSettings } from './EditorPage'
 import {
+  IconAlignCenter,
+  IconAlignLeft,
+  IconAlignRight,
   IconChevronDown,
   IconChevronLeft,
   IconChevronRight,
@@ -131,6 +136,14 @@ function RailThumb({
   )
 }
 
+/** Uitlijnknoppen voor het tekstgereedschap. */
+const ALIGN_OPTIONS = TEXT_ALIGNMENTS.map(({ key, label }) => ({
+  key,
+  label,
+  icon:
+    key === 'left' ? <IconAlignLeft size={14} /> : key === 'center' ? <IconAlignCenter size={14} /> : <IconAlignRight size={14} />
+}))
+
 /**
  * Tabbed editor view (Adobe-style): thumbnail rail left, scrollable pages in
  * the middle (continuous / two-up / single page at 100%), tools panel right.
@@ -192,6 +205,9 @@ export default function EditorView({ groupId }: Props): JSX.Element | null {
     textBold: false,
     textItalic: false,
     textColor: TEXT_COLORS[0],
+    textAlign: 'left',
+    textUnderline: false,
+    textStrike: false,
     shapeKind: 'arrow',
     shapeColor: TEXT_COLORS[1],
     shapeWidth: INK_WIDTHS[1],
@@ -936,6 +952,7 @@ export default function EditorView({ groupId }: Props): JSX.Element | null {
               <button
                 type="button"
                 className={`editbar__toggle editbar__toggle--bold${(shownText?.bold ?? settings.textBold) ? ' editbar__toggle--active' : ''}`}
+                title="Vet"
                 onClick={() => {
                   const bold = !(shownText?.bold ?? settings.textBold)
                   setSettings((s) => ({ ...s, textBold: bold }))
@@ -947,6 +964,7 @@ export default function EditorView({ groupId }: Props): JSX.Element | null {
               <button
                 type="button"
                 className={`editbar__toggle editbar__toggle--italic${(shownText?.italic ?? settings.textItalic) ? ' editbar__toggle--active' : ''}`}
+                title="Cursief"
                 onClick={() => {
                   const italic = !(shownText?.italic ?? settings.textItalic)
                   setSettings((s) => ({ ...s, textItalic: italic }))
@@ -955,6 +973,46 @@ export default function EditorView({ groupId }: Props): JSX.Element | null {
               >
                 I
               </button>
+              <button
+                type="button"
+                className={`editbar__toggle editbar__toggle--underline${(shownText?.underline ?? settings.textUnderline) ? ' editbar__toggle--active' : ''}`}
+                title="Onderstrepen"
+                onClick={() => {
+                  const underline = !(shownText?.underline ?? settings.textUnderline)
+                  setSettings((s) => ({ ...s, textUnderline: underline }))
+                  if (shownText) patchSelected({ underline })
+                }}
+              >
+                U
+              </button>
+              <button
+                type="button"
+                className={`editbar__toggle editbar__toggle--strike${(shownText?.strike ?? settings.textStrike) ? ' editbar__toggle--active' : ''}`}
+                title="Streep door de tekst"
+                onClick={() => {
+                  const strike = !(shownText?.strike ?? settings.textStrike)
+                  setSettings((s) => ({ ...s, textStrike: strike }))
+                  if (shownText) patchSelected({ strike })
+                }}
+              >
+                S
+              </button>
+            </div>
+            <div className="editor-tools__textrow">
+              {ALIGN_OPTIONS.map(({ key, label, icon }) => (
+                <button
+                  key={key}
+                  type="button"
+                  className={`editbar__toggle${(shownText?.align ?? settings.textAlign) === key ? ' editbar__toggle--active' : ''}`}
+                  title={label}
+                  onClick={() => {
+                    setSettings((s) => ({ ...s, textAlign: key }))
+                    if (shownText) patchSelected({ align: key })
+                  }}
+                >
+                  {icon}
+                </button>
+              ))}
             </div>
             <div className="editor-tools__swatches">
               {TEXT_COLORS.map((color) => (
@@ -963,6 +1021,7 @@ export default function EditorView({ groupId }: Props): JSX.Element | null {
                   type="button"
                   className={`editbar__swatch${(shownText?.color ?? settings.textColor) === color ? ' editbar__swatch--active' : ''}`}
                   style={{ background: color }}
+                  title={TEXT_COLOR_LABELS[color] ?? color}
                   onClick={() => {
                     setSettings((s) => ({ ...s, textColor: color }))
                     if (shownText) patchSelected({ color })

@@ -17,6 +17,9 @@ import {
   ANNOTATION_FONT_CSS,
   ANNOTATION_FONT_LABELS,
   HIGHLIGHT_COLORS,
+  TEXT_ALIGNMENTS,
+  TEXT_COLOR_LABELS,
+  textDecorationOf,
   INK_WIDTHS,
   TEXT_COLORS
 } from '../lib/annotationStyle'
@@ -61,6 +64,9 @@ import {
   IconRotate,
   IconShapes,
   IconSignature,
+  IconAlignCenter,
+  IconAlignLeft,
+  IconAlignRight,
   IconStamp,
   IconStrike,
   IconTrash,
@@ -188,6 +194,9 @@ export default function Lightbox(): JSX.Element | null {
   const [textBold, setTextBold] = useState(false)
   const [textItalic, setTextItalic] = useState(false)
   const [textColor, setTextColor] = useState(TEXT_COLORS[0])
+  const [textAlign, setTextAlign] = useState<'left' | 'center' | 'right'>('left')
+  const [textUnderline, setTextUnderline] = useState(false)
+  const [textStrike, setTextStrike] = useState(false)
   const [textEditor, setTextEditor] = useState<TextEditorState | null>(null)
   // Mirror of textEditor that commit reads & clears synchronously, so the blur
   // that follows an Enter-commit can't commit the same editor twice.
@@ -967,7 +976,10 @@ export default function Lightbox(): JSX.Element | null {
       size: textSize,
       bold: textBold,
       italic: textItalic,
-      color: textColor
+      color: textColor,
+      align: textAlign,
+      underline: textUnderline,
+      strike: textStrike
     }
     addAnnotation(context.page.id, annotation)
     setSelectedAnnotationId(annotation.id)
@@ -1120,6 +1132,9 @@ export default function Lightbox(): JSX.Element | null {
   const shownTextBold = selectedAnnotation?.type === 'text' ? selectedAnnotation.bold : textBold
   const shownTextItalic = selectedAnnotation?.type === 'text' ? selectedAnnotation.italic : textItalic
   const shownTextColor = selectedAnnotation?.type === 'text' ? selectedAnnotation.color : textColor
+  const shownTextAlign = (selectedAnnotation?.type === 'text' ? selectedAnnotation.align : textAlign) ?? 'left'
+  const shownTextUnderline = (selectedAnnotation?.type === 'text' ? selectedAnnotation.underline : textUnderline) ?? false
+  const shownTextStrike = (selectedAnnotation?.type === 'text' ? selectedAnnotation.strike : textStrike) ?? false
 
   const shownShapeKind = selectedAnnotation?.type === 'shape' ? selectedAnnotation.shape : shapeKind
   const shownShapeColor = selectedAnnotation?.type === 'shape' ? selectedAnnotation.color : shapeColor
@@ -1357,7 +1372,9 @@ export default function Lightbox(): JSX.Element | null {
               fontSize: annotation.size * layoutScale,
               lineHeight: TEXT_LINE_HEIGHT,
               fontWeight: annotation.bold ? 700 : 400,
-              fontStyle: annotation.italic ? 'italic' : 'normal'
+              fontStyle: annotation.italic ? 'italic' : 'normal',
+              textAlign: annotation.align ?? 'left',
+              textDecorationLine: textDecorationOf(annotation) || undefined
             }}
           >
             {annotation.text}
@@ -1790,6 +1807,48 @@ export default function Lightbox(): JSX.Element | null {
             >
               I
             </button>
+            <button
+              type="button"
+              className={`editbar__toggle editbar__toggle--underline${shownTextUnderline ? ' editbar__toggle--active' : ''}`}
+              title="Onderstrepen"
+              onClick={() => {
+                setTextUnderline(!shownTextUnderline)
+                applyTextPatch({ underline: !shownTextUnderline })
+              }}
+            >
+              U
+            </button>
+            <button
+              type="button"
+              className={`editbar__toggle editbar__toggle--strike${shownTextStrike ? ' editbar__toggle--active' : ''}`}
+              title="Streep door de tekst"
+              onClick={() => {
+                setTextStrike(!shownTextStrike)
+                applyTextPatch({ strike: !shownTextStrike })
+              }}
+            >
+              S
+            </button>
+            {TEXT_ALIGNMENTS.map(({ key, label }) => (
+              <button
+                key={key}
+                type="button"
+                className={`editbar__toggle${shownTextAlign === key ? ' editbar__toggle--active' : ''}`}
+                title={label}
+                onClick={() => {
+                  setTextAlign(key)
+                  applyTextPatch({ align: key })
+                }}
+              >
+                {key === 'left' ? (
+                  <IconAlignLeft size={14} />
+                ) : key === 'center' ? (
+                  <IconAlignCenter size={14} />
+                ) : (
+                  <IconAlignRight size={14} />
+                )}
+              </button>
+            ))}
             <div className="editbar__swatches">
               {TEXT_COLORS.map((color) => (
                 <button
@@ -1797,7 +1856,7 @@ export default function Lightbox(): JSX.Element | null {
                   type="button"
                   className={`editbar__swatch${shownTextColor === color ? ' editbar__swatch--active' : ''}`}
                   style={{ background: color }}
-                  title={color}
+                  title={TEXT_COLOR_LABELS[color] ?? color}
                   onClick={() => {
                     setTextColor(color)
                     applyTextPatch({ color })
@@ -2244,7 +2303,10 @@ export default function Lightbox(): JSX.Element | null {
                       fontSize: shownTextSize * layoutScale,
                       lineHeight: TEXT_LINE_HEIGHT,
                       fontWeight: shownTextBold ? 700 : 400,
-                      fontStyle: shownTextItalic ? 'italic' : 'normal'
+                      fontStyle: shownTextItalic ? 'italic' : 'normal',
+                      textAlign: shownTextAlign,
+                      textDecorationLine:
+                        textDecorationOf({ underline: shownTextUnderline, strike: shownTextStrike }) || undefined
                     }}
                     onChange={(e) => setTextEditor({ ...textEditor, value: e.target.value })}
                     onKeyDown={(e) => {

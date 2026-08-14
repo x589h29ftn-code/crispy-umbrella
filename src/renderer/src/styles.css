@@ -1973,7 +1973,10 @@ button.group-row__date:hover {
 .editbar__swatches {
   display: flex;
   align-items: center;
+  flex-wrap: wrap;
   gap: 5px;
+  /* Veertien kleuren: twee rijen in de zwarte balk. */
+  max-width: 172px;
 }
 
 .editbar__swatch {
@@ -1981,6 +1984,8 @@ button.group-row__date:hover {
   height: 18px;
   border-radius: 50%;
   border: 2px solid transparent;
+  /* Dunne ring zodat een lichte kleur (wit) ook een zichtbaar bolletje is. */
+  box-shadow: 0 0 0 1px rgba(120, 130, 145, 0.55);
   cursor: pointer;
   padding: 0;
 }
@@ -1989,6 +1994,15 @@ button.group-row__date:hover {
   border-color: #fff;
   box-shadow: 0 0 0 2px var(--accent);
 }
+
+/* Veertien kleuren in het gereedschapspaneel: twee nette rijen van zeven. */
+.editor-tools__swatches {
+  display: grid;
+  grid-template-columns: repeat(7, 1fr);
+  gap: 6px;
+  justify-items: center;
+}
+
 
 .editbar__slider {
   display: flex;
@@ -2037,6 +2051,15 @@ button.group-row__date:hover {
 .editbar__toggle--italic {
   font-style: italic;
   font-family: Georgia, serif;
+}
+
+.editbar__toggle--underline {
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+
+.editbar__toggle--strike {
+  text-decoration: line-through;
 }
 
 .editbar__toggle:hover {
@@ -2103,6 +2126,8 @@ button.group-row__date:hover {
 
 .annotation-overlay__text {
   white-space: pre;
+  /* Zo breed als de langste regel: daarbinnen wordt uitgelijnd. */
+  width: max-content;
   pointer-events: none;
 }
 
@@ -3030,11 +3055,7 @@ button.group-row__date:hover {
   padding: 0 var(--space-2) var(--space-2);
 }
 
-.editor-tools__swatches {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 6px;
-}
+
 
 .editor-tools__slider {
   display: flex;
