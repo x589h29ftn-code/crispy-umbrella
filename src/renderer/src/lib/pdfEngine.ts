@@ -9,6 +9,7 @@ import {
   PDFImage,
   PDFName,
   PDFPage,
+  PDFRadioGroup,
   PDFRef,
   PDFString,
   StandardFonts,
@@ -27,9 +28,11 @@ import openSansBoldItalicUrl from '../assets/fonts/OpenSans-BoldItalic.ttf?url'
 import { getOcr } from './ocrStore'
 import { arrowHeadPoints, trianglePoints, calloutPoints } from './shapes'
 import { WATERMARK_COLORS } from './watermark'
+import { FIELD_KIND_LABELS } from './formFields'
 import type {
   AnnotationFont,
   DocGroup,
+  FieldAnnotation,
   PageComment,
   PageRef,
   RedactAnnotation,
@@ -451,10 +454,40 @@ export interface ExportOptions {
   flattenForms?: boolean
   /** Metadata opschonen: auteur/maker/producer/trefwoorden/XMP weglaten (AVG). */
   cleanMetadata?: boolean
+  /**
+   * Als PDF/A-2b opslaan (archief): XMP-metadata, sRGB-kleurprofiel en alle
+   * tekst die wij toevoegen met een ingebed lettertype. Zie lib/pdfa.ts.
+   */
+  pdfa?: boolean
+  /**
+   * Wordt in PDF/A-modus aangeroepen met de lettertypen die in het bestand
+   * gebruikt worden maar niet zijn ingebed (die kunnen wij niet toevoegen).
+   */
+  onPdfaFontWarning?: (fonts: string[]) => void
+}
+
+/**
+ * In PDF/A-modus mag geen enkel lettertype uit de PDF-standaardset (Helvetica,
+ * Times, Courier) gebruikt worden — die zitten niet in het bestand. We schrijven
+ * onze tekst dan met de ingebedde Liberation Sans, in dezelfde stijl (vet /
+ * cursief). Voor Times betekent dat een schreefloze letter in plaats van een
+ * schreefletter: er is geen ingebedde schreefletter beschikbaar.
+ */
+function pdfaFontSource(source: { kind: 'standard' | 'embedded'; ref: string }): {
+  kind: 'standard' | 'embedded'
+  ref: string
+} {
+  if (source.kind === 'embedded') return source
+  const bold = /Bold/i.test(source.ref)
+  const italic = /Oblique|Italic/i.test(source.ref)
+  return { kind: 'embedded', ref: FONT_VARIANTS.arial.variants[(bold ? 1 : 0) + (italic ? 2 : 0)] }
 }
 
 async function buildPdf(group: DocGroup, sources: Map<string, SourceFile>, options: ExportOptions = {}): Promise<Uint8Array> {
   const out = await PDFDocument.create()
+  /** Gebruikte veldnamen (om dubbele namen te voorkomen) en de keuzegroepen. */
+  const fieldNames = new Map<string, number>()
+  const radioGroups = new Map<string, PDFRadioGroup>()
   const byDoc = new Map<string, number[]>()
   const order: { sourceId: string; localIndex: number; page: PageRef }[] = []
 
@@ -491,7 +524,8 @@ async function buildPdf(group: DocGroup, sources: Map<string, SourceFile>, optio
 
   const fontCache = new Map<string, Promise<PDFFont>>()
   let fontkitRegistered = false
-  function getFont(source: { kind: 'standard' | 'embedded'; ref: string }): Promise<PDFFont> {
+  function getFont(requested: { kind: 'standard' | 'embedded'; ref: string }): Promise<PDFFont> {
+    const source = options.pdfa ? pdfaFontSource(requested) : requested
     let cached = fontCache.get(source.ref)
     if (!cached) {
       if (source.kind === 'standard') {
@@ -718,35 +752,8 @@ async function buildPdf(group: DocGroup, sources: Map<string, SourceFile>, optio
           })
         }
       } else if (annotation.type === 'field') {
-        // Zichtbaar, afdrukbaar invulveld: kader + label + onderlijn om op te
-        // ondertekenen/invullen. (De ontvanger kan het printen en tekenen.)
-        const border = rgb(0.45, 0.5, 0.6)
         const fieldFont = await getFont({ kind: 'embedded', ref: FONT_VARIANTS.arial.variants[0] })
-        targetPage.drawRectangle({
-          x: annotation.x - ox,
-          y: annotation.y - oy,
-          width: annotation.width,
-          height: annotation.height,
-          borderColor: border,
-          borderWidth: 0.75,
-          color: rgb(0.96, 0.97, 1),
-          opacity: 0.35
-        })
-        // Onderlijn om op te tekenen.
-        targetPage.drawLine({
-          start: { x: annotation.x - ox + annotation.width * 0.05, y: annotation.y - oy + annotation.height * 0.28 },
-          end: { x: annotation.x - ox + annotation.width * 0.95, y: annotation.y - oy + annotation.height * 0.28 },
-          color: rgb(0.4, 0.45, 0.55),
-          thickness: 0.6
-        })
-        const labelSize = Math.min(9, annotation.height * 0.32)
-        targetPage.drawText(annotation.label, {
-          x: annotation.x - ox + annotation.width * 0.05,
-          y: annotation.y - oy + annotation.height - labelSize - 3,
-          size: labelSize,
-          font: fieldFont,
-          color: rgb(0.35, 0.4, 0.5)
-        })
+        addFormField(out, targetPage, annotation, ox, oy, rotateDeg, fieldFont, fieldNames, radioGroups)
       } else {
         const textFont = await getFont(annotationFontSource(annotation))
         const lines = textAnnotationLines(annotation)
@@ -833,11 +840,24 @@ async function buildPdf(group: DocGroup, sources: Map<string, SourceFile>, optio
     placedAt.set(i, out.getPageCount() - 1)
   }
 
-  if (!options.flattenForms) rebuildAcroForm(out)
+  // Zelf geplaatste invulvelden blijven altijd invulbaar: wie een formulier
+  // bouwt, wil geen platgeslagen velden — ook niet met "platslaan bij export"
+  // aan (dat gaat over de velden die al in het geopende bestand zaten).
+  const hasOwnFields = group.pages.some((p) =>
+    p.annotations.some((a) => a.type === 'field' && a.fieldKind !== 'signature')
+  )
+  if (!options.flattenForms || hasOwnFields) rebuildAcroForm(out)
 
   await writeExportOutline(out, sources, order, placedAt)
 
-  out.setTitle(group.name)
+  // Documenteigenschappen: wat je bij "Eigenschappen" invult, komt hier in de
+  // PDF terecht. Zonder eigen titel gebruiken we de documentnaam.
+  const props = group.properties ?? {}
+  const docTitle = props.title?.trim() || group.name
+  out.setTitle(docTitle)
+  if (props.author?.trim()) out.setAuthor(props.author.trim())
+  if (props.subject?.trim()) out.setSubject(props.subject.trim())
+  if (props.keywords?.length) out.setKeywords(props.keywords)
   if (options.cleanMetadata) {
     // Persoonsgegevens/software-sporen weghalen voor een schone, AVG-vriendelijke export.
     out.setAuthor('')
@@ -852,14 +872,47 @@ async function buildPdf(group: DocGroup, sources: Map<string, SourceFile>, optio
       // Geen XMP aanwezig — niets te doen.
     }
   }
+  let stamp: Date | null = null
   if (group.documentDate) {
     // Parse the ISO date at local noon so timezone offsets can't shift it a day.
     const [year, month, day] = group.documentDate.split('-').map(Number)
     const date = new Date(year, month - 1, day, 12, 0, 0)
     if (!Number.isNaN(date.getTime())) {
+      stamp = date
       out.setCreationDate(date)
       out.setModificationDate(date)
     }
+  }
+
+  if (options.pdfa) {
+    // Archiefexport: XMP-metadata en kleurprofiel toevoegen. De XMP-gegevens
+    // moeten gelijk zijn aan de Info-woordenlijst hierboven, dus we leiden ze
+    // hier uit dezelfde waarden af (na het eventuele opschonen).
+    const date = stamp ?? new Date()
+    if (!stamp) {
+      out.setCreationDate(date)
+      out.setModificationDate(date)
+    }
+    out.setProducer('PDF Studio')
+    out.setCreator('PDF Studio')
+    const { applyPdfA, nonEmbeddedFontNames } = await import('./pdfa')
+    applyPdfA(out, {
+      title: docTitle,
+      author: options.cleanMetadata ? undefined : props.author?.trim() || undefined,
+      subject: options.cleanMetadata ? undefined : props.subject?.trim() || undefined,
+      keywords: options.cleanMetadata ? [] : (props.keywords ?? []),
+      producer: 'PDF Studio',
+      creator: 'PDF Studio',
+      date,
+      documentId: crypto.randomUUID()
+    })
+    if (options.onPdfaFontWarning) {
+      const missing = nonEmbeddedFontNames(out)
+      if (missing.length) options.onPdfaFontWarning(missing)
+    }
+    // Zonder objectstromen blijft het bestand voor elke lezer (en voor een
+    // PDF/A-validator) rechtstreeks te ontleden.
+    return out.save({ useObjectStreams: false })
   }
 
   return out.save()
@@ -1012,6 +1065,171 @@ async function writeExportOutline(
  * widgets orphaned. Re-register every copied field (walking widget → root
  * parent) in a fresh AcroForm so the merged PDF keeps a working form.
  */
+/** Labels per veldsoort, ook gebruikt als er geen eigen label is ingevuld. */
+export { FIELD_KIND_LABELS } from './formFields'
+
+/**
+ * Het vak van een veld in PDF-ruimte. De opgeslagen (x, y) is het draaipunt
+ * linksonder van het vak in zijn eigen (mogelijk gedraaide) assenstelsel; een
+ * widget heeft altijd een recht vak, dus dat rekenen we hier uit.
+ */
+function widgetRect(
+  annotation: FieldAnnotation,
+  ox: number,
+  oy: number,
+  rotateDeg: number
+): { x: number; y: number; width: number; height: number } {
+  const x = annotation.x - ox
+  const y = annotation.y - oy
+  const w = annotation.width
+  const h = annotation.height
+  const turn = ((Math.round(rotateDeg / 90) * 90) % 360 + 360) % 360
+  if (turn === 90) return { x: x - h, y, width: h, height: w }
+  if (turn === 180) return { x: x - w, y: y - h, width: w, height: h }
+  if (turn === 270) return { x, y: y - w, width: h, height: w }
+  return { x, y, width: w, height: h }
+}
+
+/** Veldnaam: eigen naam, anders uit het label; altijd uniek in het document. */
+function fieldName(annotation: FieldAnnotation, used: Map<string, number>): string {
+  const base =
+    (annotation.name?.trim() || annotation.label?.trim() || FIELD_KIND_LABELS[annotation.fieldKind])
+      .replace(/[^\p{L}\p{N} _-]+/gu, '')
+      .replace(/\s+/g, ' ')
+      .trim() || 'Veld'
+  const seen = used.get(base) ?? 0
+  used.set(base, seen + 1)
+  return seen === 0 ? base : `${base} ${seen + 1}`
+}
+
+/**
+ * Plaatst één echt invulveld op de pagina. Tekst, datum, bedrag, vinkje,
+ * keuzerondje en keuzelijst worden AcroForm-velden die de ontvanger in
+ * Acrobat/Edge kan invullen; een handtekeningvak blijft een getekend kader met
+ * een lijn om op te ondertekenen (daar is geen invulveld voor).
+ */
+function addFormField(
+  out: PDFDocument,
+  page: PDFPage,
+  annotation: FieldAnnotation,
+  ox: number,
+  oy: number,
+  rotateDeg: number,
+  font: PDFFont,
+  used: Map<string, number>,
+  radioGroups: Map<string, PDFRadioGroup>
+): void {
+  const rect = widgetRect(annotation, ox, oy, rotateDeg)
+  const border = rgb(0.45, 0.5, 0.6)
+  const background = rgb(0.97, 0.98, 1)
+  const label = annotation.label?.trim() || FIELD_KIND_LABELS[annotation.fieldKind]
+  const labelSize = Math.max(6, Math.min(9, rect.height * 0.5))
+
+  /** Label boven het vak (of ernaast bij een vinkje/keuzerondje). */
+  const drawLabel = (beside: boolean): void => {
+    if (!label) return
+    const x = beside ? rect.x + rect.width + 4 : rect.x
+    const y = beside ? rect.y + rect.height / 2 - labelSize * 0.36 : rect.y + rect.height + 2.5
+    page.drawText(label, { x, y, size: labelSize, font, color: rgb(0.3, 0.35, 0.45), rotate: degrees(rotateDeg) })
+  }
+
+  if (annotation.fieldKind === 'signature') {
+    // Kader met een lijn om op te ondertekenen (printbaar).
+    page.drawRectangle({
+      ...rect,
+      borderColor: border,
+      borderWidth: 0.75,
+      color: background,
+      opacity: 0.5,
+      rotate: degrees(rotateDeg)
+    })
+    page.drawLine({
+      start: { x: rect.x + rect.width * 0.05, y: rect.y + rect.height * 0.28 },
+      end: { x: rect.x + rect.width * 0.95, y: rect.y + rect.height * 0.28 },
+      color: rgb(0.4, 0.45, 0.55),
+      thickness: 0.6
+    })
+    drawLabel(false)
+    return
+  }
+
+  const form = out.getForm()
+  const name = fieldName(annotation, used)
+  const widget = {
+    x: rect.x,
+    y: rect.y,
+    width: rect.width,
+    height: rect.height,
+    borderColor: border,
+    borderWidth: 0.75,
+    backgroundColor: background,
+    rotate: degrees(rotateDeg)
+  }
+  try {
+    if (annotation.fieldKind === 'checkbox') {
+      const box = form.createCheckBox(name)
+      box.addToPage(page, { ...widget, width: Math.min(rect.width, rect.height), height: Math.min(rect.width, rect.height) })
+      if (annotation.checked) box.check()
+      if (annotation.required) box.enableRequired()
+      drawLabel(true)
+      return
+    }
+    if (annotation.fieldKind === 'radio') {
+      const groupName = annotation.group?.trim() || 'Keuze'
+      let radio = radioGroups.get(groupName)
+      if (!radio) {
+        radio = form.createRadioGroup(fieldName({ ...annotation, name: groupName, label: groupName }, used))
+        radioGroups.set(groupName, radio)
+      }
+      const option = annotation.options?.[0]?.trim() || label || `Optie ${radio.getOptions().length + 1}`
+      const size = Math.min(rect.width, rect.height)
+      radio.addOptionToPage(option, page, { ...widget, width: size, height: size })
+      if (annotation.checked) radio.select(option)
+      drawLabel(true)
+      return
+    }
+    if (annotation.fieldKind === 'dropdown') {
+      const list = form.createDropdown(name)
+      const options = (annotation.options ?? []).map((o) => o.trim()).filter(Boolean)
+      if (options.length) list.setOptions(options)
+      list.enableEditing()
+      list.addToPage(page, { ...widget, font })
+      // Zie de tekstvelden hieronder: zelf bijwerken, anders pakt pdf-lib bij
+      // het opslaan zijn eigen (niet-ingebedde) standaardletter.
+      list.updateAppearances(font)
+      drawLabel(false)
+      return
+    }
+    // Tekst, datum en bedrag zijn alle drie tekstvelden; datum/bedrag krijgen
+    // een hint in het label en een beperkte lengte.
+    const text = form.createTextField(name)
+    if (annotation.fieldKind === 'multiline') text.enableMultiline()
+    if (annotation.fieldKind === 'date') text.setMaxLength(10)
+    if (annotation.fieldKind === 'amount') text.setAlignment(2)
+    if (annotation.required) text.enableRequired()
+    text.addToPage(page, { ...widget, font })
+    // Pas ná addToPage: de standaardopmaak (/DA) van het veld bestaat daarvoor
+    // nog niet, en setFontSize gooit dan een fout waardoor het veld zou
+    // vervallen tot een getekend kader.
+    try {
+      text.setFontSize(Math.max(7, Math.min(11, rect.height * (annotation.fieldKind === 'multiline' ? 0.28 : 0.55))))
+      // setFontSize markeert het veld als "moet opnieuw getekend worden", en dat
+      // doet pdf-lib bij het opslaan met zijn eigen standaardletter (Helvetica,
+      // niet ingebed). Zelf bijwerken met ónze letter houdt het veld consistent
+      // — en in PDF/A-modus blijft alles ingebed.
+      text.updateAppearances(font)
+    } catch {
+      // Geen /DA (kan bij een exotisch veld) — de lezer kiest dan zelf een maat.
+    }
+    drawLabel(false)
+  } catch {
+    // Lukt het veld niet (bv. een dubbele naam in een bestaand formulier), dan
+    // toch een kader tekenen zodat het op papier bruikbaar blijft.
+    page.drawRectangle({ ...rect, borderColor: border, borderWidth: 0.75, rotate: degrees(rotateDeg) })
+    drawLabel(false)
+  }
+}
+
 function rebuildAcroForm(out: PDFDocument): void {
   const fieldRefs = new Set<PDFRef>()
   for (const page of out.getPages()) {
@@ -1039,7 +1257,16 @@ function rebuildAcroForm(out: PDFDocument): void {
     }
   }
   if (!fieldRefs.size) return
+  const existing = out.catalog.lookup(PDFName.of('AcroForm'))
   const acroForm = out.context.obj({ Fields: [...fieldRefs], NeedAppearances: true })
+  if (existing instanceof PDFDict) {
+    // /DR (lettertypen) en /DA (standaardopmaak) meenemen, anders krijgen
+    // nieuwe velden geen appearance in Acrobat.
+    for (const key of ['DR', 'DA', 'SigFlags']) {
+      const value = existing.get(PDFName.of(key))
+      if (value) acroForm.set(PDFName.of(key), value)
+    }
+  }
   out.catalog.set(PDFName.of('AcroForm'), out.context.register(acroForm))
 }
 

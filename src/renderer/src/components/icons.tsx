@@ -639,3 +639,54 @@ export function IconCompress({ size = 16, className }: IconProps): JSX.Element {
     </svg>
   )
 }
+
+/** Informatie / eigenschappen. */
+export function IconInfo({ size = 16, className }: IconProps): JSX.Element {
+  return (
+    <svg width={size} height={size} viewBox="0 0 24 24" className={className} {...base}>
+      <circle cx="12" cy="12" r="9" />
+      <path d="M12 11v6" />
+      <circle cx="12" cy="7.6" r="0.9" fill="currentColor" stroke="none" />
+    </svg>
+  )
+}
+
+/** Invulveld plaatsen: een tekstvak met een cursor. */
+export function IconFieldPlus({ size = 16, className }: IconProps): JSX.Element {
+  return (
+    <svg width={size} height={size} viewBox="0 0 24 24" className={className} {...base}>
+      <rect x="3" y="7" width="18" height="10" rx="2" />
+      <path d="M7 10v4M9.5 10.6h5" />
+    </svg>
+  )
+}
+
+/** Aankruisvakje (formuliergereedschap). */
+export function IconCheckbox({ size = 16, className }: IconProps): JSX.Element {
+  return (
+    <svg width={size} height={size} viewBox="0 0 24 24" className={className} {...base}>
+      <rect x="4" y="4" width="16" height="16" rx="3" />
+      <path d="M8 12.4l2.6 2.6L16.5 9" />
+    </svg>
+  )
+}
+
+/** Keuzerondje (formuliergereedschap). */
+export function IconRadio({ size = 16, className }: IconProps): JSX.Element {
+  return (
+    <svg width={size} height={size} viewBox="0 0 24 24" className={className} {...base}>
+      <circle cx="12" cy="12" r="8.5" />
+      <circle cx="12" cy="12" r="3.6" fill="currentColor" stroke="none" />
+    </svg>
+  )
+}
+
+/** Keuzelijst (formuliergereedschap). */
+export function IconDropdown({ size = 16, className }: IconProps): JSX.Element {
+  return (
+    <svg width={size} height={size} viewBox="0 0 24 24" className={className} {...base}>
+      <rect x="3" y="7" width="18" height="10" rx="2" />
+      <path d="M14 10.5l2.2 2.4 2.2-2.4" />
+    </svg>
+  )
+}

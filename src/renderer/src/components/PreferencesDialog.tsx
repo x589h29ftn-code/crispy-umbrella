@@ -25,6 +25,10 @@ export default function PreferencesDialog(): JSX.Element | null {
   const setFullToolbar = useStudioStore((s) => s.setFullToolbar)
   const imagePageMode = useStudioStore((s) => s.imagePageMode)
   const setImagePageMode = useStudioStore((s) => s.setImagePageMode)
+  const pdfaExport = useStudioStore((s) => s.pdfaExport)
+  const setPdfaExport = useStudioStore((s) => s.setPdfaExport)
+  const confirmOnExit = useStudioStore((s) => s.confirmOnExit)
+  const setConfirmOnExit = useStudioStore((s) => s.setConfirmOnExit)
 
   if (!open) return null
 
@@ -159,6 +163,30 @@ export default function PreferencesDialog(): JSX.Element | null {
           <span>
             <span className="prefs-row__title">Metadata opschonen bij export</span>
             <span className="prefs-row__hint">Verwijdert auteur, maker, producer en verborgen XMP-data (AVG).</span>
+          </span>
+        </label>
+
+        <label className="prefs-check">
+          <input type="checkbox" checked={pdfaExport} onChange={(e) => setPdfaExport(e.target.checked)} />
+          <span>
+            <span className="prefs-row__title">Opslaan als PDF/A (archief)</span>
+            <span className="prefs-row__hint">
+              PDF/A-2b voor duurzame opslag: de tekst die PDF Studio toevoegt krijgt een ingebed lettertype, er komt
+              een sRGB-kleurprofiel in het bestand en de documenteigenschappen worden ook als XMP-metadata
+              opgenomen. Lettertypen die in het geopende bestand zelf niet zijn ingebed kunnen we niet toevoegen, en
+              een PDF/A-bestand kan geen wachtwoord hebben.
+            </span>
+          </span>
+        </label>
+
+        <label className="prefs-check">
+          <input type="checkbox" checked={confirmOnExit} onChange={(e) => setConfirmOnExit(e.target.checked)} />
+          <span>
+            <span className="prefs-row__title">Vragen voordat de app afsluit</span>
+            <span className="prefs-row__hint">
+              Zolang er bewerkingen zijn die nog niet zijn opgeslagen, vraagt PDF Studio bij het sluiten van het
+              venster of je het echt wilt afsluiten.
+            </span>
           </span>
         </label>
       </div>

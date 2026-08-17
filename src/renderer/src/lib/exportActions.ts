@@ -29,6 +29,14 @@ async function maybeEncrypt(bytes: Uint8Array): Promise<Uint8Array> {
   const perms = state.exportPermissions
   const restricted = !perms.printing || !perms.copying || !perms.modifying
   if (!password && !restricted) return bytes
+  if (state.pdfaExport) {
+    // Een PDF/A-bestand mag niet versleuteld zijn; anders is het geen archief-PDF meer.
+    state.addToast(
+      'info',
+      'PDF/A staat aan: het bestand is niet met een wachtwoord beveiligd (dat mag niet in een archief-PDF)'
+    )
+    return bytes
+  }
   const { encryptPdfBytes } = await engine()
   return encryptPdfBytes(bytes, password, restricted ? perms : undefined)
 }
@@ -37,9 +45,25 @@ function exportOptions(): {
   formValues: Record<string, Record<string, string | boolean>>
   flattenForms: boolean
   cleanMetadata: boolean
+  pdfa: boolean
+  onPdfaFontWarning: (fonts: string[]) => void
 } {
   const state = useStudioStore.getState()
-  return { formValues: state.formValues, flattenForms: state.flattenForms, cleanMetadata: state.cleanMetadata }
+  return {
+    formValues: state.formValues,
+    flattenForms: state.flattenForms,
+    cleanMetadata: state.cleanMetadata,
+    pdfa: state.pdfaExport,
+    // Eerlijk melden wat we níet kunnen: lettertypen die in het geopende
+    // bestand zelf niet zijn ingebed krijgen wij er niet in.
+    onPdfaFontWarning: (fonts: string[]) =>
+      state.addToast(
+        'info',
+        `PDF/A: ${fonts.length === 1 ? 'het lettertype' : 'de lettertypen'} ${fonts.slice(0, 3).join(', ')}${
+          fonts.length > 3 ? ` en ${fonts.length - 3} andere` : ''
+        } ${fonts.length === 1 ? 'zit' : 'zitten'} niet in het bronbestand ingebed — dat kunnen we niet toevoegen, dus dit bestand is niet gegarandeerd geldig PDF/A`
+      )
+  }
 }
 
 /** Bouwt het actieve document als PDF-bytes + nette bestandsnaam (voor het
@@ -62,9 +86,10 @@ export async function exportGroupPdf(groupId: string): Promise<void> {
     const bytes = await maybeEncrypt(await exportGroup(group, state.sources, exportOptions()))
     const result = await window.api.savePdf(`${sanitizeFileName(group.name)}.pdf`, bytes)
     if (result.saved) {
+      state.markSaved()
       state.addToast(
         'success',
-        `"${group.name}" opgeslagen als PDF`,
+        `"${group.name}" opgeslagen als ${state.pdfaExport ? 'PDF/A' : 'PDF'}`,
         result.path && typeof window.api.openPath === 'function'
           ? { label: 'Openen', run: () => void window.api.openPath!(result.path!) }
           : undefined
@@ -86,7 +111,10 @@ export async function exportActivePdf(): Promise<void> {
   try {
     const bytes = await maybeEncrypt(await exportGroup(group, state.sources, exportOptions()))
     const result = await window.api.savePdf(`${sanitizeFileName(group.name)}.pdf`, bytes)
-    if (result.saved) state.addToast('success', `"${group.name}" opgeslagen`)
+    if (result.saved) {
+      state.markSaved()
+      state.addToast('success', `"${group.name}" opgeslagen${state.pdfaExport ? ' als PDF/A' : ''}`)
+    }
   } catch {
     state.addToast('error', `Exporteren van "${group.name}" is mislukt`)
   } finally {
@@ -118,8 +146,12 @@ export async function saveActiveToSource(): Promise<void> {
   try {
     const bytes = await maybeEncrypt(await exportGroup(group, state.sources, exportOptions()))
     const result = await window.api.savePdfToPath(path, bytes)
-    if (result.saved) state.addToast('success', `Opgeslagen naar "${group.name}"`)
-    else state.addToast('error', `Kon "${group.name}" niet opslaan naar het bronbestand`)
+    if (result.saved) {
+      state.markSaved()
+      state.addToast('success', `Opgeslagen naar "${group.name}"`)
+    } else {
+      state.addToast('error', `Kon "${group.name}" niet opslaan naar het bronbestand`)
+    }
   } catch {
     state.addToast('error', `Opslaan van "${group.name}" is mislukt`)
   } finally {
@@ -140,8 +172,12 @@ export async function saveActiveToOneDrive(): Promise<void> {
   try {
     const bytes = await maybeEncrypt(await exportGroup(group, state.sources, exportOptions()))
     const result = await window.api.saveToOneDrive(`${sanitizeFileName(group.name)}.pdf`, bytes)
-    if (result.saved) state.addToast('success', `"${group.name}" opgeslagen in OneDrive`)
-    else if (result.reason) state.addToast('error', result.reason)
+    if (result.saved) {
+      state.markSaved()
+      state.addToast('success', `"${group.name}" opgeslagen in OneDrive`)
+    } else if (result.reason) {
+      state.addToast('error', result.reason)
+    }
   } catch {
     state.addToast('error', 'Opslaan in OneDrive is mislukt')
   } finally {
@@ -194,7 +230,10 @@ export async function exportAllZip(): Promise<void> {
     }
     const zipBytes = zipSync(files, { level: 6 })
     const result = await window.api.saveZip('PDF-Studio-export.zip', zipBytes)
-    if (result.saved) state.addToast('success', `${usedNames.size} PDF's opgeslagen als zip`)
+    if (result.saved) {
+      state.markSaved()
+      state.addToast('success', `${usedNames.size} PDF's opgeslagen als zip`)
+    }
   } catch {
     state.addToast('error', 'Exporteren als zip is mislukt')
   } finally {

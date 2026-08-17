@@ -67,6 +67,11 @@ export default function SmartDialog(): JSX.Element | null {
   const [blanks, setBlanks] = useState<{ pageId: string; groupName: string; pageNumber: number }[]>([])
   const [blankSelected, setBlankSelected] = useState<Set<string>>(new Set())
   const [segments, setSegments] = useState<{ name: string; pageIds: string[]; firstPage: number }[]>([])
+  /** Waar wordt op gesplitst: bladwijzers, herkende hoofdstukken, aantal pagina's of lege scheidingsbladen. */
+  const [splitMode, setSplitMode] = useState<'bookmarks' | 'chapters' | 'every' | 'blank'>('bookmarks')
+  const [splitEvery, setSplitEvery] = useState(1)
+  /** Uitleg als een manier van splitsen niets oplevert. */
+  const [splitNote, setSplitNote] = useState('')
 
   const activeGroup = groups.find((g) => g.id === activeGroupId) ?? groups[0]
 
@@ -80,49 +85,149 @@ export default function SmartDialog(): JSX.Element | null {
     }
   }, [open])
 
-  // Splitsen: top-niveau bladwijzers van het actieve document → segmenten.
+  // Splitsen: de gekozen manier omzetten in segmenten (voorbeeld + toepassen).
   useEffect(() => {
     if (!open || tab !== 'split' || !activeGroup) return
+    const group = activeGroup
     let cancelled = false
     setBusy(true)
-    ;(async () => {
-      const bms = await getGroupBookmarks(activeGroup, sources).catch(() => [])
-      const idxOf = new Map(activeGroup.pages.map((p, i) => [p.id, i]))
-      const cuts = bms
-        .filter((b) => b.depth === 0 && idxOf.has(b.pageId))
-        .map((b) => ({ title: b.title, index: idxOf.get(b.pageId)! }))
-        .sort((a, b) => a.index - b.index)
+    setSplitNote('')
+
+    /** Snijpunten (paginanummer + titel) omzetten in segmenten. */
+    const toSegments = (cuts: { title: string; index: number }[]): typeof segments => {
       const segs: typeof segments = []
-      if (cuts.length >= 2) {
-        // Pagina's vóór de eerste bladwijzer (voorblad, inhoudsopgave) horen
-        // ook ergens bij — zonder dit eerste segment verdwenen ze bij het
-        // splitsen, omdat het oorspronkelijke document vervangen wordt.
-        if (cuts[0].index > 0) {
+      if (cuts.length < 2) return segs
+      // Pagina's vóór het eerste snijpunt (voorblad, inhoudsopgave) horen ook
+      // ergens bij — zonder dit eerste segment verdwenen ze bij het splitsen,
+      // omdat het oorspronkelijke document vervangen wordt.
+      if (cuts[0].index > 0) {
+        segs.push({
+          name: cuts[0].index === 1 ? 'Voorblad' : `Voorwerk (pagina 1-${cuts[0].index})`,
+          firstPage: 1,
+          pageIds: group.pages.slice(0, cuts[0].index).map((p) => p.id)
+        })
+      }
+      for (let i = 0; i < cuts.length; i += 1) {
+        const start = cuts[i].index
+        const end = i + 1 < cuts.length ? cuts[i + 1].index : group.pages.length
+        segs.push({
+          name: cuts[i].title,
+          firstPage: start + 1,
+          pageIds: group.pages.slice(start, end).map((p) => p.id)
+        })
+      }
+      return segs
+    }
+
+    ;(async () => {
+      let segs: typeof segments = []
+      let note = ''
+
+      if (splitMode === 'bookmarks') {
+        const bms = await getGroupBookmarks(group, sources).catch(() => [])
+        const idxOf = new Map(group.pages.map((p, i) => [p.id, i]))
+        const cuts = bms
+          .filter((b) => b.depth === 0 && idxOf.has(b.pageId))
+          .map((b) => ({ title: b.title, index: idxOf.get(b.pageId)! }))
+          .sort((a, b) => a.index - b.index)
+        segs = toSegments(cuts)
+        if (!segs.length) {
+          note =
+            'Dit document heeft geen bruikbare inhoudsopgave. Probeer "Per hoofdstuk": dan zoeken we de koppen in de tekst zelf.'
+        }
+      } else if (splitMode === 'chapters') {
+        // Koppen uit de tekst zelf: lettergrootte, vet en de bladwijzers samen.
+        const { pages } = await analyzeDocument(
+          group,
+          sources,
+          { ...DEFAULT_STRUCTURE_OPTIONS, lists: false, tables: false },
+          group.name
+        )
+        // Alleen een kop bovenaan de pagina begint een nieuw hoofdstuk; een
+        // tussenkopje halverwege de pagina knipt het document niet.
+        const leading: { title: string; index: number; level: number }[] = []
+        pages.forEach((blocks, index) => {
+          const at = blocks.findIndex((b) => b.kind === 'heading')
+          const block = at >= 0 && at <= 1 ? blocks[at] : null
+          if (block && block.kind === 'heading') {
+            leading.push({ title: block.text.slice(0, 80), index, level: block.level })
+          }
+        })
+        // Welk kopniveau zijn de hoofdstukken? Het hoogste niveau dat minstens
+        // twee keer bovenaan een pagina staat. De titel op het voorblad is
+        // meestal de énige van niveau 1 — dan zijn de hoofdstukken een niveau
+        // dieper, en die willen we hebben.
+        const perLevel = new Map<number, number>()
+        for (const head of leading) perLevel.set(head.level, (perLevel.get(head.level) ?? 0) + 1)
+        const chapterLevel = [...perLevel.entries()]
+          .filter(([, count]) => count >= 2)
+          .map(([level]) => level)
+          .sort((a, b) => a - b)[0]
+        // Een kop van een hoger niveau (bv. "Deel A") knipt ook.
+        const cuts =
+          chapterLevel === undefined ? [] : leading.filter((h) => h.level <= chapterLevel).sort((a, b) => a.index - b.index)
+        segs = toSegments(cuts)
+        if (!segs.length) {
+          note = leading.length
+            ? 'Er staat maar één kop bovenaan een pagina — dan valt er niets op te knippen. Probeer splitsen per aantal pagina’s.'
+            : "Geen koppen bovenaan een pagina gevonden. Bij een scan zonder tekstlaag kun je splitsen per aantal pagina's."
+        }
+      } else if (splitMode === 'every') {
+        const step = Math.max(1, Math.min(group.pages.length, Math.round(splitEvery) || 1))
+        for (let start = 0; start < group.pages.length; start += step) {
+          const slice = group.pages.slice(start, start + step)
+          const last = start + slice.length
           segs.push({
-            name: cuts[0].index === 1 ? 'Voorblad' : `Voorwerk (pagina 1-${cuts[0].index})`,
-            firstPage: 1,
-            pageIds: activeGroup.pages.slice(0, cuts[0].index).map((p) => p.id)
+            name:
+              slice.length === 1 ? `${group.name} - pagina ${start + 1}` : `${group.name} - pagina ${start + 1}-${last}`,
+            firstPage: start + 1,
+            pageIds: slice.map((p) => p.id)
           })
         }
-        for (let i = 0; i < cuts.length; i += 1) {
-          const start = cuts[i].index
-          const end = i + 1 < cuts.length ? cuts[i + 1].index : activeGroup.pages.length
-          segs.push({
-            name: cuts[i].title,
-            firstPage: start + 1,
-            pageIds: activeGroup.pages.slice(start, end).map((p) => p.id)
-          })
+        if (segs.length < 2) note = "Met dit aantal pagina's blijft het één document."
+      } else {
+        // Lege pagina's als scheidingsblad: de blanco pagina zelf valt weg.
+        const blanks = new Set<number>()
+        for (let i = 0; i < group.pages.length; i += 1) {
+          const page = group.pages[i]
+          const source = sources.get(page.sourceId)
+          if (!source) continue
+          if (await isBlankPage(source, page).catch(() => false)) blanks.add(i)
+        }
+        if (cancelled) return
+        let part: string[] = []
+        let firstPage = 1
+        const push = (): void => {
+          if (part.length) segs.push({ name: `${group.name} - deel ${segs.length + 1}`, firstPage, pageIds: part })
+          part = []
+        }
+        for (let i = 0; i < group.pages.length; i += 1) {
+          if (blanks.has(i)) {
+            push()
+            firstPage = i + 2
+            continue
+          }
+          if (!part.length) firstPage = i + 1
+          part.push(group.pages[i].id)
+        }
+        push()
+        if (segs.length < 2) {
+          note = blanks.size
+            ? 'Er is maar één lege pagina aan het begin of einde gevonden — dat levert geen aparte delen op.'
+            : 'Geen lege pagina’s gevonden om op te splitsen.'
         }
       }
+
       if (!cancelled) {
         setSegments(segs)
+        setSplitNote(segs.length >= 2 ? '' : note)
         setBusy(false)
       }
     })()
     return () => {
       cancelled = true
     }
-  }, [open, tab, activeGroup, sources])
+  }, [open, tab, activeGroup, sources, splitMode, splitEvery])
 
   useEffect(() => {
     if (!open || tab !== 'rename') return
@@ -313,7 +418,7 @@ export default function SmartDialog(): JSX.Element | null {
         {
           key: 'split',
           label: 'Splitsen',
-          hint: 'Opknippen langs de inhoudsopgave',
+          hint: 'Per hoofdstuk, bladwijzer of aantal pagina’s',
           icon: <IconScissors size={15} />,
           blocked: activeGroup ? undefined : 'Open eerst een document'
         },
@@ -578,16 +683,56 @@ export default function SmartDialog(): JSX.Element | null {
 
         {tab === 'split' && (
           <div className="smart-card__body">
+            <p className="smart-card__intro">Waar wil je "{activeGroup?.name ?? '—'}" op knippen?</p>
+            <div className="split-modes">
+              {(
+                [
+                  ['bookmarks', 'Op bladwijzers', 'De inhoudsopgave van de PDF'],
+                  ['chapters', 'Per hoofdstuk', 'Koppen in de tekst zelf herkennen'],
+                  ['every', "Per aantal pagina's", 'Vaste blokken, bv. elke pagina apart'],
+                  ['blank', 'Bij lege pagina’s', 'Blanco scheidingsbladen als grens']
+                ] as const
+              ).map(([mode, label, hint]) => (
+                <button
+                  key={mode}
+                  type="button"
+                  className={`split-mode${splitMode === mode ? ' split-mode--active' : ''}`}
+                  title={hint}
+                  onClick={() => setSplitMode(mode)}
+                >
+                  <span className="split-mode__label">{label}</span>
+                  <span className="split-mode__hint">{hint}</span>
+                </button>
+              ))}
+            </div>
+            {splitMode === 'every' && (
+              <label className="split-every">
+                <span>Aantal pagina's per document</span>
+                <input
+                  type="number"
+                  className="prefs-input split-every__input"
+                  min={1}
+                  max={Math.max(1, (activeGroup?.pages.length ?? 1) - 1)}
+                  value={splitEvery}
+                  onChange={(e) => setSplitEvery(Math.max(1, Number(e.target.value) || 1))}
+                />
+              </label>
+            )}
             {busy ? (
-              <p>Bladwijzers zoeken…</p>
-            ) : segments.length < 2 ? (
               <p>
-                Dit document heeft geen bruikbare inhoudsopgave om op te splitsen. Bij het samenvoegen van meerdere
-                bestanden krijgt een document automatisch bladwijzers per bron.
+                {splitMode === 'bookmarks'
+                  ? 'Bladwijzers zoeken…'
+                  : splitMode === 'chapters'
+                    ? 'Koppen zoeken in de tekst…'
+                    : splitMode === 'blank'
+                      ? 'Lege pagina’s zoeken…'
+                      : 'Indeling maken…'}
               </p>
+            ) : segments.length < 2 ? (
+              <p>{splitNote || 'Op deze manier valt dit document niet te splitsen.'}</p>
             ) : (
               <>
-                <p className="smart-card__intro">Splitst "{activeGroup?.name}" op de bladwijzers in {segments.length} documenten:</p>
+                <p className="smart-card__intro">Dit worden {segments.length} documenten:</p>
                 <div className="smart-card__list">
                   {segments.map((s, i) => (
                     <div key={i} className="smart-blank">

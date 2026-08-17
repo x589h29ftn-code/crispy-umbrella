@@ -101,7 +101,14 @@ export interface StampAnnotation {
   color: string
 }
 
-/** Een invulbaar veld dat bij export een AcroForm-veld wordt (handtekening/datum/tekst). */
+/** Soorten invulvelden die we in een formulier kunnen plaatsen. */
+export type FieldKind = 'text' | 'multiline' | 'date' | 'amount' | 'checkbox' | 'radio' | 'dropdown' | 'signature'
+
+/**
+ * Een invulbaar veld. Bij export wordt dit een echt AcroForm-veld, zodat de
+ * ontvanger het in Acrobat/Edge kan invullen en aanvinken; alleen het
+ * handtekeningvak blijft een getekend kader om op te ondertekenen.
+ */
 export interface FieldAnnotation {
   id: string
   type: 'field'
@@ -110,9 +117,19 @@ export interface FieldAnnotation {
   y: number
   width: number
   height: number
-  fieldKind: 'signature' | 'date' | 'text'
-  /** Label dat op/boven het veld staat, bv. "Handtekening". */
+  fieldKind: FieldKind
+  /** Label bij het veld, bv. "Handtekening" of "Akkoord". */
   label: string
+  /** Veldnaam in de PDF; leeg = uit het label afgeleid. */
+  name?: string
+  /** Keuzerondjes met dezelfde groepsnaam sluiten elkaar uit. */
+  group?: string
+  /** Keuzes voor een keuzelijst, of de waarde van dit keuzerondje. */
+  options?: string[]
+  /** Standaard aangevinkt (vinkje/keuzerondje). */
+  checked?: boolean
+  /** Verplicht in te vullen. */
+  required?: boolean
 }
 
 export type Annotation =
@@ -165,6 +182,16 @@ export interface Watermark {
   firstPageOnly?: boolean
 }
 
+/** Documenteigenschappen die bij export in de PDF worden gezet (archiefdossier). */
+export interface DocProperties {
+  /** Titel; leeg = de documentnaam gebruiken. */
+  title?: string
+  author?: string
+  subject?: string
+  /** Trefwoorden, gescheiden weergegeven maar hier als lijst. */
+  keywords?: string[]
+}
+
 export interface DocGroup {
   id: string
   name: string
@@ -173,6 +200,8 @@ export interface DocGroup {
   pageNumbers: boolean
   /** ISO date (yyyy-mm-dd); written as the PDF's creation & modification date on export. */
   documentDate: string | null
+  /** Titel, auteur, onderwerp en trefwoorden voor de export. */
+  properties?: DocProperties
 }
 
 export interface SignatureAsset {

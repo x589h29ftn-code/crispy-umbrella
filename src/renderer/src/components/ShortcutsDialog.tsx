@@ -36,6 +36,23 @@ const GROUPS: { title: string; items: [string, string][] }[] = [
     ]
   },
   {
+    title: 'Gereedschap in het leestabblad',
+    items: [
+      ['V', 'Selecteren'],
+      ['M', 'Markeren'],
+      ['P', 'Tekenen'],
+      ['S', 'Vormen'],
+      ['K', 'Stempel'],
+      ['T', 'Tekst plaatsen'],
+      ['B', 'Bestaande tekst bewerken'],
+      ['I', 'Invulveld maken (formulier bouwen)'],
+      ['F', 'Formulier invullen'],
+      ['R', 'Redigeren (zwartlakken)'],
+      ['C', 'Commentaar'],
+      ['E', 'Gum']
+    ]
+  },
+  {
     title: 'Bewerken',
     items: [
       ['Ctrl + Z', 'Ongedaan maken'],

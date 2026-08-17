@@ -16,7 +16,8 @@ import {
   TEXT_COLORS
 } from '../../lib/annotationStyle'
 import { ShapePreviewIcon, SHAPE_LABELS, STAMP_PRESETS } from '../../lib/shapes'
-import type { AnnotationFont, PageRef, ShapeKind, SourceFile } from '../../types'
+import { FIELD_KIND_HINTS, FIELD_KIND_LABELS, FIELD_KINDS } from '../../lib/formFields'
+import type { AnnotationFont, FieldKind, PageRef, ShapeKind, SourceFile } from '../../types'
 import EditorPage, { type EditorMode, type EditorSelection, type ToolSettings } from './EditorPage'
 import {
   IconAlignCenter,
@@ -28,23 +29,30 @@ import {
   IconClose,
   IconComment,
   IconBookmark,
+  IconCalendar,
   IconCursor,
   IconEditText,
+  IconCheckbox,
+  IconDropdown,
   IconEraser,
   IconExpand,
+  IconFieldPlus,
   IconForm,
   IconGridView,
   IconGrip,
+  IconHash,
   IconHighlighter,
   IconMinus,
   IconMoonStars,
   IconPen,
   IconPlus,
+  IconRadio,
   IconRedact,
   IconRotate,
   IconShapes,
   IconStamp,
   IconTrash,
+  IconSignature,
   IconType
 } from '../icons'
 
@@ -58,6 +66,7 @@ const MODE_SHORTCUTS: Record<string, EditorMode> = {
   s: 'shape',
   k: 'stamp',
   f: 'form',
+  i: 'field',
   t: 'text',
   b: 'edittext',
   r: 'redact',
@@ -136,6 +145,18 @@ function RailThumb({
   )
 }
 
+/** Pictogram per veldsoort in het formuliergereedschap. */
+const FIELD_KIND_ICONS: Record<FieldKind, JSX.Element> = {
+  text: <IconFieldPlus size={14} />,
+  multiline: <IconType size={14} />,
+  date: <IconCalendar size={14} />,
+  amount: <IconHash size={14} />,
+  checkbox: <IconCheckbox size={14} />,
+  radio: <IconRadio size={14} />,
+  dropdown: <IconDropdown size={14} />,
+  signature: <IconSignature size={14} />
+}
+
 /** Uitlijnknoppen voor het tekstgereedschap. */
 const ALIGN_OPTIONS = TEXT_ALIGNMENTS.map(({ key, label }) => ({
   key,
@@ -211,7 +232,12 @@ export default function EditorView({ groupId }: Props): JSX.Element | null {
     shapeKind: 'arrow',
     shapeColor: TEXT_COLORS[1],
     shapeWidth: INK_WIDTHS[1],
-    stampKey: STAMP_PRESETS[0].key
+    stampKey: STAMP_PRESETS[0].key,
+    fieldKind: 'text',
+    fieldLabel: '',
+    fieldGroup: 'Keuze',
+    fieldOptions: '',
+    fieldRequired: false
   })
 
   const selectedAnnotation = useMemo(() => {
@@ -430,6 +456,10 @@ export default function EditorView({ groupId }: Props): JSX.Element | null {
   const showShape = mode === 'shape' || selectedAnnotation?.type === 'shape'
   const showStamp = mode === 'stamp'
   const shownShape = selectedAnnotation?.type === 'shape' ? selectedAnnotation : null
+  const shownField = selectedAnnotation?.type === 'field' ? selectedAnnotation : null
+  const showField = mode === 'field' || Boolean(shownField)
+  /** Welke veldsoort de instellingen laten zien: die van het gekozen veld, anders het gereedschap. */
+  const activeFieldKind: FieldKind = shownField?.fieldKind ?? settings.fieldKind
 
   // Single/spread fit the window like a real reader: zoom 1 = the page(s)
   // exactly fill the available space (no dead margins), zooming multiplies.
@@ -460,6 +490,12 @@ export default function EditorView({ groupId }: Props): JSX.Element | null {
     { key: 'shape', label: 'Vormen', icon: <IconShapes size={15} />, title: 'Sleep een pijl, lijn, rechthoek of ovaal' },
     { key: 'stamp', label: 'Stempel', icon: <IconStamp size={15} />, title: 'Klik op de pagina om een stempel te plaatsen' },
     { key: 'form', label: 'Formulier', icon: <IconForm size={15} />, title: 'Vul formuliervelden in dit document in' },
+    {
+      key: 'field',
+      label: 'Invulveld',
+      icon: <IconFieldPlus size={15} />,
+      title: 'Formulier bouwen: sleep een vak of klik om een invulveld te plaatsen'
+    },
     { key: 'text', label: 'Tekst', icon: <IconType size={15} />, title: 'Klik op de pagina om tekst te plaatsen' },
     { key: 'edittext', label: 'Tekst bewerken', icon: <IconEditText size={15} />, title: 'Klik op een bestaande tekstregel' },
     { key: 'redact', label: 'Redigeren', icon: <IconRedact size={15} />, title: 'Zwartlakken — inhoud verdwijnt echt bij export' },
@@ -766,7 +802,9 @@ export default function EditorView({ groupId }: Props): JSX.Element | null {
           </button>
         ))}
 
-        {(showHighlight || showInk || showText || showShape || showStamp) && <div className="editor-tools__divider" />}
+        {(showHighlight || showInk || showText || showShape || showStamp || showField) && (
+          <div className="editor-tools__divider" />
+        )}
 
         {showShape && (
           <div className="editor-tools__settings">
@@ -814,6 +852,99 @@ export default function EditorView({ groupId }: Props): JSX.Element | null {
                   <span style={{ width: 4 + width * 2, height: 4 + width * 2 }} />
                 </button>
               ))}
+            </div>
+          </div>
+        )}
+
+        {showField && (
+          <div className="editor-tools__settings">
+            <div className="editor-tools__fields">
+              {FIELD_KINDS.map((kind) => (
+                <button
+                  key={kind}
+                  type="button"
+                  className={`field-chip${activeFieldKind === kind ? ' field-chip--active' : ''}`}
+                  title={FIELD_KIND_HINTS[kind]}
+                  onClick={() => {
+                    setSettings((s) => ({ ...s, fieldKind: kind }))
+                    if (shownField) patchSelected({ fieldKind: kind })
+                  }}
+                >
+                  {FIELD_KIND_ICONS[kind]}
+                  <span>{FIELD_KIND_LABELS[kind]}</span>
+                </button>
+              ))}
+            </div>
+            <input
+              type="text"
+              className="editor-tools__input"
+              placeholder={`Label (${FIELD_KIND_LABELS[activeFieldKind]})`}
+              title="Het opschrift bij het veld; ook de veldnaam in de PDF"
+              value={shownField ? shownField.label : settings.fieldLabel}
+              onChange={(e) => {
+                const label = e.target.value
+                if (shownField) patchSelected({ label })
+                else setSettings((s) => ({ ...s, fieldLabel: label }))
+              }}
+            />
+            {activeFieldKind === 'radio' && (
+              <input
+                type="text"
+                className="editor-tools__input"
+                placeholder="Groepsnaam (bv. Akkoord)"
+                title="Keuzerondjes met dezelfde groepsnaam sluiten elkaar uit"
+                value={shownField ? (shownField.group ?? '') : settings.fieldGroup}
+                onChange={(e) => {
+                  const group = e.target.value
+                  if (shownField) patchSelected({ group })
+                  else setSettings((s) => ({ ...s, fieldGroup: group }))
+                }}
+              />
+            )}
+            {(activeFieldKind === 'dropdown' || activeFieldKind === 'radio') && (
+              <input
+                type="text"
+                className="editor-tools__input"
+                placeholder={activeFieldKind === 'radio' ? 'Waarde van dit rondje' : 'Keuzes, met komma’s'}
+                title={
+                  activeFieldKind === 'radio'
+                    ? 'De waarde die deze keuze in de PDF krijgt'
+                    : 'De keuzes in de lijst, gescheiden door komma’s'
+                }
+                value={shownField ? (shownField.options ?? []).join(', ') : settings.fieldOptions}
+                onChange={(e) => {
+                  const text = e.target.value
+                  if (shownField) {
+                    patchSelected({
+                      options: text
+                        .split(/[,;]/)
+                        .map((o) => o.trim())
+                        .filter(Boolean)
+                    })
+                  } else {
+                    setSettings((s) => ({ ...s, fieldOptions: text }))
+                  }
+                }}
+              />
+            )}
+            {activeFieldKind !== 'signature' && (
+              <label className="editbar__checkbox" title="De ontvanger moet dit veld invullen">
+                <input
+                  type="checkbox"
+                  checked={shownField ? Boolean(shownField.required) : settings.fieldRequired}
+                  onChange={(e) => {
+                    const required = e.target.checked
+                    if (shownField) patchSelected({ required })
+                    else setSettings((s) => ({ ...s, fieldRequired: required }))
+                  }}
+                />
+                Verplicht invullen
+              </label>
+            )}
+            <div className="editor-tools__hint">
+              {shownField
+                ? 'Sleep het vak om het te verplaatsen, of trek het hoekje groter.'
+                : 'Sleep een vak op de pagina, of klik voor een veld op standaardformaat. Bij het opslaan worden dit echte invulvelden.'}
             </div>
           </div>
         )}

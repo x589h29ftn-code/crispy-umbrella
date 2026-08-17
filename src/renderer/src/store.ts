@@ -3,7 +3,17 @@ import { nanoid } from 'nanoid'
 import type { ExportPermissions } from './lib/pdfEngine'
 import type { NumberFormatChoice } from './lib/numberFormat'
 import { isImageFileName, type ImagePageMode } from './lib/imageToPdf'
-import type { Annotation, DocGroup, PageComment, PageRef, SignatureAsset, SignaturePlacement, SourceFile, Watermark } from './types'
+import type {
+  Annotation,
+  DocGroup,
+  DocProperties,
+  PageComment,
+  PageRef,
+  SignatureAsset,
+  SignaturePlacement,
+  SourceFile,
+  Watermark
+} from './types'
 
 export interface LightboxState {
   open: boolean
@@ -122,6 +132,8 @@ const RESTORE_SESSION_STORAGE_KEY = 'pdf-studio-restore-session'
 const FULL_TOOLBAR_STORAGE_KEY = 'pdf-studio-full-toolbar'
 const NUMBER_FORMAT_STORAGE_KEY = 'pdf-studio-number-format'
 const IMAGE_PAGE_MODE_STORAGE_KEY = 'pdf-studio-image-page-mode'
+const PDFA_STORAGE_KEY = 'pdf-studio-pdfa-export'
+const CONFIRM_EXIT_STORAGE_KEY = 'pdf-studio-confirm-exit'
 const RAIL_WIDTH_STORAGE_KEY = 'pdf-studio-rail-width'
 const RAIL_COLLAPSED_STORAGE_KEY = 'pdf-studio-rail-collapsed'
 const TOOLS_COLLAPSED_STORAGE_KEY = 'pdf-studio-tools-collapsed'
@@ -183,6 +195,12 @@ interface StudioState {
   flattenForms: boolean
   /** Metadata opschonen bij export (auteur/maker/producer/XMP weg). */
   cleanMetadata: boolean
+  /** Als PDF/A-2b opslaan (archiefbestendig: lettertypen ingebed, kleurprofiel erbij). */
+  pdfaExport: boolean
+  /** Bevestiging vragen bij het afsluiten zolang er niet-opgeslagen werk is. */
+  confirmOnExit: boolean
+  /** Er zijn wijzigingen die nog niet zijn opgeslagen of geëxporteerd. */
+  unsavedChanges: boolean
   /**
    * Vorige sessie terugzetten bij het opstarten. Standaard uit: de app begint
    * leeg, zowel in het leestabblad als in het overzicht (samenvoegen/splitsen).
@@ -209,6 +227,10 @@ interface StudioState {
   setFormValue: (sourceId: string, fieldName: string, value: string | boolean) => void
   setFlattenForms: (flatten: boolean) => void
   setCleanMetadata: (clean: boolean) => void
+  setPdfaExport: (on: boolean) => void
+  setConfirmOnExit: (on: boolean) => void
+  /** Na een gelukte opslag/export: er staat niets meer open. */
+  markSaved: () => void
   setRestoreLastSession: (on: boolean) => void
   setFullToolbar: (on: boolean) => void
   setNumberFormat: (choice: NumberFormatChoice) => void
@@ -275,6 +297,8 @@ interface StudioState {
   /** Vervangt pagina's door hun opgeschoonde (afbeelding-)versie. */
   applyCleanedPages: (entries: { pageId: string; source: SourceFile }[]) => void
   setGroupWatermark: (groupId: string, watermark: Watermark | null) => void
+  /** Documenteigenschappen (titel, auteur, onderwerp, trefwoorden) vastleggen. */
+  setGroupProperties: (groupId: string, properties: DocProperties) => void
   toggleGroupPageNumbers: (groupId: string) => void
   setGroupDocumentDate: (groupId: string, documentDate: string | null) => void
   setActiveGroup: (groupId: string) => void
@@ -334,6 +358,9 @@ interface StudioState {
   /** Voorkeuren-scherm. */
   preferencesOpen: boolean
   setPreferencesOpen: (open: boolean) => void
+  /** Documenteigenschappen-venster: het document waarvan de eigenschappen open staan. */
+  docPropertiesGroupId: string | null
+  setDocPropertiesOpen: (groupId: string | null) => void
   /** Prullenbak: pagina's die deze sessie zijn verwijderd, om terug te halen. */
   trash: TrashedPage[]
   trashPanelOpen: boolean
@@ -519,6 +546,11 @@ export const useStudioStore = create<StudioState>((set, get) => ({
   formValues: {},
   flattenForms: window.localStorage.getItem(FLATTEN_STORAGE_KEY) === '1',
   cleanMetadata: window.localStorage.getItem(CLEAN_META_STORAGE_KEY) === '1',
+  pdfaExport: window.localStorage.getItem(PDFA_STORAGE_KEY) === '1',
+  // Standaard aan: per ongeluk afsluiten met openstaand werk is duurder dan een
+  // extra klik.
+  confirmOnExit: window.localStorage.getItem(CONFIRM_EXIT_STORAGE_KEY) !== '0',
+  unsavedChanges: false,
   restoreLastSession: window.localStorage.getItem(RESTORE_SESSION_STORAGE_KEY) === '1',
   fullToolbar: window.localStorage.getItem(FULL_TOOLBAR_STORAGE_KEY) === '1',
   numberFormat: ((): NumberFormatChoice => {
@@ -551,6 +583,15 @@ export const useStudioStore = create<StudioState>((set, get) => ({
     window.localStorage.setItem(CLEAN_META_STORAGE_KEY, clean ? '1' : '0')
     set({ cleanMetadata: clean })
   },
+  setPdfaExport: (on) => {
+    window.localStorage.setItem(PDFA_STORAGE_KEY, on ? '1' : '0')
+    set({ pdfaExport: on })
+  },
+  setConfirmOnExit: (on) => {
+    window.localStorage.setItem(CONFIRM_EXIT_STORAGE_KEY, on ? '1' : '0')
+    set({ confirmOnExit: on })
+  },
+  markSaved: () => set({ unsavedChanges: false }),
   setRestoreLastSession: (on) => {
     window.localStorage.setItem(RESTORE_SESSION_STORAGE_KEY, on ? '1' : '0')
     set({ restoreLastSession: on })
@@ -661,10 +702,13 @@ export const useStudioStore = create<StudioState>((set, get) => ({
     })
   },
 
+  // Elke wijziging aan de documenten loopt hierlangs, dus dit is ook de plek om
+  // te onthouden dat er nog iets openstaat (voor de vraag bij het afsluiten).
   markHistory: () => {
     set((state) => ({
       past: [...state.past.slice(-(HISTORY_LIMIT - 1)), state.groups],
-      future: []
+      future: [],
+      unsavedChanges: true
     }))
   },
 
@@ -1117,6 +1161,13 @@ export const useStudioStore = create<StudioState>((set, get) => ({
     }))
   },
 
+  setGroupProperties: (groupId, properties) => {
+    get().markHistory()
+    set((state) => ({
+      groups: state.groups.map((g) => (g.id === groupId ? { ...g, properties } : g))
+    }))
+  },
+
   toggleGroupPageNumbers: (groupId) => {
     get().markHistory()
     set((state) => ({
@@ -1260,6 +1311,8 @@ export const useStudioStore = create<StudioState>((set, get) => ({
   setShortcutsOpen: (open) => set({ shortcutsOpen: open }),
   preferencesOpen: false,
   setPreferencesOpen: (open) => set({ preferencesOpen: open }),
+  docPropertiesGroupId: null,
+  setDocPropertiesOpen: (groupId) => set({ docPropertiesGroupId: groupId }),
   trash: [],
   trashPanelOpen: false,
   setTrashPanelOpen: (open) => set({ trashPanelOpen: open }),

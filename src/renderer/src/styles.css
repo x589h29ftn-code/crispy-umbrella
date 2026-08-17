@@ -1151,6 +1151,10 @@ body {
 .prefs-card {
   width: 460px;
   max-width: 92vw;
+  /* Op een laptopscherm past de hele lijst niet: binnen de kaart scrollen in
+     plaats van boven en onder buiten het venster vallen. */
+  max-height: 88vh;
+  overflow-y: auto;
 }
 
 .prefs-row {
@@ -2115,12 +2119,19 @@ button.group-row__date:hover {
   background: rgba(59, 130, 246, 0.06);
   display: flex;
   align-items: flex-start;
+  position: relative;
   pointer-events: none;
 }
+
+/* Het opschrift staat boven het vak — precies zoals het in de opgeslagen PDF
+   getekend wordt. */
 .annotation-overlay__field-label {
+  position: absolute;
+  left: 0;
+  bottom: calc(100% + 1px);
   font-size: 10px;
+  line-height: 1.2;
   color: #4b5563;
-  padding: 2px 5px;
   white-space: nowrap;
 }
 
@@ -6021,4 +6032,198 @@ button.group-row__date:hover {
   font-size: 10.5px;
   font-weight: 700;
   letter-spacing: 0.04em;
+}
+
+/* ---------- Formulier bouwen: invulvelden plaatsen ---------- */
+.editor-tools__fields {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 4px;
+}
+
+.field-chip {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  padding: 5px 6px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--panel-2);
+  color: var(--text-dim);
+  font-size: 11px;
+  line-height: 1.2;
+  text-align: left;
+  cursor: pointer;
+}
+
+.field-chip span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.field-chip:hover {
+  color: var(--text);
+  border-color: var(--accent-dim, var(--border-strong, var(--border)));
+}
+
+.field-chip--active {
+  color: var(--text);
+  border-color: var(--accent);
+  background: var(--accent-soft, rgba(59, 130, 246, 0.14));
+}
+
+.editor-tools__input {
+  width: 100%;
+  box-sizing: border-box;
+  background: var(--panel-2);
+  border: 1px solid var(--border);
+  color: var(--text);
+  border-radius: var(--radius-sm);
+  padding: 6px 8px;
+  font-size: 12.5px;
+  outline: none;
+}
+
+.editor-tools__input:focus {
+  border-color: var(--accent);
+}
+
+/* Het veld zoals het op de pagina te zien is (in de PDF wordt het een echt
+   AcroForm-veld; hier tonen we alleen hoe het eruit komt te zien). */
+.annotation-overlay__field--checkbox,
+.annotation-overlay__field--radio {
+  border: none;
+  background: transparent;
+  position: relative;
+  overflow: visible;
+}
+
+.annotation-overlay__field-box {
+  position: absolute;
+  inset: 0;
+  box-sizing: border-box;
+  border: 1px solid #64748b;
+  background: rgba(59, 130, 246, 0.1);
+}
+
+.annotation-overlay__field--radio .annotation-overlay__field-box {
+  border-radius: 50%;
+}
+
+/* Het opschrift staat naast het vakje, net zoals het in de PDF getekend wordt. */
+.annotation-overlay__field-beside {
+  position: absolute;
+  left: calc(100% + 4px);
+  top: 50%;
+  transform: translateY(-50%);
+  font-size: 10px;
+  color: #4b5563;
+  white-space: nowrap;
+}
+
+.annotation-overlay__field--signature {
+  align-items: flex-end;
+  position: relative;
+}
+
+.annotation-overlay__field-line {
+  position: absolute;
+  left: 6%;
+  right: 6%;
+  bottom: 26%;
+  height: 0;
+  border-top: 1px solid #64748b;
+}
+
+.annotation-overlay__field-caret {
+  margin-left: auto;
+  align-self: center;
+  font-size: 10px;
+  color: #4b5563;
+  padding-right: 4px;
+}
+
+/* ---------- Slim splitsen: manier van knippen kiezen ---------- */
+.split-modes {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 6px;
+}
+
+.split-mode {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 8px 10px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--panel-2);
+  color: var(--text);
+  text-align: left;
+  cursor: pointer;
+}
+
+.split-mode:hover {
+  border-color: var(--accent);
+}
+
+.split-mode--active {
+  border-color: var(--accent);
+  background: var(--accent-soft, rgba(59, 130, 246, 0.14));
+}
+
+.split-mode__label {
+  font-size: 12.5px;
+  font-weight: 600;
+}
+
+.split-mode__hint {
+  font-size: 11px;
+  color: var(--text-dim);
+  line-height: 1.4;
+}
+
+.split-every {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-size: 12.5px;
+  color: var(--text-dim);
+}
+
+.split-every__input {
+  width: 80px;
+}
+
+/* ---------- Documenteigenschappen ---------- */
+.docprops-card {
+  max-width: 560px;
+}
+
+.docprops-field {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+
+.docprops-field .prefs-input {
+  width: 100%;
+  box-sizing: border-box;
+}
+
+.docprops-info {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 10px 12px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--panel-2);
+}
+
+.docprops-info > div {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
 }

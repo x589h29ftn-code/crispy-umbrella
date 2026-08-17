@@ -29,6 +29,7 @@ const CompareView = lazy(() => import('./components/CompareView'))
 const SmartDialog = lazy(() => import('./components/SmartDialog'))
 const TemplatesDialog = lazy(() => import('./components/TemplatesDialog'))
 const SigningDialog = lazy(() => import('./components/SigningDialog'))
+const DocPropertiesDialog = lazy(() => import('./components/DocPropertiesDialog'))
 import { cancelDrag, isDragActive } from './lib/dragController'
 import { useStudioStore } from './store'
 
@@ -80,8 +81,21 @@ export default function App(): JSX.Element {
   const smartDialogOpen = useStudioStore((s) => s.smartDialogOpen)
   const templatesDialogOpen = useStudioStore((s) => s.templatesDialogOpen)
   const signingDialogOpen = useStudioStore((s) => s.signingDialogOpen)
+  const docPropertiesOpen = useStudioStore((s) => s.docPropertiesGroupId !== null)
 
   useEffect(() => window.api.onFilesOpened((files) => void useStudioStore.getState().importFiles(files)), [])
+
+  // "Zeker weten afsluiten": het hoofdproces hoeft alleen te weten óf er nog
+  // niet-opgeslagen bewerkingen zijn; het venster vraagt het dan zelf na.
+  useEffect(() => {
+    const report = (): void => {
+      if (typeof window.api?.setCloseGuard !== 'function') return
+      const state = useStudioStore.getState()
+      window.api.setCloseGuard(state.confirmOnExit && state.unsavedChanges && state.groups.length > 0)
+    }
+    report()
+    return useStudioStore.subscribe(report)
+  }, [])
 
   useEffect(() => {
     document.documentElement.setAttribute('data-theme', theme)
@@ -217,6 +231,7 @@ export default function App(): JSX.Element {
         {smartDialogOpen && <SmartDialog />}
         {templatesDialogOpen && <TemplatesDialog />}
         {signingDialogOpen && <SigningDialog />}
+        {docPropertiesOpen && <DocPropertiesDialog />}
       </Suspense>
       <ImportProgress />
       <SelectionBar />

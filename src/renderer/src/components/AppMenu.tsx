@@ -21,6 +21,7 @@ import {
   IconFolderOpen,
   IconForm,
   IconGridView,
+  IconInfo,
   IconKeyboard,
   IconMail,
   IconMarkdown,
@@ -28,6 +29,7 @@ import {
   IconMoon,
   IconPrinter,
   IconRemarkable,
+  IconScissors,
   IconSearch,
   IconSettings,
   IconShield,
@@ -65,6 +67,7 @@ export default function AppMenu(): JSX.Element {
   const setTemplatesDialogOpen = useStudioStore((s) => s.setTemplatesDialogOpen)
   const setSigningDialogOpen = useStudioStore((s) => s.setSigningDialogOpen)
   const setPreferencesOpen = useStudioStore((s) => s.setPreferencesOpen)
+  const setDocPropertiesOpen = useStudioStore((s) => s.setDocPropertiesOpen)
   const setShortcutsOpen = useStudioStore((s) => s.setShortcutsOpen)
   const setTrashPanelOpen = useStudioStore((s) => s.setTrashPanelOpen)
 
@@ -143,6 +146,24 @@ export default function AppMenu(): JSX.Element {
           >
             <IconGridView size={15} />
             <span>Document splitsen…</span>
+          </button>
+          <button
+            type="button"
+            className="app-menu__item"
+            disabled={!hasDoc}
+            onClick={() => run(() => setSmartDialogOpen(true, 'split'))}
+          >
+            <IconScissors size={15} />
+            <span>Slim splitsen (per hoofdstuk)…</span>
+          </button>
+          <button
+            type="button"
+            className="app-menu__item"
+            disabled={!hasDoc}
+            onClick={() => run(() => activeGroup && setDocPropertiesOpen(activeGroup.id))}
+          >
+            <IconInfo size={15} />
+            <span>Documenteigenschappen…</span>
           </button>
 
           {recents.length > 0 && (

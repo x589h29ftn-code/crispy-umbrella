@@ -119,6 +119,11 @@ const api = {
     ipcRenderer.invoke('remarkable:upload', name, data),
   /** Meldt het gekozen thema zodat een volgend venster meteen goed opent. */
   setWindowTheme: (theme: 'dark' | 'light'): void => ipcRenderer.send('prefs:theme', theme),
+  /**
+   * Meldt of er niet-opgeslagen bewerkingen zijn. Staat dit aan, dan vraagt het
+   * venster bij afsluiten eerst om bevestiging.
+   */
+  setCloseGuard: (dirty: boolean): void => ipcRenderer.send('window:closeGuard', dirty),
   getAppVersion: (): Promise<string> => ipcRenderer.invoke('app:version'),
   installUpdate: (): Promise<void> => ipcRenderer.invoke('update:install'),
   onUpdateEvent: (callback: (event: { type: string; version?: string }) => void): (() => void) => {

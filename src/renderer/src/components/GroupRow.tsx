@@ -16,6 +16,7 @@ import {
   IconFolderOpen,
   IconGrip,
   IconHash,
+  IconInfo,
   IconMerge,
   IconMore,
   IconPlus,
@@ -69,6 +70,7 @@ export default function GroupRow({ group, index, isLast, sources, isActive }: Pr
   const openEditorTab = useStudioStore((s) => s.openEditorTab)
   const mergeGroupInto = useStudioStore((s) => s.mergeGroupInto)
   const setSmartDialogOpen = useStudioStore((s) => s.setSmartDialogOpen)
+  const setDocPropertiesOpen = useStudioStore((s) => s.setDocPropertiesOpen)
   const setActiveGroupStore = useStudioStore((s) => s.setActiveGroup)
   const otherGroups = useStudioStore((s) => s.groups.filter((g) => g.id !== group.id))
   const busyExport = useStudioStore((s) => s.busyExport)
@@ -417,7 +419,18 @@ export default function GroupRow({ group, index, isLast, sources, isActive }: Pr
                     }}
                   >
                     <IconScissors size={14} />
-                    Splitsen op inhoudsopgave…
+                    Slim splitsen…
+                  </button>
+                  <button
+                    type="button"
+                    className="dropdown-menu__item"
+                    onClick={() => {
+                      closeMenu()
+                      setDocPropertiesOpen(group.id)
+                    }}
+                  >
+                    <IconInfo size={14} />
+                    Eigenschappen…
                   </button>
                   <button type="button" className="dropdown-menu__item" onClick={() => setMenuView('watermark')}>
                     <IconStamp size={14} />

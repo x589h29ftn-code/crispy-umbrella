@@ -13,6 +13,7 @@ import {
   type SignatureVisualBox
 } from '../../lib/pdfEngine'
 import { ANNOTATION_FONT_CSS, textDecorationOf } from '../../lib/annotationStyle'
+import { defaultFieldSize, FIELD_KIND_LABELS } from '../../lib/formFields'
 import { bandTextRects, getTextLineBoxes, type TextLineBox } from '../../lib/textLines'
 import { renderTextSelectionLayer, selectionLineRects, type SelectionLineRect } from '../../lib/textLayer'
 import { isScrolling, onScrollState } from '../../lib/scrollGate'
@@ -24,6 +25,7 @@ import { buildStampSub, ShapeGeometry, STAMP_PRESETS } from '../../lib/shapes'
 import type {
   Annotation,
   FieldAnnotation,
+  FieldKind,
   HighlightAnnotation,
   InkAnnotation,
   PageComment,
@@ -49,6 +51,7 @@ export type EditorMode =
   | 'shape'
   | 'stamp'
   | 'form'
+  | 'field'
 
 export interface ToolSettings {
   highlightColor: string
@@ -69,6 +72,16 @@ export interface ToolSettings {
   shapeColor: string
   shapeWidth: number
   stampKey: string
+  /** Formulier bouwen: welk soort invulveld je plaatst. */
+  fieldKind: FieldKind
+  /** Label bij het veld (ook de veldnaam in de PDF als er geen eigen naam is). */
+  fieldLabel: string
+  /** Groepsnaam voor keuzerondjes die elkaar uitsluiten. */
+  fieldGroup: string
+  /** Keuzes voor een keuzelijst, of de waarde van dit keuzerondje (komma's). */
+  fieldOptions: string
+  /** Veld verplicht invullen. */
+  fieldRequired: boolean
 }
 
 export interface EditorSelection {
@@ -515,7 +528,7 @@ export default function EditorPage({
     const overText = (e.target as HTMLElement | null)?.tagName === 'SPAN'
     if (mode === 'highlight' && overText) return
 
-    if (mode === 'highlight' || mode === 'redact' || mode === 'shape') {
+    if (mode === 'highlight' || mode === 'redact' || mode === 'shape' || mode === 'field') {
       e.preventDefault()
       e.currentTarget.setPointerCapture(e.pointerId)
       bandRef.current = { x1: point.x, y1: point.y }
@@ -579,6 +592,44 @@ export default function EditorPage({
       const top = Math.min(finished.y1, finished.y2)
       const width = Math.abs(finished.x2 - finished.x1)
       const height = Math.abs(finished.y2 - finished.y1)
+
+      // Invulveld: slepen bepaalt het vak; één klik plaatst een veld op
+      // standaardformaat (een vinkje is nu eenmaal niet te slepen).
+      if (mode === 'field') {
+        const preset = defaultFieldSize(settings.fieldKind)
+        const dragged = width * scale >= 8 && height * scale >= 8
+        const box = {
+          x: dragged ? left : finished.x1,
+          y: dragged ? top : finished.y1,
+          width: dragged ? width : preset.width,
+          height: dragged ? height : preset.height
+        }
+        void visualRectToContentRect(source, page.sourcePageIndex, page.rotation, {
+          xPct: box.x / pageVisualSize.width,
+          yPct: box.y / pageVisualSize.height,
+          wPct: box.width / pageVisualSize.width,
+          hPct: box.height / pageVisualSize.height
+        }).then((rect) => {
+          const options = settings.fieldOptions
+            .split(/[,;\n]/)
+            .map((o) => o.trim())
+            .filter(Boolean)
+          const annotation: FieldAnnotation = {
+            id: nanoid(),
+            type: 'field',
+            ...rect,
+            fieldKind: settings.fieldKind,
+            label: settings.fieldLabel.trim() || FIELD_KIND_LABELS[settings.fieldKind],
+            group: settings.fieldKind === 'radio' ? settings.fieldGroup.trim() || undefined : undefined,
+            options: options.length ? options : undefined,
+            required: settings.fieldRequired || undefined
+          }
+          addAnnotation(page.id, annotation)
+          onSelect({ pageId: page.id, annotationId: annotation.id })
+        })
+        return
+      }
+
       if (width * scale < MIN_HIGHLIGHT_SIZE_PX || height * scale < MIN_HIGHLIGHT_SIZE_PX) return
       const bandMode = mode
 
@@ -1075,8 +1126,28 @@ export default function EditorPage({
         }}
       >
         {annotation.type === 'field' ? (
-          <div className={`annotation-overlay__field annotation-overlay__field--${annotation.fieldKind}`}>
-            <span className="annotation-overlay__field-label">{annotation.label}</span>
+          <div
+            className={`annotation-overlay__field annotation-overlay__field--${annotation.fieldKind}`}
+            title={`${FIELD_KIND_LABELS[annotation.fieldKind]}${annotation.required ? ' (verplicht)' : ''}`}
+          >
+            {annotation.fieldKind === 'checkbox' || annotation.fieldKind === 'radio' ? (
+              <>
+                <span className="annotation-overlay__field-box" />
+                <span className="annotation-overlay__field-beside">
+                  {annotation.label}
+                  {annotation.required ? ' *' : ''}
+                </span>
+              </>
+            ) : (
+              <>
+                <span className="annotation-overlay__field-label">
+                  {annotation.label}
+                  {annotation.required ? ' *' : ''}
+                </span>
+                {annotation.fieldKind === 'dropdown' && <span className="annotation-overlay__field-caret">▾</span>}
+                {annotation.fieldKind === 'signature' && <span className="annotation-overlay__field-line" />}
+              </>
+            )}
           </div>
         ) : annotation.type === 'redact' ? (
           <div className={`annotation-overlay__redact annotation-overlay__redact--${annotation.fill}`} />
@@ -1147,7 +1218,7 @@ export default function EditorPage({
   }
 
   const modeClass =
-    mode === 'highlight' || mode === 'redact' || mode === 'shape'
+    mode === 'highlight' || mode === 'redact' || mode === 'shape' || mode === 'field'
       ? ' lightbox__page-wrap--highlighting'
       : mode === 'text' || mode === 'stamp'
         ? ' lightbox__page-wrap--texting'
@@ -1318,8 +1389,8 @@ export default function EditorPage({
               top: Math.min(band.y1, band.y2) * scale,
               width: Math.abs(band.x2 - band.x1) * scale,
               height: Math.abs(band.y2 - band.y1) * scale,
-              background: mode === 'redact' ? '#000' : settings.highlightColor,
-              opacity: mode === 'redact' ? 0.85 : settings.highlightOpacity
+              background: mode === 'redact' ? '#000' : mode === 'field' ? '#3b82f6' : settings.highlightColor,
+              opacity: mode === 'redact' ? 0.85 : mode === 'field' ? 0.3 : settings.highlightOpacity
             }}
           />
         )}

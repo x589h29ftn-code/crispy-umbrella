@@ -144,6 +144,45 @@ async function sendFilesToWindow(win: BrowserWindow, paths: string[]): Promise<v
   }
 }
 
+/**
+ * Bevestiging bij afsluiten. De renderer meldt of er nog niet-opgeslagen werk
+ * openstaat (per venster); zo ja, dan vragen we het na met een echt
+ * Windows-venster in plaats van de app zonder waarschuwing te laten verdwijnen.
+ */
+const closeGuards = new Map<number, boolean>()
+/** Vensters die na een bevestigd "Afsluiten" alsnog dicht mogen. */
+const closeConfirmed = new Set<number>()
+
+function attachCloseGuard(win: BrowserWindow): void {
+  win.on('close', (event) => {
+    if (closeConfirmed.has(win.id) || !closeGuards.get(win.id)) return
+    event.preventDefault()
+    void dialog
+      .showMessageBox(win, {
+        type: 'question',
+        buttons: ['Afsluiten', 'Annuleren'],
+        defaultId: 1,
+        cancelId: 1,
+        noLink: true,
+        title: 'PDF Studio afsluiten',
+        message: 'Weet je zeker dat je PDF Studio wilt afsluiten?',
+        detail:
+          'Er zijn bewerkingen die nog niet zijn opgeslagen. Als je nu afsluit gaan die verloren. ' +
+          'Annuleer en gebruik Ctrl+S (of Opslaan als PDF) om je werk te bewaren.'
+      })
+      .then(({ response }) => {
+        if (response !== 0) return
+        closeConfirmed.add(win.id)
+        closeGuards.delete(win.id)
+        win.close()
+      })
+  })
+  win.on('closed', () => {
+    closeGuards.delete(win.id)
+    closeConfirmed.delete(win.id)
+  })
+}
+
 function createWindow(): void {
   const saved = usableBounds()
   const win = new BrowserWindow({
@@ -187,6 +226,8 @@ function createWindow(): void {
     if (mainWindow === win) mainWindow = null
   })
 
+  attachCloseGuard(win)
+
   win.webContents.setWindowOpenHandler((details) => {
     shell.openExternal(details.url)
     return { action: 'deny' }
@@ -228,6 +269,7 @@ function createDetachedWindow(handoffId: string): void {
     }
   })
   win.on('ready-to-show', () => win.show())
+  attachCloseGuard(win)
   win.webContents.setWindowOpenHandler((details) => {
     shell.openExternal(details.url)
     return { action: 'deny' }
@@ -276,6 +318,15 @@ app.whenReady().then(() => {
     if (windowPrefs.theme === theme) return
     windowPrefs.theme = theme
     saveWindowPrefs()
+  })
+
+  // De renderer meldt of er nog niet-opgeslagen bewerkingen zijn; op basis
+  // daarvan vraagt het venster bij afsluiten om bevestiging.
+  ipcMain.on('window:closeGuard', (evt, dirty: boolean) => {
+    const win = BrowserWindow.fromWebContents(evt.sender)
+    if (!win) return
+    if (dirty) closeGuards.set(win.id, true)
+    else closeGuards.delete(win.id)
   })
 
   ipcMain.handle('print:html', async (_evt, html: string) => {
