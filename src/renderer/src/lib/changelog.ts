@@ -4,6 +4,20 @@
  */
 export const APP_CHANGELOG: { version: string; items: string[] }[] = [
   {
+    version: '1.15.0',
+    items: [
+      'Vergelijken telt eerlijker. "Toegevoegd" is een regel die alleen in de nieuwe versie staat, "Verwijderd" een regel die alleen in de oude versie staat, en "Gewijzigd" is één regel die is herschreven (je ziet oud én nieuw onder elkaar). Dat laatste werd bepaald op de plek op de pagina: stond er links iets weg en rechts iets nieuws op dezelfde hoogte, dan heette dat "gewijzigd" — ook als het twee totaal verschillende zinnen waren. Nu wordt gekeken of de teksten echt op elkaar lijken (minstens 45% overeenkomst in woorden, bij korte regels in letterparen)',
+      'Pagina\'s worden voortaan bij elkaar gezocht op inhoud in plaats van op nummer. Eén ingevoegde pagina zette voorheen alles daarna scheef: pagina 3 werd met 4 vergeleken, 4 met 5, enzovoort, en dan lichtte de rest van het document op als "gewijzigd". Nu staat een ingevoegde pagina als "Pagina toegevoegd" in de lijst en staan de bij elkaar horende pagina\'s weer naast elkaar — de kop boven het paginapaar laat zien welke bij welke hoort ("Pagina 3 ↔ 4")',
+      'Gemeten op een testcontract van 5 tegen 6 pagina\'s met precies vier echte verschillen (een ingevoegde zin, een herschreven zin, een gewijzigd bedrag en een nieuwe pagina): voorheen meldde de vergelijker 26 wijzigingen, waarvan 18 "gewijzigd" die in werkelijkheid losse regels van verschillende artikelen waren. Nu zijn het er precies 4, en de drie ongewijzigde pagina\'s melden "gelijk"',
+      'Een bedrag in een genummerde opsomming wordt goed gelezen: "1. De vaste koopsom bedraagt EUR 450.000" telde de 1 van de opsomming als getal mee, waardoor het verschil niet uit te rekenen was. Nu staat er netjes 450.000 → 500.000 (+50.000, +11,1%)',
+      'Valse "gewijzigd bedrag"-meldingen zijn weg: bij een genummerde opsomming ("1. Bepaling nummer 1", "2. Bepaling nummer 2") vielen alle regels na het weglaten van de cijfers onder hetzelfde label, waardoor ongewijzigde pagina\'s een bedragwijziging meldden. Er wordt nu alleen gemeld wat aan één kant uniek is én daadwerkelijk anders',
+      'Nieuw in Vergelijken: markeren en opmerkingen. Met de drie knopjes in de balk kies je Bekijken, Markeren (sleep over de tekst) of Opmerking (klik op een plek en typ je notitie). Dat gebeurt in het document zelf — links of rechts, wat je aanwijst — dus je ziet het daarna ook terug in het leestabblad en het staat in de opgeslagen PDF',
+      'Bij elke regel in de wijzigingenlijst staan twee knopjes: markeer deze wijziging in het document, of zet er een opmerking bij. De opmerking krijgt automatisch de tekst van de wijziging mee, bijvoorbeeld "De vaste koopsom bedraagt EUR exclusief omzetbelasting: 450.000 → 500.000 (+50.000, +11.1%)". Een melding vertelt in welk document en op welke pagina het terecht is gekomen',
+      'De knop Opslaan in de vergelijkbalk bewaart het gemarkeerde document als PDF (met het aantal markeringen erbij, zodat je ziet welke versie je onder handen had). In hetzelfde menu staan nu ook het verschilrapport (PDF) en de jaar-op-jaar-export (Excel); die twee knoppen zijn daarmee uit de balk verdwenen, waardoor die op een laptopscherm weer op één regel past (gemeten: 50 pixels hoog bij 1152, 1280, 1440 en 1920 pixels breed)',
+      'Markeringen en opmerkingen die al in een document zitten worden in de vergelijking getoond, dus je ziet meteen wat er eerder is aangetekend'
+    ]
+  },
+  {
     version: '1.14.0',
     items: [
       'Nieuw: Documenteigenschappen (Menu → Documenteigenschappen, of "…" op een documentkaart). Titel, auteur, onderwerp, trefwoorden en de documentdatum vul je hier in, en ze komen bij het opslaan echt in de PDF terecht — in Acrobat te zien onder Bestand → Eigenschappen, en dat is waar een DMS of het archief op zoekt. Onderaan het venster staat wat het document is: aantal pagina\'s, markeringen, invulvelden, opmerkingen en de bronbestanden met hun grootte',

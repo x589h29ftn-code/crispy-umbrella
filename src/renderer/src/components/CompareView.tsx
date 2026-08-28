@@ -1,6 +1,15 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { nanoid } from 'nanoid'
 import { useStudioStore } from '../store'
-import { getPdfMetadata, renderThumbnail, type PdfMetadata } from '../lib/pdfRender'
+import {
+  contentPointsToVisualPoints,
+  getPdfMetadata,
+  getPlacementVisualBox,
+  renderThumbnail,
+  visualPointToContentPoint,
+  visualRectToContentRect,
+  type PdfMetadata
+} from '../lib/pdfRender'
 import {
   DEFAULT_DIFF_FILTER,
   diffDocuments,
@@ -14,9 +23,30 @@ import {
   type DiffFilter,
   type DocumentDiff
 } from '../lib/pdfDiff'
-import { IconCheck, IconChevronLeft, IconChevronRight, IconClose, IconFolderOpen, IconMinus, IconPlus } from './icons'
+import {
+  IconCheck,
+  IconChevronLeft,
+  IconChevronRight,
+  IconClose,
+  IconComment,
+  IconCursor,
+  IconDownload,
+  IconFile,
+  IconFolderOpen,
+  IconGridView,
+  IconHighlighter,
+  IconMinus,
+  IconPlus
+} from './icons'
 import ScanNotice from './ScanNotice'
-import type { DocGroup, PageRef, SourceFile } from '../types'
+import type { DocGroup, HighlightAnnotation, PageComment, PageRef, SourceFile } from '../types'
+
+/** Gereedschap in de vergelijker: kijken, markeren of een opmerking plaatsen. */
+type CompareTool = 'view' | 'highlight' | 'comment'
+
+/** Kleur van een markering die je in de vergelijker zet. */
+const MARK_COLOR = '#ffd54a'
+const MARK_OPACITY = 0.45
 
 const BASE_WIDTH = 460
 /** Horizontale padding van .compare-view__scroll (2 × 24 px). */
@@ -59,7 +89,8 @@ function ComparePane({
   marks,
   activeId,
   width,
-  renderWidth
+  renderWidth,
+  tool
 }: {
   page: PageRef | undefined
   size: { width: number; height: number } | undefined
@@ -68,11 +99,16 @@ function ComparePane({
   width: number
   /** Resolutie waarop de pagina getekend wordt (volgt de zoom en het scherm). */
   renderWidth: number
+  /** Actief gereedschap: kijken, markeren of een opmerking plaatsen. */
+  tool: CompareTool
 }): JSX.Element {
   const sources = useStudioStore((s) => s.sources)
+  const addAnnotation = useStudioStore((s) => s.addAnnotation)
+  const addComment = useStudioStore((s) => s.addComment)
   const [thumb, setThumb] = useState<string | null>(null)
   const [visible, setVisible] = useState(false)
   const rootRef = useRef<HTMLDivElement>(null)
+  const pageRef = useRef<HTMLDivElement>(null)
   const source: SourceFile | undefined = page ? sources.get(page.sourceId) : undefined
   const pageSize = size ?? { width: 595, height: 842 }
 
@@ -113,10 +149,162 @@ function ComparePane({
 
   const scale = width / pageSize.width
 
+  // Eigen markeringen en opmerkingen die al op deze pagina staan, zodat je in de
+  // vergelijking ziet wat je (of een collega) eerder heeft aangebracht.
+  const [ownMarks, setOwnMarks] = useState<{ id: string; left: number; top: number; width: number; height: number; color: string; opacity: number }[]>([])
+  const [pins, setPins] = useState<{ id: string; x: number; y: number; text: string; resolved: boolean }[]>([])
+  useEffect(() => {
+    let cancelled = false
+    if (!source || !page) {
+      setOwnMarks([])
+      setPins([])
+      return
+    }
+    const highlights = page.annotations.filter((a): a is HighlightAnnotation => a.type === 'highlight')
+    Promise.all([
+      Promise.all(
+        highlights.map(async (a) => {
+          const box = await getPlacementVisualBox(source, page.sourcePageIndex, page.rotation, a)
+          return {
+            id: a.id,
+            left: box.pivotX,
+            top: box.pivotY - box.height,
+            width: box.width,
+            height: box.height,
+            color: a.color,
+            opacity: a.opacity
+          }
+        })
+      ),
+      contentPointsToVisualPoints(
+        source,
+        page.sourcePageIndex,
+        page.rotation,
+        page.comments.map((c) => ({ x: c.x, y: c.y }))
+      )
+    ])
+      .then(([boxes, points]) => {
+        if (cancelled) return
+        setOwnMarks(boxes)
+        setPins(
+          page.comments.map((c, i) => ({ id: c.id, x: points[i]?.x ?? 0, y: points[i]?.y ?? 0, text: c.text, resolved: c.resolved }))
+        )
+      })
+      .catch(() => undefined)
+    return () => {
+      cancelled = true
+    }
+  }, [source, page])
+
+  // --- Zelf markeren / een opmerking plaatsen ---
+  const [band, setBand] = useState<{ x1: number; y1: number; x2: number; y2: number } | null>(null)
+  const bandStart = useRef<{ x: number; y: number } | null>(null)
+  const [draft, setDraft] = useState<{ x: number; y: number; value: string } | null>(null)
+  const editable = Boolean(page && source && tool !== 'view')
+
+  function pointOf(e: React.PointerEvent | React.MouseEvent): { x: number; y: number } | null {
+    const el = pageRef.current
+    if (!el) return null
+    const rect = el.getBoundingClientRect()
+    return { x: (e.clientX - rect.left) / scale, y: (e.clientY - rect.top) / scale }
+  }
+
+  function onPointerDown(e: React.PointerEvent<HTMLDivElement>): void {
+    if (!editable || tool !== 'highlight' || e.button !== 0) return
+    const p = pointOf(e)
+    if (!p) return
+    e.preventDefault()
+    e.currentTarget.setPointerCapture(e.pointerId)
+    bandStart.current = p
+    setBand({ x1: p.x, y1: p.y, x2: p.x, y2: p.y })
+  }
+
+  function onPointerMove(e: React.PointerEvent<HTMLDivElement>): void {
+    if (!bandStart.current) return
+    const p = pointOf(e)
+    if (!p) return
+    setBand({
+      x1: bandStart.current.x,
+      y1: bandStart.current.y,
+      x2: Math.min(pageSize.width, Math.max(0, p.x)),
+      y2: Math.min(pageSize.height, Math.max(0, p.y))
+    })
+  }
+
+  function onPointerUp(e: React.PointerEvent<HTMLDivElement>): void {
+    if (e.currentTarget.hasPointerCapture(e.pointerId)) e.currentTarget.releasePointerCapture(e.pointerId)
+    const finished = band
+    bandStart.current = null
+    setBand(null)
+    if (!finished || !page || !source) return
+    const left = Math.min(finished.x1, finished.x2)
+    const top = Math.min(finished.y1, finished.y2)
+    const w = Math.abs(finished.x2 - finished.x1)
+    const h = Math.abs(finished.y2 - finished.y1)
+    if (w * scale < 5 || h * scale < 5) return
+    void visualRectToContentRect(source, page.sourcePageIndex, page.rotation, {
+      xPct: left / pageSize.width,
+      yPct: top / pageSize.height,
+      wPct: w / pageSize.width,
+      hPct: h / pageSize.height
+    }).then((rect) => {
+      const annotation: HighlightAnnotation = {
+        id: nanoid(),
+        type: 'highlight',
+        ...rect,
+        color: MARK_COLOR,
+        opacity: MARK_OPACITY
+      }
+      addAnnotation(page.id, annotation)
+    })
+  }
+
+  function onPaneClick(e: React.MouseEvent<HTMLDivElement>): void {
+    if (!editable || tool !== 'comment') return
+    const p = pointOf(e)
+    if (!p) return
+    setDraft({ x: p.x, y: p.y, value: '' })
+  }
+
+  function commitDraft(): void {
+    const d = draft
+    setDraft(null)
+    if (!d || !page || !source) return
+    const text = d.value.trim()
+    if (!text) return
+    void visualPointToContentPoint(source, page.sourcePageIndex, page.rotation, d.x, d.y).then(({ x, y }) => {
+      const comment: PageComment = { id: nanoid(), x, y, text, createdAt: Date.now(), resolved: false, replies: [] }
+      addComment(page.id, comment)
+    })
+  }
+
   return (
     <div className="compare-pane" ref={rootRef}>
-      <div className="compare-pane__page" style={{ width, height: pageSize.height * scale }}>
+      <div
+        ref={pageRef}
+        className={`compare-pane__page${editable ? ` compare-pane__page--${tool}` : ''}`}
+        style={{ width, height: pageSize.height * scale }}
+        onPointerDown={onPointerDown}
+        onPointerMove={onPointerMove}
+        onPointerUp={onPointerUp}
+        onClick={onPaneClick}
+      >
         {thumb ? <img src={thumb} alt="" draggable={false} style={{ width }} /> : <div className="compare-pane__ph" />}
+        {ownMarks.map((m) => (
+          <div
+            key={m.id}
+            className="compare-annot"
+            title="Markering in dit document"
+            style={{
+              left: m.left * scale,
+              top: m.top * scale,
+              width: m.width * scale,
+              height: m.height * scale,
+              background: m.color,
+              opacity: m.opacity
+            }}
+          />
+        ))}
         {marks.map((m) => (
           <div
             key={m.id}
@@ -131,14 +319,83 @@ function ComparePane({
             title={m.title}
           />
         ))}
+        {pins.map((pin) => (
+          <span
+            key={pin.id}
+            className={`comment-pin comment-pin--static${pin.resolved ? ' comment-pin--resolved' : ''}`}
+            style={{ left: pin.x * scale, top: pin.y * scale }}
+            title={pin.text}
+          >
+            <IconComment size={11} />
+          </span>
+        ))}
+        {band && (
+          <div
+            className="highlight-band"
+            style={{
+              left: Math.min(band.x1, band.x2) * scale,
+              top: Math.min(band.y1, band.y2) * scale,
+              width: Math.abs(band.x2 - band.x1) * scale,
+              height: Math.abs(band.y2 - band.y1) * scale,
+              background: MARK_COLOR,
+              opacity: MARK_OPACITY
+            }}
+          />
+        )}
+        {draft && (
+          <div
+            className="comment-thread compare-draft"
+            style={{ left: draft.x * scale + 12, top: draft.y * scale + 6 }}
+            onPointerDown={(e) => e.stopPropagation()}
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="comment-thread__head">
+              <span className="comment-thread__time">Nieuwe opmerking</span>
+              <button type="button" className="icon-btn icon-btn--chrome" title="Annuleren" onClick={() => setDraft(null)}>
+                <IconClose size={12} />
+              </button>
+            </div>
+            <textarea
+              autoFocus
+              className="comment-thread__textarea"
+              placeholder="Typ je opmerking…"
+              value={draft.value}
+              onChange={(e) => setDraft({ ...draft, value: e.target.value })}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter' && !e.shiftKey) {
+                  e.preventDefault()
+                  commitDraft()
+                }
+                if (e.key === 'Escape') {
+                  e.stopPropagation()
+                  setDraft(null)
+                }
+              }}
+            />
+            <button
+              type="button"
+              className="pill-btn pill-btn--primary comment-thread__submit"
+              disabled={!draft.value.trim()}
+              onClick={commitDraft}
+            >
+              Plaatsen
+            </button>
+          </div>
+        )}
       </div>
     </div>
   )
 }
 
-/** Eén paginapaar in de doorlopende vergelijking. */
+/**
+ * Eén paginapaar in de doorlopende vergelijking. Welke linkerpagina naast welke
+ * rechterpagina staat komt uit de uitlijning, dus na een ingevoegde pagina
+ * blijven de bij elkaar horende pagina's naast elkaar staan.
+ */
 function CompareRow({
   index,
+  leftIndex,
+  rightIndex,
   left,
   right,
   leftSize,
@@ -148,9 +405,12 @@ function CompareRow({
   activeId,
   width,
   renderWidth,
-  label
+  label,
+  tool
 }: {
   index: number
+  leftIndex: number | null
+  rightIndex: number | null
   left: DocGroup | undefined
   right: DocGroup | undefined
   leftSize: { width: number; height: number } | undefined
@@ -161,29 +421,40 @@ function CompareRow({
   width: number
   renderWidth: number
   label: string
+  tool: CompareTool
 }): JSX.Element {
+  const heading =
+    leftIndex !== null && rightIndex !== null
+      ? leftIndex === rightIndex
+        ? `Pagina ${rightIndex + 1}`
+        : `Pagina ${leftIndex + 1} ↔ ${rightIndex + 1}`
+      : rightIndex !== null
+        ? `Pagina ${rightIndex + 1} — nieuw`
+        : `Pagina ${(leftIndex ?? 0) + 1} — vervallen`
   return (
     <div className="compare-row" data-page={index + 1}>
       <div className="compare-row__head">
-        Pagina {index + 1}
+        {heading}
         {label}
       </div>
       <div className="compare-row__panes">
         <ComparePane
-          page={left?.pages[index]}
+          page={leftIndex === null ? undefined : left?.pages[leftIndex]}
           size={leftSize}
           marks={leftMarks}
           activeId={activeId}
           width={width}
           renderWidth={renderWidth}
+          tool={tool}
         />
         <ComparePane
-          page={right?.pages[index]}
+          page={rightIndex === null ? undefined : right?.pages[rightIndex]}
           size={rightSize}
           marks={rightMarks}
           activeId={activeId}
           width={width}
           renderWidth={renderWidth}
+          tool={tool}
         />
       </div>
     </div>
@@ -238,12 +509,31 @@ export default function CompareView(): JSX.Element | null {
   const [mode, setMode] = useState<'all' | 'numbers'>('all')
   const [activeId, setActiveId] = useState<string | null>(null)
   const [panelOpen, setPanelOpen] = useState(true)
+  /** Gereedschap: kijken, markeren of een opmerking plaatsen. */
+  const [tool, setTool] = useState<CompareTool>('view')
+  const [saveOpen, setSaveOpen] = useState(false)
   const scrollRef = useRef<HTMLDivElement>(null)
   const listRef = useRef<HTMLDivElement>(null)
 
   const left = groups.find((g) => g.id === compare.leftGroupId)
   const right = groups.find((g) => g.id === compare.rightGroupId)
   const maxPages = Math.max(left?.pages.length ?? 0, right?.pages.length ?? 0)
+
+  /**
+   * De rijen in beeld. Zodra de vergelijking klaar is volgen we de uitlijning
+   * (pagina 4 links kan naast pagina 3 rechts staan); zolang die er nog niet is
+   * zetten we de pagina's voorlopig één-op-één naast elkaar.
+   */
+  const rows = useMemo(
+    () =>
+      diff
+        ? diff.pages.map((p) => ({ leftIndex: p.leftIndex, rightIndex: p.rightIndex }))
+        : Array.from({ length: maxPages }, (_, i) => ({
+            leftIndex: i < (left?.pages.length ?? 0) ? i : null,
+            rightIndex: i < (right?.pages.length ?? 0) ? i : null
+          })),
+    [diff, maxPages, left?.pages.length, right?.pages.length]
+  )
 
   // Zonder eigen zoomkeuze passen de twee pagina's samen precies in de strook,
   // zodat er geen ruimte onbenut blijft en er niets onder het paneel schuift.
@@ -387,6 +677,69 @@ export default function CompareView(): JSX.Element | null {
     return () => window.removeEventListener('keydown', onKey)
   }, [compare.open, close, step])
 
+  const addToast = useStudioStore((s) => s.addToast)
+
+  /**
+   * Zet een markering (of opmerking) op de plek van een wijziging, in het
+   * document zelf. Standaard in de nieuwe versie rechts; bij een vervallen
+   * regel in de oude versie links, want daar staat de tekst nog.
+   */
+  const applyToChange = useCallback(
+    async (c: ChangeEntry, what: 'mark' | 'comment'): Promise<void> => {
+      const wantsLeft = !c.right && Boolean(c.left)
+      const group = wantsLeft ? left : right
+      const pageIndex = wantsLeft ? c.leftPage : c.rightPage
+      const box = wantsLeft ? c.left : c.right
+      const size = wantsLeft ? diff?.pages[c.page]?.leftSize : diff?.pages[c.page]?.rightSize
+      const pageRef = group && pageIndex !== undefined ? group.pages[pageIndex] : undefined
+      const source = pageRef ? sources.get(pageRef.sourceId) : undefined
+      if (!box || !size || !pageRef || !source) {
+        addToast('info', 'Deze wijziging heeft geen plek op een pagina om te markeren')
+        return
+      }
+      const store = useStudioStore.getState()
+      if (what === 'mark') {
+        const pad = 1.5
+        const rect = await visualRectToContentRect(source, pageRef.sourcePageIndex, pageRef.rotation, {
+          xPct: (box.x - pad) / size.width,
+          yPct: (box.y - pad) / size.height,
+          wPct: (box.width + pad * 2) / size.width,
+          hPct: (box.height + pad * 2) / size.height
+        })
+        store.addAnnotation(pageRef.id, {
+          id: nanoid(),
+          type: 'highlight',
+          ...rect,
+          color: MARK_COLOR,
+          opacity: MARK_OPACITY
+        })
+        addToast('success', `Gemarkeerd in "${group?.name ?? ''}" op pagina ${(pageIndex ?? 0) + 1}`)
+        return
+      }
+      const point = await visualPointToContentPoint(source, pageRef.sourcePageIndex, pageRef.rotation, box.x, box.y)
+      store.addComment(pageRef.id, {
+        id: nanoid(),
+        x: point.x,
+        y: point.y,
+        text: changeTitle(c),
+        createdAt: Date.now(),
+        resolved: false,
+        replies: []
+      })
+      addToast('success', `Opmerking geplaatst in "${group?.name ?? ''}" op pagina ${(pageIndex ?? 0) + 1}`)
+    },
+    [left, right, diff, sources, addToast]
+  )
+
+  /** Aantal eigen markeringen/opmerkingen in een document (voor de opslaan-knop). */
+  const marksIn = useCallback(
+    (group: DocGroup | undefined): number =>
+      group
+        ? group.pages.reduce((n, p) => n + p.annotations.filter((a) => a.type === 'highlight').length + p.comments.length, 0)
+        : 0,
+    []
+  )
+
   const options = useMemo(() => groups.map((g) => ({ id: g.id, name: g.name })), [groups])
 
   async function addDocument(): Promise<void> {
@@ -468,28 +821,107 @@ export default function CompareView(): JSX.Element | null {
           <span className="compare-legend compare-legend--removed" />
           <span className="compare-legend compare-legend--number" />
         </div>
+        {/* Zelf aantekeningen maken zonder de vergelijking te verlaten. */}
+        <div className="compare-view__tools" role="group" aria-label="Gereedschap">
+          {(
+            [
+              ['view', 'Bekijken', <IconCursor key="v" size={14} />, 'Bekijken: alleen kijken en navigeren'],
+              [
+                'highlight',
+                'Markeren',
+                <IconHighlighter key="h" size={14} />,
+                'Markeren: sleep over de tekst — de markering komt in het document zelf'
+              ],
+              [
+                'comment',
+                'Opmerking',
+                <IconComment key="c" size={14} />,
+                'Opmerking: klik op een plek in het document om er een notitie bij te zetten'
+              ]
+            ] as [CompareTool, string, JSX.Element, string][]
+          ).map(([key, label, icon, hint]) => (
+            <button
+              key={key}
+              type="button"
+              className={`pill-btn pill-btn--icon${tool === key ? ' pill-btn--primary' : ''}`}
+              title={hint}
+              aria-label={label}
+              aria-pressed={tool === key}
+              onClick={() => setTool(key)}
+            >
+              {icon}
+            </button>
+          ))}
+        </div>
+        <div className="compare-view__save">
+          <button
+            type="button"
+            className="pill-btn"
+            disabled={!left && !right}
+            title="Opslaan en exporteren: het gemarkeerde document, het verschilrapport of jaar-op-jaar naar Excel"
+            onClick={() => setSaveOpen((v) => !v)}
+          >
+            <IconDownload size={14} /> Opslaan
+          </button>
+          {saveOpen && (
+            <div className="dropdown-menu compare-view__savemenu" onClick={(e) => e.stopPropagation()}>
+              {[right, left]
+                .filter((g): g is DocGroup => Boolean(g))
+                .filter((g, i, arr) => arr.findIndex((x) => x.id === g.id) === i)
+                .map((g) => (
+                  <button
+                    key={g.id}
+                    type="button"
+                    className="dropdown-menu__item"
+                    onClick={() => {
+                      setSaveOpen(false)
+                      void import('../lib/exportActions').then((m) => m.exportGroupPdf(g.id))
+                    }}
+                  >
+                    <IconDownload size={13} />
+                    <span className="dropdown-menu__ellipsis">
+                      {g.id === right?.id ? 'Nieuwe versie' : 'Oude versie'}: {g.name}
+                    </span>
+                    <span className="compare-view__savecount">{marksIn(g)}</span>
+                  </button>
+                ))}
+              <div className="compare-view__savehint">
+                Markeringen en opmerkingen staan in het document zelf — ze blijven ook in het leestabblad staan.
+              </div>
+              <div className="dropdown-menu__divider" />
+              <button
+                type="button"
+                className="dropdown-menu__item"
+                disabled={!left || !right || !diff}
+                title="Verschilrapport (PDF): de wijzigingen zoals ze nu in beeld staan, per hoofdstuk met inhoudsopgave"
+                onClick={() => {
+                  setSaveOpen(false)
+                  if (left && right) void exportDiffReport(left, right, sources, visible)
+                }}
+              >
+                <IconFile size={13} />
+                <span className="dropdown-menu__ellipsis">Verschilrapport (PDF)</span>
+              </button>
+              <button
+                type="button"
+                className="dropdown-menu__item"
+                disabled={!left || !right || !visible.some((c) => c.kind === 'number')}
+                title="Jaar-op-jaar naar Excel: was, is, verschil en % mutatie — voor jaarrekeningen"
+                onClick={() => {
+                  setSaveOpen(false)
+                  if (left && right) {
+                    void import('../lib/yearCompare').then((m) => m.exportYearComparisonXlsx(left, right, visible))
+                  }
+                }}
+              >
+                <IconGridView size={13} />
+                <span className="dropdown-menu__ellipsis">Jaar-op-jaar (Excel)</span>
+              </button>
+            </div>
+          )}
+        </div>
         <button type="button" className="pill-btn" title="Nog een document openen om te vergelijken" onClick={() => void addDocument()}>
           <IconFolderOpen size={14} /> Toevoegen
-        </button>
-        <button
-          type="button"
-          className="pill-btn"
-          disabled={!left || !right || !visible.some((c) => c.kind === 'number')}
-          title="Jaar-op-jaar naar Excel: was, is, verschil en % mutatie — voor jaarrekeningen"
-          onClick={() =>
-            left && right && void import('../lib/yearCompare').then((m) => m.exportYearComparisonXlsx(left, right, visible))
-          }
-        >
-          Jaar-op-jaar
-        </button>
-        <button
-          type="button"
-          className="pill-btn"
-          disabled={!left || !right || !diff}
-          title="Verschilrapport (PDF): de wijzigingen zoals ze nu in beeld staan, per hoofdstuk met inhoudsopgave"
-          onClick={() => left && right && void exportDiffReport(left, right, sources, visible)}
-        >
-          Verschilrapport
         </button>
         <button
           type="button"
@@ -512,13 +944,15 @@ export default function CompareView(): JSX.Element | null {
 
       <div className="compare-view__body">
         <div className="compare-view__scroll" ref={scrollRef}>
-          {Array.from({ length: maxPages }, (_, i) => {
+          {rows.map((row, i) => {
             const marks = marksByPage.get(i)
             const n = countsByPage.get(i) ?? 0
             return (
               <CompareRow
                 key={`${compare.leftGroupId}-${compare.rightGroupId}-${i}`}
                 index={i}
+                leftIndex={row.leftIndex}
+                rightIndex={row.rightIndex}
                 left={left}
                 right={right}
                 leftSize={diff?.pages[i]?.leftSize}
@@ -528,11 +962,12 @@ export default function CompareView(): JSX.Element | null {
                 activeId={activeId}
                 width={paneWidth}
                 renderWidth={renderWidth}
+                tool={tool}
                 label={progress ? ' — vergelijken…' : n ? ` — ${n} wijziging${n === 1 ? '' : 'en'}` : ' — gelijk'}
               />
             )
           })}
-          {maxPages === 0 && <p className="compare-view__empty">Kies links en rechts een document om te vergelijken.</p>}
+          {rows.length === 0 && <p className="compare-view__empty">Kies links en rechts een document om te vergelijken.</p>}
         </div>
 
         {panelOpen && (
@@ -673,8 +1108,9 @@ export default function CompareView(): JSX.Element | null {
 
             {!sameDocument && pagesDiffer && (
               <p className="compare-side__note">
-                Verschillend aantal pagina&apos;s: links {left?.pages.length}, rechts {right?.pages.length}. Pagina&apos;s
-                worden één-op-één vergeleken, dus een ingevoegde pagina verschuift de rest.
+                Verschillend aantal pagina&apos;s: links {left?.pages.length}, rechts {right?.pages.length}. De pagina&apos;s
+                worden bij elkaar gezocht op inhoud, dus een ingevoegde of vervallen pagina verschuift de rest niet — die
+                staat als aparte wijziging in de lijst.
               </p>
             )}
 
@@ -686,17 +1122,43 @@ export default function CompareView(): JSX.Element | null {
                 </p>
               )}
               {visible.map((c) => (
-                <button
+                <div
                   key={c.id}
-                  type="button"
                   data-list-id={c.id}
                   className={`change-item change-item--${c.kind}${activeId === c.id ? ' change-item--active' : ''}`}
-                  title={changeTitle(c)}
-                  onClick={() => goTo(c.id)}
                 >
+                  <div className="change-item__actions">
+                    <button
+                      type="button"
+                      className="icon-btn icon-btn--chrome"
+                      title="Deze wijziging markeren in het document"
+                      onClick={() => void applyToChange(c, 'mark')}
+                    >
+                      <IconHighlighter size={12} />
+                    </button>
+                    <button
+                      type="button"
+                      className="icon-btn icon-btn--chrome"
+                      title="Opmerking bij deze wijziging plaatsen"
+                      onClick={() => void applyToChange(c, 'comment')}
+                    >
+                      <IconComment size={12} />
+                    </button>
+                  </div>
+                  <button
+                    type="button"
+                    className="change-item__main"
+                    title={changeTitle(c)}
+                    onClick={() => goTo(c.id)}
+                  >
                   <span className="change-item__head">
                     <span className="change-item__kind">{KIND_LABELS[c.kind]}</span>
-                    <span className="change-item__page">p. {c.page + 1}</span>
+                    <span className="change-item__page">
+                      p.{' '}
+                      {c.leftPage !== undefined && c.rightPage !== undefined && c.leftPage !== c.rightPage
+                        ? `${c.leftPage + 1}→${c.rightPage + 1}`
+                        : (c.rightPage ?? c.leftPage ?? c.page) + 1}
+                    </span>
                   </span>
                   {c.kind === 'number' ? (
                     <span className="change-item__number">
@@ -726,7 +1188,8 @@ export default function CompareView(): JSX.Element | null {
                       </span>
                     </span>
                   )}
-                </button>
+                  </button>
+                </div>
               ))}
             </div>
           </aside>

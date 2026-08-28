@@ -47,6 +47,10 @@ export interface NumberChange {
 }
 
 export interface PageDiff {
+  /** Paginanummer (0-gebaseerd) in het linkerdocument; null = pagina toegevoegd. */
+  leftIndex: number | null
+  /** Paginanummer (0-gebaseerd) in het rechterdocument; null = pagina verwijderd. */
+  rightIndex: number | null
   /** Gewijzigde/verwijderde regels op de linkerpagina. */
   left: DiffLine[]
   /** Gewijzigde/toegevoegde regels op de rechterpagina. */
@@ -63,6 +67,56 @@ function normalize(s: string): string {
   return s.replace(/\s+/g, ' ').trim().toLowerCase()
 }
 
+/** Woorden van een regel, zonder leestekens — de basis voor "lijkt hierop". */
+function wordsOf(s: string): string[] {
+  return normalize(s)
+    .split(/[^\p{L}\p{N}]+/u)
+    .filter(Boolean)
+}
+
+/** Letterparen; voor korte regels zegt dat meer dan losse woorden. */
+function bigramsOf(s: string): string[] {
+  const t = normalize(s).replace(/\s+/g, '')
+  const out: string[] = []
+  for (let i = 0; i + 1 < t.length; i += 1) out.push(t.slice(i, i + 2))
+  return out
+}
+
+/** Overeenkomst tussen twee reeksen (Dice): 0 = niets gemeen, 1 = gelijk. */
+function diceOf(a: string[], b: string[]): number {
+  if (!a.length || !b.length) return 0
+  const counts = new Map<string, number>()
+  for (const x of a) counts.set(x, (counts.get(x) ?? 0) + 1)
+  let shared = 0
+  for (const y of b) {
+    const n = counts.get(y)
+    if (n) {
+      shared += 1
+      counts.set(y, n - 1)
+    }
+  }
+  return (2 * shared) / (a.length + b.length)
+}
+
+/**
+ * Hoezeer lijken twee regels op elkaar? Op woorden, en bij korte regels (een
+ * datum, een bedrag, "Artikel 4") op letterparen — anders zou "Artikel 4" en
+ * "Artikel 5" geen enkel woord delen.
+ */
+export function lineSimilarity(a: string, b: string): number {
+  const wa = wordsOf(a)
+  const wb = wordsOf(b)
+  const byWord = diceOf(wa, wb)
+  if (wa.length >= 4 && wb.length >= 4) return byWord
+  return Math.max(byWord, diceOf(bigramsOf(a), bigramsOf(b)))
+}
+
+/**
+ * Vanaf welke gelijkenis noemen we een verwijderde + toegevoegde regel samen
+ * één *gewijzigde* regel? Onder deze drempel zijn het echt twee losse dingen.
+ */
+const CHANGED_THRESHOLD = 0.45
+
 const NUMBER_RE = /-?\d[\d.  ]*(?:,\d+)?/g
 
 /** Getallen uit een regel als genormaliseerde waarde-strings (punt = decimaal). */
@@ -77,9 +131,18 @@ function extractNumbers(str: string): string[] {
   return out
 }
 
+/**
+ * Nummering aan het begin van een regel ("1. ", "2) ") hoort bij de opsomming,
+ * niet bij het bedrag. Zonder dit werd "1. … EUR 450.000" gelezen als twee
+ * getallen (1 en 450000) en viel het verschil niet uit te rekenen.
+ */
+function stripListMarker(str: string): string {
+  return str.replace(/^\s*\d+\s*[.)]\s+/, '')
+}
+
 /** Het label van een regel: de tekst zonder de getallen, genormaliseerd. */
 function labelOf(str: string): string {
-  return normalize(str.replace(NUMBER_RE, ' ').replace(/[€%.,;:]/g, ' '))
+  return normalize(stripListMarker(str).replace(NUMBER_RE, ' ').replace(/[€%.,;:]/g, ' '))
 }
 
 /** Waarde van één getal; null zodra de kant meerdere getallen bevat. */
@@ -95,20 +158,42 @@ function singleValue(joined: string): number | null {
  * vergelijken van cijfers in jaarrekeningen.
  */
 function numberChanges(left: TextLineBox[], right: TextLineBox[]): NumberChange[] {
+  // Regels die letterlijk aan beide kanten voorkomen zijn niet gewijzigd. Zonder
+  // deze controle meldde een genummerde opsomming ("1. Bepaling nummer 1",
+  // "2. Bepaling nummer 2") een gewijzigd bedrag, omdat na het weglaten van de
+  // cijfers alle regels hetzelfde label hebben.
+  const leftTexts = new Set(left.map((l) => normalize(l.str)))
+  const rightTexts = new Set(right.map((r) => normalize(r.str)))
+
+  /** Labels die maar één keer voorkomen; anders is niet te zeggen welke bij welke hoort. */
+  const countLabels = (lines: TextLineBox[]): Map<string, number> => {
+    const counts = new Map<string, number>()
+    for (const line of lines) {
+      const label = labelOf(line.str)
+      if (label.length >= 3) counts.set(label, (counts.get(label) ?? 0) + 1)
+    }
+    return counts
+  }
+  const leftCounts = countLabels(left)
+  const rightCounts = countLabels(right)
+
   const leftByLabel = new Map<string, TextLineBox>()
   for (const l of left) {
     const label = labelOf(l.str)
-    if (label.length >= 3 && extractNumbers(l.str).length && !leftByLabel.has(label)) leftByLabel.set(label, l)
+    if (label.length < 3 || leftCounts.get(label) !== 1) continue
+    if (extractNumbers(stripListMarker(l.str)).length && !leftByLabel.has(label)) leftByLabel.set(label, l)
   }
   const changes: NumberChange[] = []
   const usedLabels = new Set<string>()
   for (const r of right) {
+    if (leftTexts.has(normalize(r.str))) continue // regel staat ongewijzigd ook links
     const label = labelOf(r.str)
     if (label.length < 3 || usedLabels.has(label)) continue
+    if (rightCounts.get(label) !== 1) continue
     const l = leftByLabel.get(label)
-    if (!l) continue
-    const from = extractNumbers(l.str)
-    const to = extractNumbers(r.str)
+    if (!l || rightTexts.has(normalize(l.str))) continue
+    const from = extractNumbers(stripListMarker(l.str))
+    const to = extractNumbers(stripListMarker(r.str))
     if (!to.length) continue
     if (from.join('|') !== to.join('|')) {
       usedLabels.add(label)
@@ -121,7 +206,7 @@ function numberChanges(left: TextLineBox[], right: TextLineBox[]): NumberChange[
       changes.push({
         box: r.visual,
         boxLeft: l.visual,
-        label: r.str.replace(NUMBER_RE, '').replace(/\s+/g, ' ').trim() || label,
+        label: stripListMarker(r.str).replace(NUMBER_RE, '').replace(/\s+/g, ' ').trim() || label,
         from: fromText,
         to: toText,
         delta,
@@ -134,9 +219,11 @@ function numberChanges(left: TextLineBox[], right: TextLineBox[]): NumberChange[
 }
 
 /**
- * Regel-gebaseerde diff (LCS) tussen twee pagina's: regels die alleen links
- * bestaan zijn "verwijderd", alleen rechts "toegevoegd"; een verwijderde regel
- * gevolgd door een toegevoegde regel op dezelfde plek geldt als "gewijzigd".
+ * Regel-gebaseerde diff (LCS) tussen twee pagina's. Regels die aan beide kanten
+ * letterlijk hetzelfde zijn vallen weg; van wat overblijft is een regel die
+ * alleen links staat "verwijderd" en alleen rechts "toegevoegd". Lijkt een
+ * verwijderde regel genoeg op een toegevoegde regel, dan is het samen één
+ * "gewijzigde" regel (oud → nieuw).
  */
 function diffLines(left: TextLineBox[], right: TextLineBox[]): PageDiff {
   const a = left.map((l) => normalize(l.str))
@@ -174,23 +261,39 @@ function diffLines(left: TextLineBox[], right: TextLineBox[]): PageDiff {
     rightOut.push({ kind: 'added', box: right[j].visual, text: right[j].str })
     j += 1
   }
-  // Verwijderd + toegevoegd die (ongeveer) op dezelfde hoogte staan → gewijzigd.
-  let pair = 0
+  // Verwijderd + toegevoegd die op elkaar lijken zijn samen één *gewijzigde*
+  // regel. We kijken naar de tekst, niet naar de plek op de pagina: zodra er
+  // een alinea bij komt schuift de rest omlaag, en dan zou een aangepaste zin
+  // ten onrechte als "verwijderd" én "toegevoegd" in de lijst komen.
+  const candidates: { l: DiffLine; r: DiffLine; score: number }[] = []
   for (const l of leftOut) {
-    const match = rightOut.find(
-      (r) => r.kind === 'added' && !r.pairId && Math.abs(r.box.y - l.box.y) < Math.max(l.box.height, r.box.height)
-    )
-    if (match) {
-      const id = `p${pair}`
-      pair += 1
-      l.kind = 'changed'
-      l.pairId = id
-      match.kind = 'changed'
-      match.pairId = id
+    for (const r of rightOut) {
+      const score = lineSimilarity(l.text, r.text)
+      if (score >= CHANGED_THRESHOLD) candidates.push({ l, r, score })
     }
   }
+  // Beste paren eerst; bij gelijke gelijkenis het paar dat het dichtst bij
+  // elkaar op de pagina staat.
+  candidates.sort((x, y) => y.score - x.score || Math.abs(x.l.box.y - x.r.box.y) - Math.abs(y.l.box.y - y.r.box.y))
+  let pair = 0
+  for (const { l, r } of candidates) {
+    if (l.pairId || r.pairId) continue
+    const id = `p${pair}`
+    pair += 1
+    l.kind = 'changed'
+    l.pairId = id
+    r.kind = 'changed'
+    r.pairId = id
+  }
   const changeCount = new Set([...leftOut, ...rightOut].map((d) => Math.round(d.box.y))).size
-  return { left: leftOut, right: rightOut, changeCount, numbers: numberChanges(left, right) }
+  return {
+    leftIndex: null,
+    rightIndex: null,
+    left: leftOut,
+    right: rightOut,
+    changeCount,
+    numbers: numberChanges(left, right)
+  }
 }
 
 // ---------------------------------------------------------------------------
@@ -202,8 +305,11 @@ export type ChangeKind = 'changed' | 'added' | 'removed' | 'number' | 'page-adde
 
 export interface ChangeEntry {
   id: string
-  /** Nulgebaseerde index van het paginapaar. */
+  /** Nulgebaseerde index van de rij (paginapaar) in de vergelijking. */
   page: number
+  /** Paginanummer (0-gebaseerd) in het linker- resp. rechterdocument. */
+  leftPage?: number
+  rightPage?: number
   kind: ChangeKind
   /** Staat in een kop-/voettekst die op meerdere pagina's terugkomt. */
   head: boolean
@@ -288,6 +394,85 @@ function runningHeadKeys(sides: (SidePage | null)[]): Set<string> {
   return new Set([...hits].filter(([, n]) => n >= threshold).map(([key]) => key))
 }
 
+/** Vingerafdruk van een pagina: de regels die er inhoudelijk toe doen. */
+function pageFingerprint(side: SidePage | null): string[] {
+  if (!side) return []
+  const out: string[] = []
+  for (const line of side.lines) {
+    const key = normalize(line.str)
+    if (key.length >= 4) out.push(key)
+  }
+  return out
+}
+
+/**
+ * Welke linkerpagina hoort bij welke rechterpagina? Zonder dit wordt pagina 1
+ * met 1 vergeleken, 2 met 2, enzovoort — en dan verschuift één ingevoegde
+ * pagina de hele rest, waardoor een document van acht pagina's honderden
+ * "wijzigingen" oplevert die er niet zijn.
+ *
+ * We lijnen de pagina's uit zoals je twee stapels naast elkaar legt: pagina's
+ * die genoeg regels delen horen bij elkaar, een pagina zonder tegenhanger is
+ * toegevoegd of verwijderd.
+ */
+function alignPages(
+  leftSides: (SidePage | null)[],
+  rightSides: (SidePage | null)[]
+): { leftIndex: number | null; rightIndex: number | null }[] {
+  const n = leftSides.length
+  const m = rightSides.length
+  const rows: { leftIndex: number | null; rightIndex: number | null }[] = []
+  // Bij extreem lange documenten is de volledige tabel te duur; dan houden we
+  // het bij één-op-één (en dat staat ook zo in de melding in beeld).
+  if (n * m > 250_000) {
+    for (let i = 0; i < Math.max(n, m); i += 1) {
+      rows.push({ leftIndex: i < n ? i : null, rightIndex: i < m ? i : null })
+    }
+    return rows
+  }
+
+  const leftPrints = leftSides.map(pageFingerprint)
+  const rightPrints = rightSides.map(pageFingerprint)
+  /** Winst van het koppelen van deze twee pagina's; onder de drempel negatief. */
+  const gain = (i: number, j: number): number => {
+    if (!leftPrints[i].length && !rightPrints[j].length) return 0.1 // twee lege pagina's horen bij elkaar
+    return diceOf(leftPrints[i], rightPrints[j]) - 0.25
+  }
+
+  // Klassieke uitlijning: koppelen, of een pagina links/rechts overslaan.
+  const best: number[][] = Array.from({ length: n + 1 }, () => new Array(m + 1).fill(0))
+  for (let i = n - 1; i >= 0; i -= 1) {
+    for (let j = m - 1; j >= 0; j -= 1) {
+      best[i][j] = Math.max(best[i + 1][j + 1] + gain(i, j), best[i + 1][j], best[i][j + 1])
+    }
+  }
+  let i = 0
+  let j = 0
+  while (i < n && j < m) {
+    const pairScore = best[i + 1][j + 1] + gain(i, j)
+    if (pairScore >= best[i + 1][j] && pairScore >= best[i][j + 1]) {
+      rows.push({ leftIndex: i, rightIndex: j })
+      i += 1
+      j += 1
+    } else if (best[i + 1][j] >= best[i][j + 1]) {
+      rows.push({ leftIndex: i, rightIndex: null })
+      i += 1
+    } else {
+      rows.push({ leftIndex: null, rightIndex: j })
+      j += 1
+    }
+  }
+  while (i < n) {
+    rows.push({ leftIndex: i, rightIndex: null })
+    i += 1
+  }
+  while (j < m) {
+    rows.push({ leftIndex: null, rightIndex: j })
+    j += 1
+  }
+  return rows
+}
+
 /**
  * Vergelijkt twee documenten volledig: per paginapaar de verschillen én één
  * doorlopende lijst wijzigingen om langs te navigeren. `onProgress` houdt de
@@ -318,12 +503,17 @@ export async function diffDocuments(
   const leftHeads = runningHeadKeys(leftSides)
   const rightHeads = runningHeadKeys(rightSides)
 
+  // Eerst uitzoeken welke pagina's bij elkaar horen; pas daarna vergelijken.
+  const rows = alignPages(leftSides.slice(0, left.pages.length), rightSides.slice(0, right.pages.length))
+
   const pages: PageDiff[] = []
   const changes: ChangeEntry[] = []
 
-  for (let i = 0; i < leftSides.length; i += 1) {
-    const l = leftSides[i]
-    const r = rightSides[i]
+  for (let i = 0; i < rows.length; i += 1) {
+    const { leftIndex, rightIndex } = rows[i]
+    const l = leftIndex === null ? null : leftSides[leftIndex]
+    const r = rightIndex === null ? null : rightSides[rightIndex]
+    const pageRef = { leftPage: leftIndex ?? undefined, rightPage: rightIndex ?? undefined }
     const isHead = (text: string, box: DiffBox, side: SidePage | null, keys: Set<string>): boolean =>
       inMargin(box, side?.size?.height) && keys.has(headKey(text))
 
@@ -334,14 +524,30 @@ export async function diffDocuments(
       for (const line of diff.right) line.head = isHead(line.text, line.box, r, rightHeads)
       for (const num of diff.numbers) num.head = isHead(num.line, num.box, r, rightHeads)
     } else if (r) {
-      diff = { left: [], right: [], changeCount: 1, numbers: [] }
-      changes.push({ id: `${i}-pageadd`, page: i, kind: 'page-added', head: false, after: `Pagina ${i + 1}` })
+      diff = { leftIndex: null, rightIndex: null, left: [], right: [], changeCount: 1, numbers: [] }
+      changes.push({
+        id: `${i}-pageadd`,
+        page: i,
+        ...pageRef,
+        kind: 'page-added',
+        head: false,
+        after: `Pagina ${(rightIndex ?? 0) + 1} is nieuw`
+      })
     } else if (l) {
-      diff = { left: [], right: [], changeCount: 1, numbers: [] }
-      changes.push({ id: `${i}-pagedel`, page: i, kind: 'page-removed', head: false, before: `Pagina ${i + 1}` })
+      diff = { leftIndex: null, rightIndex: null, left: [], right: [], changeCount: 1, numbers: [] }
+      changes.push({
+        id: `${i}-pagedel`,
+        page: i,
+        ...pageRef,
+        kind: 'page-removed',
+        head: false,
+        before: `Pagina ${(leftIndex ?? 0) + 1} is vervallen`
+      })
     } else {
-      diff = { left: [], right: [], changeCount: 0, numbers: [] }
+      diff = { leftIndex: null, rightIndex: null, left: [], right: [], changeCount: 0, numbers: [] }
     }
+    diff.leftIndex = leftIndex
+    diff.rightIndex = rightIndex
     diff.leftSize = l?.size ?? undefined
     diff.rightSize = r?.size ?? undefined
     pages.push(diff)
@@ -366,6 +572,7 @@ export async function diffDocuments(
       changes.push({
         id: `${i}-c${seq}`,
         page: i,
+        ...pageRef,
         kind: 'changed',
         head: Boolean(line.head) || Boolean(partner?.head),
         left: partner?.box,
@@ -377,18 +584,35 @@ export async function diffDocuments(
     }
     for (const line of diff.right) {
       if (line.kind !== 'added' || numberBoxes.has(line.box)) continue
-      changes.push({ id: `${i}-a${seq}`, page: i, kind: 'added', head: Boolean(line.head), right: line.box, after: line.text })
+      changes.push({
+        id: `${i}-a${seq}`,
+        page: i,
+        ...pageRef,
+        kind: 'added',
+        head: Boolean(line.head),
+        right: line.box,
+        after: line.text
+      })
       seq += 1
     }
     for (const line of diff.left) {
       if (line.kind !== 'removed' || numberBoxes.has(line.box)) continue
-      changes.push({ id: `${i}-r${seq}`, page: i, kind: 'removed', head: Boolean(line.head), left: line.box, before: line.text })
+      changes.push({
+        id: `${i}-r${seq}`,
+        page: i,
+        ...pageRef,
+        kind: 'removed',
+        head: Boolean(line.head),
+        left: line.box,
+        before: line.text
+      })
       seq += 1
     }
     for (const num of diff.numbers) {
       changes.push({
         id: `${i}-n${seq}`,
         page: i,
+        ...pageRef,
         kind: 'number',
         head: Boolean(num.head),
         left: num.boxLeft,
