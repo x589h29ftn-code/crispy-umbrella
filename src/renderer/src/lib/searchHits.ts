@@ -1,6 +1,6 @@
 import { getTextLineBoxes } from './textLines'
 import { getOcr } from './ocrStore'
-import { contentPointsToVisualPoints } from './pdfEngine'
+import { contentPointsToVisualPoints } from './pdfRender'
 import type { SourceFile } from '../types'
 
 export interface SearchHitRect {

@@ -11,7 +11,7 @@ import {
   visualPointToContentPoint,
   visualRectToContentRect,
   type SignatureVisualBox
-} from '../../lib/pdfEngine'
+} from '../../lib/pdfRender'
 import { ANNOTATION_FONT_CSS, textDecorationOf } from '../../lib/annotationStyle'
 import { defaultFieldSize, FIELD_KIND_LABELS } from '../../lib/formFields'
 import { bandTextRects, getTextLineBoxes, type TextLineBox } from '../../lib/textLines'
@@ -19,7 +19,7 @@ import { renderTextSelectionLayer, selectionLineRects, type SelectionLineRect } 
 import { isScrolling, onScrollState } from '../../lib/scrollGate'
 import { findSearchHitRects, type SearchHitRect } from '../../lib/searchHits'
 import { useStudioStore } from '../../store'
-import { formatCommentTime } from '../Lightbox'
+import { formatCommentTime } from '../../lib/formatDate'
 import FormLayer from '../FormLayer'
 import { buildStampSub, ShapeGeometry, STAMP_PRESETS } from '../../lib/shapes'
 import type {

@@ -12,7 +12,7 @@ import {
   visualRectToContentRect,
   visualRectToSignaturePlacement,
   type SignatureVisualBox
-} from '../lib/pdfEngine'
+} from '../lib/pdfRender'
 import {
   ANNOTATION_FONT_CSS,
   ANNOTATION_FONT_LABELS,
@@ -26,6 +26,7 @@ import {
 import { useStudioStore } from '../store'
 import { usePressDrag } from '../hooks/usePressDrag'
 import { useClickOutside } from '../hooks/useClickOutside'
+import { formatCommentTime } from '../lib/formatDate'
 import { bandTextRects, getTextLineBoxes, type TextLineBox } from '../lib/textLines'
 import { renderTextSelectionLayer, selectionLineRects, type SelectionLineRect } from '../lib/textLayer'
 import { findSearchHitRects, type SearchHitRect } from '../lib/searchHits'
@@ -100,10 +101,7 @@ const FIELD_LABELS: Record<'signature' | 'date' | 'text', string> = {
   text: 'Tekst'
 }
 
-export function formatCommentTime(ms: number): string {
-  const d = new Date(ms)
-  return `${d.getDate()}-${d.getMonth() + 1}-${d.getFullYear()} ${d.getHours()}:${String(d.getMinutes()).padStart(2, '0')}`
-}
+export { formatCommentTime } from '../lib/formatDate'
 
 interface DragTarget {
   kind: 'move' | 'resize'

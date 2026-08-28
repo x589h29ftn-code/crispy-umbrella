@@ -85,6 +85,21 @@ export default function App(): JSX.Element {
 
   useEffect(() => window.api.onFilesOpened((files) => void useStudioStore.getState().importFiles(files)), [])
 
+  // Venstertitel toont het document waar je in werkt (zoals elk professioneel
+  // programma): "Jaarrekening 2025 — PDF Studio". Electron neemt de titel van
+  // de pagina over, dus dit zet meteen de titelbalk en de taakbalk.
+  useEffect(() => {
+    const apply = (): void => {
+      const state = useStudioStore.getState()
+      const id = state.activeEditorTab ?? state.activeGroupId
+      const group = state.groups.find((g) => g.id === id) ?? state.groups[0]
+      const unsaved = state.unsavedChanges && state.groups.length > 0
+      document.title = group ? `${unsaved ? '• ' : ''}${group.name} — PDF Studio` : 'PDF Studio'
+    }
+    apply()
+    return useStudioStore.subscribe(apply)
+  }, [])
+
   // "Zeker weten afsluiten": het hoofdproces hoeft alleen te weten óf er nog
   // niet-opgeslagen bewerkingen zijn; het venster vraagt het dan zelf na.
   useEffect(() => {

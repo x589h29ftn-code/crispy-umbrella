@@ -4,6 +4,20 @@
  */
 export const APP_CHANGELOG: { version: string; items: string[] }[] = [
   {
+    version: '1.16.0',
+    items: [
+      'Een groot document opent ruim vier keer zo snel. De miniaturenstrook tekende bij het openen álle pagina\'s, ook de tweeënnegentig die je niet ziet; nu worden ze pas getekend als ze in beeld komen. Gemeten op een document van 100 pagina\'s met een viermaal vertraagde processor: openen ging van 9,0 naar 2,2 seconden, en er worden nog 9 miniaturen getekend in plaats van 100',
+      'De zware PDF-bibliotheek (2,3 MB) wordt niet meer ingeladen zodra je een document opent. Die is alleen nodig voor opslaan, exporteren en formulieren, en wordt nu ook pas dán geladen. Opmerkingen die al in het bestand staan (bijvoorbeeld door een collega in Acrobat geplaatst) worden vlak ná het openen ingelezen en verschijnen een tel later vanzelf',
+      'Soepeler tijdens het scrollen: de renderwachtrij bedient de nieuwste aanvraag als eerste — dat is de pagina die je nú ziet — en laat er tijdens het scrollen minder tegelijk lopen. Pagina\'s waar je al voorbij bent worden overgeslagen in plaats van alsnog getekend. Gemeten bij snel doorscrollen door 100 pagina\'s: nog 2 haperingen in plaats van 6, en de langste beeldstop ging van 81 naar 68 milliseconden',
+      'Nieuw in de documentbalk: een paginateller zoals in Acrobat. Je ziet op welke pagina je bent ("42 / 100"), typt een nummer in om er direct heen te springen, en met Ctrl+G springt de cursor in dat veld. Bij het scrollen loopt de teller mee; een sprong over meer dan drie pagina\'s gaat direct in plaats van langzaam scrollend',
+      'De zoomknoppen zijn een keuzelijst geworden: Passend op breedte, Hele pagina en 50 tot 300 procent. Belangrijk verschil: 100% betekent nu ware grootte, net als in Acrobat — een A4 is dan precies 595 beeldpunten breed. Bij het openen staat hij op "Passend op breedte", en de statusbalk rechtsonder toont dezelfde waarde',
+      'De titelbalk van het venster toont het document waar je in werkt ("Jaarrekening 2025 — PDF Studio"), met een bolletje ervoor zolang er wijzigingen zijn die nog niet zijn opgeslagen. Een bestand openen telt daarbij niet meer als wijziging, dus je krijgt geen afsluitwaarschuwing meer voor een document waar je niets aan hebt gedaan',
+      'Miniaturen hebben snelacties gekregen: wijs een pagina aan en je kunt hem meteen draaien of verwijderen, zonder eerst naar de pagina te gaan. Slepen om de volgorde te wijzigen werkt gewoon door',
+      'De weergavekeuze (Doorlopend / Eén pagina / Twee pagina\'s) is een compacte keuzelijst geworden. Daarmee past de hele documentbalk weer op één regel, ook op een laptopscherm van 1152 pixels breed (gemeten: 44 pixels hoog bij elke vensterbreedte)',
+      'De gereedschapskolom rechts is opgeruimd: kopjes "Pagina" en "Document" scheiden nu het gereedschap van de pagina- en documentacties, de dubbele knop naar het overzicht is weg, en "Lege pagina toevoegen" en "Documenteigenschappen…" staan er direct bij. De losse regel over handtekeningen is een nette hint geworden'
+    ]
+  },
+  {
     version: '1.15.0',
     items: [
       'Vergelijken telt eerlijker. "Toegevoegd" is een regel die alleen in de nieuwe versie staat, "Verwijderd" een regel die alleen in de oude versie staat, en "Gewijzigd" is één regel die is herschreven (je ziet oud én nieuw onder elkaar). Dat laatste werd bepaald op de plek op de pagina: stond er links iets weg en rechts iets nieuws op dezelfde hoogte, dan heette dat "gewijzigd" — ook als het twee totaal verschillende zinnen waren. Nu wordt gekeken of de teksten echt op elkaar lijken (minstens 45% overeenkomst in woorden, bij korte regels in letterparen)',

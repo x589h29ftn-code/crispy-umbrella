@@ -1,5 +1,5 @@
 import * as pdfjsLib from 'pdfjs-dist'
-import { getPdfJsDocument } from './pdfEngine'
+import { getPdfJsDocument } from './pdfRender'
 import type { SourceFile } from '../types'
 
 /**

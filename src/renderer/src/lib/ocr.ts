@@ -1,4 +1,4 @@
-import { getPdfJsDocument } from './pdfEngine'
+import { getPdfJsDocument } from './pdfRender'
 import { setOcr, type OcrPageData } from './ocrStore'
 import type { SourceFile } from '../types'
 

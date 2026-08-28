@@ -1,5 +1,5 @@
 import { getTextLineBoxes } from './textLines'
-import { getPageVisualSize, visualRectToContentRect } from './pdfEngine'
+import { getPageVisualSize, visualRectToContentRect } from './pdfRender'
 import type { PageRef, SourceFile } from '../types'
 
 export type SensitiveKind =

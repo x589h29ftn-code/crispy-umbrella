@@ -217,6 +217,9 @@ interface StudioState {
   imagePageMode: ImagePageMode
   /** Zoom van het leestabblad (1 = passend), zodat de werkbalk hem ook kan bedienen. */
   editorZoom: number
+  /** Werkelijke weergaveschaal van de pagina (100% = ware grootte), voor de statusbalk. */
+  editorDisplayScale: number
+  setEditorDisplayScale: (scale: number) => void
   /** Breedte van de miniaturenstrook in het leestabblad (px). */
   railWidth: number
   /** Miniaturenstrook ingeklapt. */
@@ -441,7 +444,6 @@ const IMPORT_CONCURRENCY = 3
 interface LoadedImport {
   file: { name: string; data: Uint8Array; path?: string }
   source: SourceFile
-  comments: Map<number, PageComment[]>
 }
 
 /**
@@ -457,16 +459,53 @@ async function loadImports(
   setState({ importProgress: { done: 0, total: files.length } })
   const loaded = await mapLimited(files, IMPORT_CONCURRENCY, async (file) => {
     const source = await loadFileInteractive(file, addToast)
-    let comments = new Map<number, PageComment[]>()
-    if (source) {
-      const { extractComments } = await import('./lib/commentImport')
-      comments = await extractComments(source)
-    }
     done += 1
     setState({ importProgress: { done, total: files.length } })
-    return source ? { file, source, comments } : null
+    return source ? { file, source } : null
   })
   return loaded.filter((entry): entry is LoadedImport => entry !== null)
+}
+
+/**
+ * Opmerkingen die al in het PDF-bestand staan (bijvoorbeeld door een collega in
+ * Acrobat geplaatst) lezen we ná het openen in. Daarvoor moet de PDF met pdf-lib
+ * ontleed worden, en die bibliotheek is zwaar: op het openpad zou dat het tonen
+ * van de eerste pagina vertragen. Ze verschijnen dus een tel later vanzelf.
+ */
+function loadCommentsLater(sourceIds: string[]): void {
+  if (!sourceIds.length) return
+  const run = async (): Promise<void> => {
+    const { extractComments } = await import('./lib/commentImport')
+    for (const sourceId of sourceIds) {
+      const source = useStudioStore.getState().sources.get(sourceId)
+      if (!source) continue
+      const perPage = await extractComments(source).catch(() => new Map<number, PageComment[]>())
+      if (!perPage.size) continue
+      useStudioStore.setState((state) => ({
+        groups: state.groups.map((g) => ({
+          ...g,
+          pages: g.pages.map((p) => {
+            if (p.sourceId !== sourceId) return p
+            const found = perPage.get(p.sourcePageIndex)
+            if (!found?.length) return p
+            // Alleen aanvullen: opmerkingen die de gebruiker inmiddels zelf
+            // heeft geplaatst blijven staan.
+            const known = new Set(p.comments.map((c) => `${Math.round(c.x)}:${Math.round(c.y)}:${c.text}`))
+            const extra = found.filter((c) => !known.has(`${Math.round(c.x)}:${Math.round(c.y)}:${c.text}`))
+            return extra.length ? { ...p, comments: [...p.comments, ...extra] } : p
+          })
+        }))
+      }))
+    }
+  }
+  // Eerst het document in beeld laten komen: pas daarna (en dan nog op een rustig
+  // moment) de zware ontleding starten.
+  const idle = (window as unknown as { requestIdleCallback?: (cb: () => void, o?: { timeout: number }) => number })
+    .requestIdleCallback
+  window.setTimeout(() => {
+    if (idle) idle(() => void run(), { timeout: 4000 })
+    else void run()
+  }, 1200)
 }
 
 /**
@@ -559,6 +598,8 @@ export const useStudioStore = create<StudioState>((set, get) => ({
   })(),
   imagePageMode: getInitialImagePageMode(),
   editorZoom: 1,
+  editorDisplayScale: 1,
+  setEditorDisplayScale: (scale) => set({ editorDisplayScale: scale }),
   railWidth: ((): number => {
     const stored = Number(window.localStorage.getItem(RAIL_WIDTH_STORAGE_KEY))
     return Number.isFinite(stored) && stored >= 90 ? Math.min(420, stored) : 160
@@ -848,13 +889,18 @@ export const useStudioStore = create<StudioState>((set, get) => ({
 
   importFiles: async (files) => {
     if (!files.length) return
+    // Een bestand openen is geen bewerking: de "niet opgeslagen"-melding (en het
+    // bolletje in de titelbalk) hoort pas te verschijnen als je iets wijzigt.
+    const wasDirty = get().unsavedChanges
     set({ isImporting: true })
     try {
       files = await prepareImportFiles(files, get().addToast, get().imagePageMode)
       const newGroups: DocGroup[] = []
       const sources = new Map(get().sources)
-      for (const { file, source, comments } of await loadImports(files, get().addToast, set)) {
+      const loadedIds: string[] = []
+      for (const { file, source } of await loadImports(files, get().addToast, set)) {
         sources.set(source.id, source)
+        loadedIds.push(source.id)
         const baseName = file.name.replace(/\.pdf$/i, '')
         newGroups.push({
           id: nanoid(),
@@ -866,7 +912,7 @@ export const useStudioStore = create<StudioState>((set, get) => ({
             rotation: 0,
             signatures: [],
             annotations: [],
-            comments: comments.get(i) ?? []
+            comments: []
           })),
           watermark: null,
           pageNumbers: false,
@@ -889,6 +935,8 @@ export const useStudioStore = create<StudioState>((set, get) => ({
           activeEditorTab: firstImport ? (newGroups[0]?.id ?? state.activeEditorTab) : state.activeEditorTab
         }
       })
+      loadCommentsLater(loadedIds)
+      set({ unsavedChanges: wasDirty })
     } finally {
       set({ isImporting: false, importProgress: null })
     }
@@ -901,8 +949,10 @@ export const useStudioStore = create<StudioState>((set, get) => ({
       files = await prepareImportFiles(files, get().addToast, get().imagePageMode)
       const sources = new Map(get().sources)
       const newPages: PageRef[] = []
-      for (const { source, comments } of await loadImports(files, get().addToast, set)) {
+      const loadedIds: string[] = []
+      for (const { source } of await loadImports(files, get().addToast, set)) {
         sources.set(source.id, source)
+        loadedIds.push(source.id)
         for (let i = 0; i < source.pageCount; i += 1) {
           newPages.push({
             id: nanoid(),
@@ -911,7 +961,7 @@ export const useStudioStore = create<StudioState>((set, get) => ({
             rotation: 0,
             signatures: [],
             annotations: [],
-            comments: comments.get(i) ?? []
+            comments: []
           })
         }
       }
@@ -921,6 +971,7 @@ export const useStudioStore = create<StudioState>((set, get) => ({
         sources,
         groups: state.groups.map((g) => (g.id === groupId ? { ...g, pages: [...g.pages, ...newPages] } : g))
       }))
+      loadCommentsLater(loadedIds)
     } finally {
       set({ isImporting: false, importProgress: null })
     }

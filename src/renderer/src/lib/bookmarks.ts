@@ -1,4 +1,4 @@
-import { getPdfJsDocument } from './pdfEngine'
+import { getPdfJsDocument } from './pdfRender'
 import type { DocGroup, SourceFile } from '../types'
 
 export interface OutlineNode {

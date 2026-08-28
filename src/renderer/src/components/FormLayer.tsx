@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
-import { getPlacementVisualBox, type SignatureVisualBox } from '../lib/pdfEngine'
-import { getFormFields, type FormFieldInfo } from '../lib/forms'
+import { getPlacementVisualBox, type SignatureVisualBox } from '../lib/pdfRender'
+import type { FormFieldInfo } from '../lib/forms'
 import { useStudioStore } from '../store'
 import { IconCheck } from './icons'
 import type { SourceFile } from '../types'
@@ -35,7 +35,12 @@ export default function FormLayer({ source, pageIndex, rotation, scale, active, 
 
   useEffect(() => {
     let cancelled = false
-    getFormFields(source)
+    // De veldenlezer leunt op pdf-lib (een zware bibliotheek). Die halen we pas
+    // op als het formuliergereedschap echt gebruikt wordt, zodat het openen van
+    // een document er niet op hoeft te wachten.
+    if (!active) return
+    void import('../lib/forms')
+      .then(({ getFormFields }) => getFormFields(source))
       .then(async (fields) => {
         const onPage = fields.filter((f) => f.pageIndex === pageIndex)
         const resolved = await Promise.all(
@@ -60,7 +65,7 @@ export default function FormLayer({ source, pageIndex, rotation, scale, active, 
       cancelled = true
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [source, pageIndex, rotation])
+  }, [source, pageIndex, rotation, active])
 
   if (!active || !entries.length) return null
 

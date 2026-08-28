@@ -1,4 +1,4 @@
-import { getPdfJsDocument, getPageVisualSize } from './pdfEngine'
+import { getPdfJsDocument, getPageVisualSize } from './pdfRender'
 import { getOcr } from './ocrStore'
 import type { SourceFile } from '../types'
 

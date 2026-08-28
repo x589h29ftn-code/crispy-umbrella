@@ -2852,7 +2852,7 @@ button.group-row__date:hover {
   border-color: var(--accent);
 }
 
-.editor-rail__thumb span {
+.editor-rail__num {
   position: absolute;
   right: 6px;
   bottom: 6px;
@@ -2863,10 +2863,52 @@ button.group-row__date:hover {
   padding: 0 4px;
 }
 
+/* Snelacties op de miniatuur (draaien, verwijderen), zoals het paginapaneel
+   van Acrobat: alleen zichtbaar als je de pagina aanwijst. */
+.editor-rail__acts {
+  position: absolute;
+  top: 6px;
+  right: 6px;
+  display: flex;
+  gap: 3px;
+  opacity: 0;
+  transition: opacity 0.12s ease;
+}
+
+.editor-rail__thumb:hover .editor-rail__acts,
+.editor-rail__thumb:focus-within .editor-rail__acts {
+  opacity: 1;
+}
+
+.editor-rail__act {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 20px;
+  height: 20px;
+  padding: 0;
+  border: 1px solid rgba(120, 130, 145, 0.4);
+  border-radius: 4px;
+  background: rgba(255, 255, 255, 0.92);
+  color: #333;
+  cursor: pointer;
+}
+
+.editor-rail__act:hover {
+  background: #fff;
+  border-color: var(--accent);
+  color: var(--accent);
+}
+
+.editor-rail__act--danger:hover {
+  border-color: #dc2626;
+  color: #dc2626;
+}
+
 .editor-rail__ph {
   display: block;
   width: 100%;
-  aspect-ratio: 0.7;
+  min-height: 40px;
   background: var(--panel-2);
   border-radius: 3px;
 }
@@ -2883,8 +2925,9 @@ button.group-row__date:hover {
   align-items: center;
   flex-wrap: wrap;
   row-gap: var(--space-1);
-  gap: var(--space-3);
-  padding: var(--space-2) var(--space-3);
+  /* Krappe tussenruimte: op een laptopscherm moet alles op één regel passen. */
+  gap: var(--space-2);
+  padding: var(--space-2);
   background: var(--panel);
   box-shadow: 0 1px 0 var(--border-soft);
   z-index: 2;
@@ -6315,4 +6358,80 @@ button.group-row__date:hover {
 
 .compare-draft {
   z-index: 30;
+}
+
+/* ---------- Leesbalk: paginateller en zoomkeuze ---------- */
+.editor-center__pages {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.editor-center__pageinput {
+  width: 42px;
+  text-align: center;
+  padding: 4px 2px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--panel-2);
+  color: var(--text);
+  font-size: 12.5px;
+  outline: none;
+}
+
+.editor-center__pageinput:focus {
+  border-color: var(--accent);
+}
+
+.editor-center__pagetotal {
+  font-size: 12.5px;
+  color: var(--text-dim);
+  white-space: nowrap;
+}
+
+.editor-center__zoomselect {
+  width: 116px;
+  padding: 4px 6px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--panel-2);
+  color: var(--text);
+  font-size: 12.5px;
+  outline: none;
+  cursor: pointer;
+}
+
+.editor-center__zoomselect:focus {
+  border-color: var(--accent);
+}
+
+/* Kopje boven een blok in de gereedschapskolom. */
+.editor-tools__section {
+  padding: 2px var(--space-2) 0;
+  font-size: 10.5px;
+  font-weight: 700;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  color: var(--text-dim);
+}
+
+.editor-tools__hint--muted {
+  padding-top: 4px;
+  padding-bottom: 4px;
+}
+
+.editor-center__viewselect {
+  width: 124px;
+  padding: 4px 6px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--panel-2);
+  color: var(--text);
+  font-size: 12.5px;
+  outline: none;
+  cursor: pointer;
+}
+
+.editor-center__viewselect:focus {
+  border-color: var(--accent);
 }

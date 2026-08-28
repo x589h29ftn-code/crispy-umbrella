@@ -8,6 +8,7 @@
 import * as pdfjsLib from 'pdfjs-dist'
 import pdfWorkerUrl from 'pdfjs-dist/build/pdf.worker.min.mjs?url'
 import type { PDFDocument } from '@cantoo/pdf-lib'
+import { isScrolling } from './scrollGate'
 import type { SignaturePlacement, SourceFile, TextAnnotation } from '../types'
 
 export const A4_WIDTH = 595.28
@@ -350,14 +351,29 @@ export async function getSignatureVisualBox(
   return getPlacementVisualBox(source, pageIndex, rotation, placement)
 }
 
-// Bulk imports fire a render per page at once; a bounded queue keeps the
-// pdf.js worker responsive and avoids machine-dependent failures under load.
+/**
+ * Renderwachtrij. Bij het openen van een document vragen tientallen pagina's en
+ * miniaturen tegelijk om een tekening; ongebreideld starten maakt de app traag
+ * en de pdf.js-worker onbetrouwbaar.
+ *
+ * Twee dingen maken dit soepel:
+ * 1. Wie het laatst vraagt, is het eerst aan de beurt (stapel in plaats van
+ *    rij). Tijdens het scrollen is de nieuwste aanvraag de pagina die je nú
+ *    ziet; de oude aanvragen zijn pagina's waar je al voorbij bent.
+ * 2. Tijdens het scrollen mogen er minder tegelijk lopen, zodat de hoofdthread
+ *    ruimte houdt voor het scrollen zelf.
+ */
 const MAX_CONCURRENT_RENDERS = 4
+const MAX_WHILE_SCROLLING = 2
 let activeRenders = 0
 const renderWaiters: (() => void)[] = []
 
+function renderLimit(): number {
+  return isScrolling() ? MAX_WHILE_SCROLLING : MAX_CONCURRENT_RENDERS
+}
+
 export async function acquireRenderSlot(): Promise<void> {
-  if (activeRenders >= MAX_CONCURRENT_RENDERS) {
+  while (activeRenders >= renderLimit()) {
     await new Promise<void>((resolve) => renderWaiters.push(resolve))
   }
   activeRenders += 1
@@ -365,14 +381,22 @@ export async function acquireRenderSlot(): Promise<void> {
 
 export function releaseRenderSlot(): void {
   activeRenders -= 1
-  renderWaiters.shift()?.()
+  // Laatste aanvraag eerst: dat is de pagina die nu in beeld staat.
+  renderWaiters.pop()?.()
 }
 
+/**
+ * Rendert een pagina naar een afbeelding-URL. `isStale` wordt vlak vóór het
+ * echte werk nog eens gevraagd: staat de pagina inmiddels niet meer in beeld,
+ * dan slaan we het over in plaats van tijd te verspillen aan een pagina waar de
+ * gebruiker al voorbij is.
+ */
 export async function renderThumbnail(
   source: SourceFile,
   pageIndex: number,
   deltaRotation: number,
-  targetWidth: number
+  targetWidth: number,
+  isStale?: () => boolean
 ): Promise<string> {
   const cacheKey = `${source.id}::${pageIndex}::${deltaRotation}::${targetWidth}`
   const cached = takeThumb(cacheKey)
@@ -383,16 +407,26 @@ export async function renderThumbnail(
     if (attempt > 0) await new Promise((r) => setTimeout(r, 300 * attempt))
     await acquireRenderSlot()
     try {
+      if (isStale?.()) throw new StaleRenderError()
       const dataUrl = await renderThumbnailOnce(source, pageIndex, deltaRotation, targetWidth)
       rememberThumb(cacheKey, dataUrl)
       return dataUrl
     } catch (error) {
+      if (error instanceof StaleRenderError) throw error
       lastError = error
     } finally {
       releaseRenderSlot()
     }
   }
   throw lastError
+}
+
+/** Deze render is niet meer nodig (pagina uit beeld gescrold). */
+export class StaleRenderError extends Error {
+  constructor() {
+    super('Render niet meer nodig')
+    this.name = 'StaleRenderError'
+  }
 }
 
 async function renderThumbnailOnce(

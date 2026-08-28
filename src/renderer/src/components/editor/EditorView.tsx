@@ -6,7 +6,7 @@ import {
   getPageVisualSize,
   renderThumbnail,
   visualRectToSignaturePlacement
-} from '../../lib/pdfEngine'
+} from '../../lib/pdfRender'
 import {
   ANNOTATION_FONT_LABELS,
   HIGHLIGHT_COLORS,
@@ -39,7 +39,6 @@ import {
   IconFieldPlus,
   IconForm,
   IconGridView,
-  IconGrip,
   IconHash,
   IconHighlighter,
   IconMinus,
@@ -82,23 +81,34 @@ interface Props {
   groupId: string
 }
 
-/** Small page thumbnail in the left rail; press-and-drag reorders the page. */
+/**
+ * Small page thumbnail in the left rail; press-and-drag reorders the page.
+ *
+ * De miniatuur wordt pas getekend als hij (bijna) in beeld komt. Bij een
+ * document van honderd pagina's werden voorheen alle honderd miniaturen meteen
+ * gerenderd — dat was verreweg het duurste deel van het openen.
+ */
 function RailThumb({
   page,
   source,
   index,
   width,
+  ratio,
   active,
   dragging,
   onClick,
   onDragStart,
   onDragMove,
-  onDragEnd
+  onDragEnd,
+  onRotate,
+  onDelete
 }: {
   page: PageRef
   source: SourceFile | undefined
   /** Breedte van de strook: bepaalt hoe scherp de miniatuur gerenderd wordt. */
   width: number
+  /** Hoogte/breedte-verhouding voor de plaatshouder zolang er nog niets staat. */
+  ratio: number
   index: number
   active: boolean
   dragging: boolean
@@ -106,9 +116,14 @@ function RailThumb({
   onDragStart: (index: number) => void
   onDragMove: (clientY: number) => void
   onDragEnd: (commit: boolean) => void
+  onRotate: () => void
+  onDelete: () => void
 }): JSX.Element {
   const [thumb, setThumb] = useState<string | null>(null)
+  const rootRef = useRef<HTMLDivElement>(null)
+  const [near, setNear] = useState(false)
   const drag = usePressDrag({
+    ignoreSelector: '.editor-rail__act',
     onStart: () => {
       onDragStart(index)
     },
@@ -116,13 +131,28 @@ function RailThumb({
     onEnd: () => onDragEnd(true),
     onCancel: () => onDragEnd(false)
   })
+
+  useEffect(() => {
+    const el = rootRef.current
+    if (!el || typeof IntersectionObserver === 'undefined') {
+      setNear(true)
+      return
+    }
+    const observer = new IntersectionObserver((entries) => setNear(entries.some((e) => e.isIntersecting)), {
+      root: el.closest('.editor-rail'),
+      rootMargin: '700px 0px'
+    })
+    observer.observe(el)
+    return () => observer.disconnect()
+  }, [])
+
   useEffect(() => {
     let cancelled = false
-    if (!source) return
+    if (!source || !near) return
     // Renderbreedte volgt de strook (op halve stappen, zodat slepen niet
     // bij elke pixel opnieuw rendert) en telt de schermdichtheid mee.
     const target = Math.round((Math.ceil(width / 40) * 40 - 24) * Math.min(2, window.devicePixelRatio || 1))
-    renderThumbnail(source, page.sourcePageIndex, page.rotation, Math.max(120, target))
+    renderThumbnail(source, page.sourcePageIndex, page.rotation, Math.max(120, target), () => cancelled)
       .then((url) => {
         if (!cancelled) setThumb(url)
       })
@@ -130,18 +160,49 @@ function RailThumb({
     return () => {
       cancelled = true
     }
-  }, [source, page.sourcePageIndex, page.rotation, width])
+  }, [source, page.sourcePageIndex, page.rotation, width, near])
+
+  const placeholderHeight = Math.round((width - 24) * ratio)
   return (
-    <button
-      type="button"
+    <div
+      ref={rootRef}
       className={`editor-rail__thumb${active ? ' editor-rail__thumb--active' : ''}${dragging ? ' editor-rail__thumb--dragging' : ''}`}
       title="Klik om te tonen; sleep om de pagina te verplaatsen"
       onClick={onClick}
       {...drag}
     >
-      {thumb ? <img src={thumb} alt={`Pagina ${index + 1}`} draggable={false} /> : <span className="editor-rail__ph" />}
-      <span>{index + 1}</span>
-    </button>
+      {thumb ? (
+        <img src={thumb} alt={`Pagina ${index + 1}`} draggable={false} />
+      ) : (
+        <span className="editor-rail__ph" style={{ height: placeholderHeight }} />
+      )}
+      <span className="editor-rail__num">{index + 1}</span>
+      {/* Snelacties zoals in Acrobat: verschijnen bij aanwijzen. */}
+      <span className="editor-rail__acts">
+        <button
+          type="button"
+          className="editor-rail__act"
+          title={`Pagina ${index + 1} rechtsom draaien`}
+          onClick={(e) => {
+            e.stopPropagation()
+            onRotate()
+          }}
+        >
+          <IconRotate size={12} />
+        </button>
+        <button
+          type="button"
+          className="editor-rail__act editor-rail__act--danger"
+          title={`Pagina ${index + 1} verwijderen`}
+          onClick={(e) => {
+            e.stopPropagation()
+            onDelete()
+          }}
+        >
+          <IconTrash size={12} />
+        </button>
+      </span>
+    </div>
   )
 }
 
@@ -188,6 +249,8 @@ export default function EditorView({ groupId }: Props): JSX.Element | null {
   const movePages = useStudioStore((s) => s.movePages)
   const rotatePages = useStudioStore((s) => s.rotatePages)
   const deletePages = useStudioStore((s) => s.deletePages)
+  const insertBlankPage = useStudioStore((s) => s.insertBlankPage)
+  const setDocPropertiesOpen = useStudioStore((s) => s.setDocPropertiesOpen)
   const presentationMode = useStudioStore((s) => s.presentationMode)
   const setPresentationMode = useStudioStore((s) => s.setPresentationMode)
   const bookmarksPanelOpen = useStudioStore((s) => s.bookmarksPanelOpen)
@@ -209,6 +272,7 @@ export default function EditorView({ groupId }: Props): JSX.Element | null {
   const [selection, setSelection] = useState<EditorSelection | null>(null)
   const zoom = useStudioStore((s) => s.editorZoom)
   const setZoom = useStudioStore((s) => s.setEditorZoom)
+  const setDisplayScale = useStudioStore((s) => s.setEditorDisplayScale)
   const [currentPage, setCurrentPage] = useState(0)
   const [centerWidth, setCenterWidth] = useState(800)
   const [centerHeight, setCenterHeight] = useState(600)
@@ -307,6 +371,41 @@ export default function EditorView({ groupId }: Props): JSX.Element | null {
     window.addEventListener('keydown', onKey)
     return () => window.removeEventListener('keydown', onKey)
   }, [selection, mode, removeAnnotation])
+
+  // --- Paginateller: waar sta ik, en spring naar een pagina ---
+  const pageInputRef = useRef<HTMLInputElement>(null)
+  const [pageInput, setPageInput] = useState('1')
+  useEffect(() => setPageInput(String(currentPage + 1)), [currentPage])
+
+  /** Springt naar een pagina (0-gebaseerd): scrollt of bladert, al naar gelang de weergave. */
+  function goToPage(index: number): void {
+    const total = group?.pages.length ?? 0
+    if (!total) return
+    const target = Math.max(0, Math.min(total - 1, index))
+    setCurrentPage(target)
+    const page = group?.pages[target]
+    if (page && viewModeRef.current === 'scroll') {
+      // Een sprong van een paar pagina's mag zacht scrollen; over tientallen
+      // pagina's duurt dat te lang — dan spring je er direct heen.
+      const far = Math.abs(target - currentPage) > 3
+      document
+        .querySelector(`.editor-view .editor-page[data-page-id="${page.id}"]`)
+        ?.scrollIntoView({ behavior: far ? 'auto' : 'smooth', block: 'start' })
+    }
+  }
+
+
+  // Ctrl+G zet de cursor in het paginaveld (zoals "Ga naar pagina" in Acrobat).
+  useEffect(() => {
+    function onKey(e: KeyboardEvent): void {
+      if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'g') {
+        e.preventDefault()
+        pageInputRef.current?.focus()
+      }
+    }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  }, [])
 
   // Rail drag-reorder state: which thumb is being dragged and where it lands.
   const [railDrag, setRailDrag] = useState<{ fromIndex: number; toIndex: number } | null>(null)
@@ -433,8 +532,6 @@ export default function EditorView({ groupId }: Props): JSX.Element | null {
     addSignaturePlacement(page.id, placement)
   }
 
-  if (!group) return null
-
   function patchSelected(patch: Record<string, unknown>): void {
     if (selection && selectedAnnotation) {
       markHistory()
@@ -468,20 +565,71 @@ export default function EditorView({ groupId }: Props): JSX.Element | null {
   const fitHeight = Math.max(200, centerHeight - 118) // minus view bar + pages padding
   const singleFit = Math.max(160, Math.min(centerWidth - gap * 2, fitHeight / aspect))
   const spreadFit = Math.max(140, Math.min((centerWidth - gap * 3) / 2, fitHeight / aspect))
-  const pageWidth =
-    viewMode === 'single'
-      ? singleFit * zoom
-      : viewMode === 'spread'
-        ? spreadFit * zoom
-        : Math.max(200, (centerWidth - gap * 2) * 0.92 * Math.min(zoom, 2))
+  /** Breedte van een pagina bij zoom 1 in de huidige weergave. */
+  // Doorlopend: zoom 1 = precies passend op de breedte, zodat de zoomkeuze bij
+  // het openen op "Passend op breedte" staat in plaats van een los percentage.
+  const unitWidth =
+    viewMode === 'single' ? singleFit : viewMode === 'spread' ? spreadFit : Math.max(220, centerWidth - gap * 2)
+  const pageWidth = Math.max(160, unitWidth * zoom)
+  /** Werkelijke weergaveschaal: 100% = één PDF-punt op één beeldpunt, zoals in Acrobat. */
+  const displayScale = pageWidth / Math.max(1, pageBaseSize.width)
+  /** Zoom die nodig is voor een gewenste weergaveschaal. */
+  const zoomForScale = (scale: number): number =>
+    Math.min(5, Math.max(0.3, (scale * pageBaseSize.width) / Math.max(1, unitWidth)))
+  const fitWidthScale = Math.max(0.05, (centerWidth - gap * 2) / Math.max(1, pageBaseSize.width))
+  const fitPageScale = Math.max(0.05, fitHeight / aspect / Math.max(1, pageBaseSize.width))
+  const ZOOM_PRESETS = [0.5, 0.75, 1, 1.25, 1.5, 2, 3]
+  const near = (a: number, b: number): boolean => Math.abs(a - b) < 0.012
+  const zoomChoice = near(displayScale, fitWidthScale)
+    ? 'fit-width'
+    : near(displayScale, fitPageScale)
+      ? 'fit-page'
+      : (ZOOM_PRESETS.find((p) => near(displayScale, p))?.toString() ?? 'custom')
+
+  // In de doorlopende weergave volgt de teller het scrollen: de bovenste pagina
+  // die nog in beeld staat is "de pagina waar je bent".
+  useEffect(() => {
+    if (viewMode !== 'scroll') return
+    const el = centerRef.current?.querySelector('.editor-pages') as HTMLElement | null
+    if (!el) return
+    let frame = 0
+    const measure = (): void => {
+      frame = 0
+      const line = el.getBoundingClientRect().top + 80
+      const pages = Array.from(el.querySelectorAll('.editor-page')) as HTMLElement[]
+      let best = 0
+      for (let i = 0; i < pages.length; i += 1) {
+        if (pages[i].getBoundingClientRect().top <= line) best = i
+        else break
+      }
+      setCurrentPage((p) => (p === best ? p : best))
+    }
+    const onScroll = (): void => {
+      if (!frame) frame = window.requestAnimationFrame(measure)
+    }
+    el.addEventListener('scroll', onScroll, { passive: true })
+    measure()
+    return () => {
+      el.removeEventListener('scroll', onScroll)
+      if (frame) window.cancelAnimationFrame(frame)
+    }
+    // pageWidth staat erbij: na zoomen verschuiven de pagina's, dus dan moet de
+    // teller opnieuw kijken waar je bent.
+  }, [viewMode, group?.pages.length, pageWidth])
+
+  // De statusbalk toont dezelfde schaal als de balk boven het document.
+  useEffect(() => {
+    setDisplayScale(displayScale)
+  }, [displayScale, setDisplayScale])
 
   const spreadStart = currentPage - (currentPage % 2)
+  const pages = group?.pages ?? []
   const visiblePages =
     viewMode === 'single'
-      ? [group.pages[currentPage]].filter(Boolean)
+      ? [pages[currentPage]].filter(Boolean)
       : viewMode === 'spread'
-        ? group.pages.slice(spreadStart, spreadStart + 2)
-        : group.pages
+        ? pages.slice(spreadStart, spreadStart + 2)
+        : pages
 
   const MODES: { key: EditorMode; label: string; icon: JSX.Element; title: string }[] = [
     { key: 'view', label: 'Selecteren', icon: <IconCursor size={15} />, title: 'Selecteren en verplaatsen' },
@@ -502,6 +650,10 @@ export default function EditorView({ groupId }: Props): JSX.Element | null {
     { key: 'comment', label: 'Commentaar', icon: <IconComment size={15} />, title: 'Klik op de pagina voor een opmerking' },
     { key: 'erase', label: 'Gum', icon: <IconEraser size={15} />, title: 'Klik op een getekende lijn om te wissen' }
   ]
+
+  // Pas hier stoppen: alle hooks hierboven draaien altijd, ook als het document
+  // net gesloten of gesplitst is (anders klopt de hook-volgorde van React niet).
+  if (!group) return null
 
   return (
     <div
@@ -620,6 +772,9 @@ export default function EditorView({ groupId }: Props): JSX.Element | null {
               source={sources.get(page.sourceId)}
               index={i}
               width={railWidth}
+              ratio={pageBaseSize.height / pageBaseSize.width}
+              onRotate={() => rotatePages([page.id])}
+              onDelete={() => deletePages([page.id])}
               active={
                 viewMode === 'single'
                   ? i === currentPage
@@ -655,75 +810,102 @@ export default function EditorView({ groupId }: Props): JSX.Element | null {
 
       <div className="editor-center" ref={centerRef}>
         <div className="editor-center__bar">
-          <div className="editor-center__views">
+          {/* Weergave als compacte keuzelijst (zoals "Paginaweergave" in Acrobat):
+              scheelt ruimte, zodat de balk op een laptopscherm op één regel past. */}
+          <select
+            className="editor-center__viewselect"
+            value={viewMode}
+            aria-label="Paginaweergave"
+            title="Hoe de pagina's worden getoond"
+            onChange={(e) => {
+              const v = e.target.value as 'scroll' | 'spread' | 'single'
+              setViewMode(v)
+              if (v !== 'scroll') setZoom(1)
+            }}
+          >
+            <option value="scroll">Doorlopend</option>
+            <option value="single">Eén pagina</option>
+            <option value="spread">Twee pagina&apos;s</option>
+          </select>
+          {/* Paginateller zoals in Acrobat: waar ben ik, en spring ergens heen (Ctrl+G). */}
+          <div className="editor-center__pages" title="Paginanummer — typ een nummer en druk op Enter (Ctrl+G)">
             <button
               type="button"
-              className={`editbar__mode${viewMode === 'scroll' ? ' editbar__mode--active' : ''}`}
-              onClick={() => setViewMode('scroll')}
-              title="Doorlopend scrollen"
+              className="pill-btn pill-btn--icon"
+              disabled={currentPage === 0}
+              onClick={() => goToPage(currentPage - (viewMode === 'spread' ? 2 : 1))}
+              title="Vorige pagina"
             >
-              Doorlopend
+              <IconChevronLeft size={14} />
             </button>
+            <input
+              ref={pageInputRef}
+              className="editor-center__pageinput"
+              value={pageInput}
+              inputMode="numeric"
+              aria-label="Paginanummer"
+              onChange={(e) => setPageInput(e.target.value.replace(/[^0-9]/g, ''))}
+              onFocus={(e) => e.currentTarget.select()}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter') {
+                  goToPage(Number(pageInput) - 1)
+                  e.currentTarget.blur()
+                } else if (e.key === 'Escape') {
+                  setPageInput(String(currentPage + 1))
+                  e.currentTarget.blur()
+                }
+              }}
+              onBlur={() => setPageInput(String(currentPage + 1))}
+            />
+            <span className="editor-center__pagetotal">
+              {viewMode === 'spread' && group.pages.length > spreadStart + 1 ? `–${spreadStart + 2}` : ''} /{' '}
+              {group.pages.length}
+            </span>
             <button
               type="button"
-              className={`editbar__mode${viewMode === 'spread' ? ' editbar__mode--active' : ''}`}
-              onClick={() => {
-                setViewMode('spread')
-                setZoom(1)
-              }}
-              title="Twee pagina's naast elkaar, passend in het venster"
+              className="pill-btn pill-btn--icon"
+              disabled={currentPage >= group.pages.length - 1}
+              onClick={() => goToPage(currentPage + (viewMode === 'spread' ? 2 : 1))}
+              title="Volgende pagina"
             >
-              Naast elkaar
-            </button>
-            <button
-              type="button"
-              className={`editbar__mode${viewMode === 'single' ? ' editbar__mode--active' : ''}`}
-              onClick={() => {
-                setViewMode('single')
-                setZoom(1)
-              }}
-              title="Eén pagina, passend in het venster"
-            >
-              Eén pagina
+              <IconChevronRight size={14} />
             </button>
           </div>
-          {(viewMode === 'single' || viewMode === 'spread') && (
-            <div className="editor-center__nav">
-              <button
-                type="button"
-                className="pill-btn pill-btn--icon"
-                disabled={currentPage === 0}
-                onClick={() => setCurrentPage((p) => Math.max(0, p - (viewMode === 'spread' ? 2 : 1)))}
-                title="Vorige pagina (of scroll met het muiswiel)"
-              >
-                <IconChevronLeft size={14} />
-              </button>
-              <span>
-                {viewMode === 'spread' && group.pages.length > spreadStart + 1
-                  ? `${spreadStart + 1}–${spreadStart + 2} / ${group.pages.length}`
-                  : `${currentPage + 1} / ${group.pages.length}`}
-              </span>
-              <button
-                type="button"
-                className="pill-btn pill-btn--icon"
-                disabled={currentPage >= group.pages.length - (viewMode === 'spread' ? 2 : 1)}
-                onClick={() =>
-                  setCurrentPage((p) => Math.min(group.pages.length - 1, p + (viewMode === 'spread' ? 2 : 1)))
-                }
-                title="Volgende pagina (of scroll met het muiswiel)"
-              >
-                <IconChevronRight size={14} />
-              </button>
-            </div>
-          )}
           <div className="editor-center__zoom" title="Zoom (of Ctrl+scrollen)">
-            <button type="button" className="pill-btn pill-btn--icon" onClick={() => setZoom((z) => Math.max(0.3, z / 1.2))}>
+            <button
+              type="button"
+              className="pill-btn pill-btn--icon"
+              title="Uitzoomen"
+              onClick={() => setZoom((z) => Math.max(0.3, z / 1.2))}
+            >
               <IconMinus size={13} />
             </button>
-            <button type="button" className="toolbar__zoom-pct" onClick={() => setZoom(1)} title="Zoom herstellen">
-              {Math.round(zoom * 100)}%
-            </button>
-            <button type="button" className="pill-btn pill-btn--icon" onClick={() => setZoom((z) => Math.min(5, z * 1.2))}>
+            <select
+              className="editor-center__zoomselect"
+              value={zoomChoice}
+              aria-label="Zoomniveau"
+              onChange={(e) => {
+                const v = e.target.value
+                if (v === 'fit-width') setZoom(zoomForScale(fitWidthScale))
+                else if (v === 'fit-page') setZoom(zoomForScale(fitPageScale))
+                else setZoom(zoomForScale(Number(v)))
+              }}
+            >
+              <option value="fit-width">Passend op breedte</option>
+              <option value="fit-page">Hele pagina</option>
+              {ZOOM_PRESETS.map((p) => (
+                <option key={p} value={p}>
+                  {Math.round(p * 100)}%
+                </option>
+              ))}
+              {zoomChoice === 'custom' && <option value="custom">{Math.round(displayScale * 100)}%</option>}
+            </select>
+            <button
+              type="button"
+              className="pill-btn pill-btn--icon"
+              title="Inzoomen"
+              onClick={() => setZoom((z) => Math.min(5, z * 1.2))}
+            >
               <IconPlus size={13} />
             </button>
           </div>
@@ -1200,11 +1382,13 @@ export default function EditorView({ groupId }: Props): JSX.Element | null {
             )}
           </div>
         ) : (
-          <div className="editor-tools__hint">Laad een handtekening via het zijmenu om te ondertekenen</div>
+          <div className="editor-tools__hint editor-tools__hint--muted">
+            Nog geen handtekening. Laad er een via <strong>Menu → Handtekening</strong> om te ondertekenen.
+          </div>
         )}
 
         <div className="editor-tools__divider" />
-        <div className="editor-tools__title">Pagina {currentPage + 1}</div>
+        <div className="editor-tools__section">Pagina {currentPage + 1}</div>
         <button
           type="button"
           className="editor-tools__btn"
@@ -1232,22 +1416,32 @@ export default function EditorView({ groupId }: Props): JSX.Element | null {
         <button
           type="button"
           className="editor-tools__btn"
-          title="Pagina's samenvoegen, splitsen of tussen documenten verplaatsen — dit doe je in het overzicht"
-          onClick={() => setActiveEditorTab(null)}
+          title="Een lege pagina achteraan dit document toevoegen"
+          onClick={() => void insertBlankPage(group.id)}
         >
-          <IconGridView size={15} />
-          <span>Samenvoegen / splitsen…</span>
+          <IconPlus size={15} />
+          <span>Lege pagina toevoegen</span>
         </button>
 
         <div className="editor-tools__spacer" />
+        <div className="editor-tools__section">Document</div>
         <button
           type="button"
           className="editor-tools__btn"
-          title="Samenvoegen, splitsen en pagina's verplaatsen doe je in het overzicht"
+          title="Samenvoegen, splitsen en pagina's tussen documenten verplaatsen doe je in het overzicht"
           onClick={() => setActiveEditorTab(null)}
         >
-          <IconGrip size={15} />
-          <span>Ordenen in overzicht</span>
+          <IconGridView size={15} />
+          <span>Ordenen, samenvoegen, splitsen…</span>
+        </button>
+        <button
+          type="button"
+          className="editor-tools__btn"
+          title="Titel, auteur, onderwerp en trefwoorden van dit document"
+          onClick={() => setDocPropertiesOpen(group.id)}
+        >
+          <IconHash size={15} />
+          <span>Documenteigenschappen…</span>
         </button>
       </aside>
 
