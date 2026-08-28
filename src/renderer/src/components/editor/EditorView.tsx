@@ -631,24 +631,79 @@ export default function EditorView({ groupId }: Props): JSX.Element | null {
         ? pages.slice(spreadStart, spreadStart + 2)
         : pages
 
-  const MODES: { key: EditorMode; label: string; icon: JSX.Element; title: string }[] = [
-    { key: 'view', label: 'Selecteren', icon: <IconCursor size={15} />, title: 'Selecteren en verplaatsen' },
-    { key: 'highlight', label: 'Markeren', icon: <IconHighlighter size={15} />, title: 'Sleep een vak over de tekst' },
-    { key: 'draw', label: 'Tekenen', icon: <IconPen size={15} />, title: 'Vrij tekenen of schrijven' },
-    { key: 'shape', label: 'Vormen', icon: <IconShapes size={15} />, title: 'Sleep een pijl, lijn, rechthoek of ovaal' },
-    { key: 'stamp', label: 'Stempel', icon: <IconStamp size={15} />, title: 'Klik op de pagina om een stempel te plaatsen' },
-    { key: 'form', label: 'Formulier', icon: <IconForm size={15} />, title: 'Vul formuliervelden in dit document in' },
+  const MODES: { key: EditorMode; label: string; icon: JSX.Element; title: string; tone: string }[] = [
+    { key: 'view', label: 'Selecteren', icon: <IconCursor size={15} />, title: 'Selecteren en verplaatsen', tone: 'slate' },
+    {
+      key: 'highlight',
+      label: 'Markeren',
+      icon: <IconHighlighter size={15} />,
+      title: 'Sleep een vak over de tekst',
+      tone: 'amber'
+    },
+    { key: 'draw', label: 'Tekenen', icon: <IconPen size={15} />, title: 'Vrij tekenen of schrijven', tone: 'violet' },
+    {
+      key: 'shape',
+      label: 'Vormen',
+      icon: <IconShapes size={15} />,
+      title: 'Sleep een pijl, lijn, rechthoek of ovaal',
+      tone: 'violet'
+    },
+    {
+      key: 'stamp',
+      label: 'Stempel',
+      icon: <IconStamp size={15} />,
+      title: 'Klik op de pagina om een stempel te plaatsen',
+      tone: 'green'
+    },
+    {
+      key: 'form',
+      label: 'Formulier',
+      icon: <IconForm size={15} />,
+      title: 'Vul formuliervelden in dit document in',
+      tone: 'teal'
+    },
     {
       key: 'field',
       label: 'Invulveld',
       icon: <IconFieldPlus size={15} />,
-      title: 'Formulier bouwen: sleep een vak of klik om een invulveld te plaatsen'
+      title: 'Formulier bouwen: sleep een vak of klik om een invulveld te plaatsen',
+      tone: 'teal'
     },
-    { key: 'text', label: 'Tekst', icon: <IconType size={15} />, title: 'Klik op de pagina om tekst te plaatsen' },
-    { key: 'edittext', label: 'Tekst bewerken', icon: <IconEditText size={15} />, title: 'Klik op een bestaande tekstregel' },
-    { key: 'redact', label: 'Redigeren', icon: <IconRedact size={15} />, title: 'Zwartlakken — inhoud verdwijnt echt bij export' },
-    { key: 'comment', label: 'Commentaar', icon: <IconComment size={15} />, title: 'Klik op de pagina voor een opmerking' },
-    { key: 'erase', label: 'Gum', icon: <IconEraser size={15} />, title: 'Klik op een getekende lijn om te wissen' }
+    {
+      key: 'text',
+      label: 'Tekst',
+      icon: <IconType size={15} />,
+      title: 'Klik op de pagina om tekst te plaatsen',
+      tone: 'blue'
+    },
+    {
+      key: 'edittext',
+      label: 'Tekst bewerken',
+      icon: <IconEditText size={15} />,
+      title: 'Klik op een bestaande tekstregel',
+      tone: 'blue'
+    },
+    {
+      key: 'redact',
+      label: 'Redigeren',
+      icon: <IconRedact size={15} />,
+      title: 'Zwartlakken — inhoud verdwijnt echt bij export',
+      tone: 'red'
+    },
+    {
+      key: 'comment',
+      label: 'Commentaar',
+      icon: <IconComment size={15} />,
+      title: 'Klik op de pagina voor een opmerking',
+      tone: 'amber'
+    },
+    {
+      key: 'erase',
+      label: 'Gum',
+      icon: <IconEraser size={15} />,
+      title: 'Klik op een getekende lijn om te wissen',
+      tone: 'slate'
+    }
   ]
 
   // Pas hier stoppen: alle hooks hierboven draaien altijd, ook als het document
@@ -891,7 +946,7 @@ export default function EditorView({ groupId }: Props): JSX.Element | null {
                 else setZoom(zoomForScale(Number(v)))
               }}
             >
-              <option value="fit-width">Passend op breedte</option>
+              <option value="fit-width">Paginabreedte</option>
               <option value="fit-page">Hele pagina</option>
               {ZOOM_PRESETS.map((p) => (
                 <option key={p} value={p}>
@@ -971,7 +1026,7 @@ export default function EditorView({ groupId }: Props): JSX.Element | null {
           <button
             key={m.key}
             type="button"
-            className={`editor-tools__btn${mode === m.key ? ' editor-tools__btn--active' : ''}`}
+            className={`editor-tools__btn tone-${m.tone}${mode === m.key ? ' editor-tools__btn--active' : ''}`}
             title={`${m.title}${MODE_KEY_LABEL[m.key] ? ` — sneltoets ${MODE_KEY_LABEL[m.key]}` : ''}`}
             onClick={() => {
               setMode((cur) => (cur === m.key && m.key !== 'view' ? 'view' : m.key))
@@ -1383,7 +1438,7 @@ export default function EditorView({ groupId }: Props): JSX.Element | null {
           </div>
         ) : (
           <div className="editor-tools__hint editor-tools__hint--muted">
-            Nog geen handtekening. Laad er een via <strong>Menu → Handtekening</strong> om te ondertekenen.
+            Nog geen handtekening — laad er een via <strong>Menu → Handtekening</strong>.
           </div>
         )}
 
@@ -1391,7 +1446,7 @@ export default function EditorView({ groupId }: Props): JSX.Element | null {
         <div className="editor-tools__section">Pagina {currentPage + 1}</div>
         <button
           type="button"
-          className="editor-tools__btn"
+          className="editor-tools__btn tone-slate"
           title={`Roteer pagina ${currentPage + 1} een kwartslag`}
           onClick={() => {
             const page = group.pages[currentPage]
@@ -1403,7 +1458,7 @@ export default function EditorView({ groupId }: Props): JSX.Element | null {
         </button>
         <button
           type="button"
-          className="editor-tools__btn"
+          className="editor-tools__btn tone-red"
           title={`Verwijder pagina ${currentPage + 1} uit dit document`}
           onClick={() => {
             const page = group.pages[currentPage]
@@ -1415,7 +1470,7 @@ export default function EditorView({ groupId }: Props): JSX.Element | null {
         </button>
         <button
           type="button"
-          className="editor-tools__btn"
+          className="editor-tools__btn tone-slate"
           title="Een lege pagina achteraan dit document toevoegen"
           onClick={() => void insertBlankPage(group.id)}
         >
@@ -1427,7 +1482,7 @@ export default function EditorView({ groupId }: Props): JSX.Element | null {
         <div className="editor-tools__section">Document</div>
         <button
           type="button"
-          className="editor-tools__btn"
+          className="editor-tools__btn tone-blue"
           title="Samenvoegen, splitsen en pagina's tussen documenten verplaatsen doe je in het overzicht"
           onClick={() => setActiveEditorTab(null)}
         >
@@ -1436,7 +1491,7 @@ export default function EditorView({ groupId }: Props): JSX.Element | null {
         </button>
         <button
           type="button"
-          className="editor-tools__btn"
+          className="editor-tools__btn tone-blue"
           title="Titel, auteur, onderwerp en trefwoorden van dit document"
           onClick={() => setDocPropertiesOpen(group.id)}
         >

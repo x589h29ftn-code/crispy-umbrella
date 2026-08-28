@@ -6,7 +6,7 @@ interface IconProps {
 const base = {
   fill: 'none',
   stroke: 'currentColor',
-  strokeWidth: 1.8,
+  strokeWidth: 1.6,
   strokeLinecap: 'round' as const,
   strokeLinejoin: 'round' as const
 }

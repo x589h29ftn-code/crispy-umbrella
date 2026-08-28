@@ -269,14 +269,14 @@ export default function Toolbar({ zoomPct, onZoomIn, onZoomOut, onZoomReset, onZ
           volledig bereikbaar blijft; exporteren en Voorkeuren staan vast onderaan. */}
       <div className="sidebar__scroll">
         <SidebarSection title="Bestand" collapsed={collapsed}>
-          <button type="button" className="sidebar-btn" onClick={() => void handleOpen()} title="Openen (Ctrl+O)">
+          <button type="button" className="sidebar-btn tone-blue" onClick={() => void handleOpen()} title="Openen (Ctrl+O)">
             <IconFolderOpen size={15} />
             <span className="sidebar-btn__label">Openen</span>
           </button>
           {fullToolbar && (
             <button
               type="button"
-              className="sidebar-btn"
+              className="sidebar-btn tone-slate"
               disabled={!activeGroup}
               onClick={() => void import('../lib/printActions').then((m) => m.printActiveGroup())}
               title="Druk het actieve document af (Ctrl+P)"
@@ -290,7 +290,7 @@ export default function Toolbar({ zoomPct, onZoomIn, onZoomOut, onZoomReset, onZ
         <SidebarSection title="Bekijken" collapsed={collapsed}>
           <button
             type="button"
-            className={`sidebar-btn${searchOpen ? ' sidebar-btn--active' : ''}`}
+            className={`sidebar-btn tone-slate${searchOpen ? ' sidebar-btn--active' : ''}`}
             onClick={() => setSearchOpen(!searchOpen)}
             title="Zoeken in alle documenten (Ctrl+F)"
           >
@@ -300,7 +300,7 @@ export default function Toolbar({ zoomPct, onZoomIn, onZoomOut, onZoomReset, onZ
 
           <button
             type="button"
-            className={`sidebar-btn${commentsPanelOpen ? ' sidebar-btn--active' : ''}`}
+            className={`sidebar-btn tone-amber${commentsPanelOpen ? ' sidebar-btn--active' : ''}`}
             onClick={() => setCommentsPanelOpen(!commentsPanelOpen)}
             title="Tijdlijn van alle opmerkingen"
           >
@@ -311,7 +311,7 @@ export default function Toolbar({ zoomPct, onZoomIn, onZoomOut, onZoomReset, onZ
 
           <button
             type="button"
-            className={`sidebar-btn${bookmarksPanelOpen ? ' sidebar-btn--active' : ''}`}
+            className={`sidebar-btn tone-teal${bookmarksPanelOpen ? ' sidebar-btn--active' : ''}`}
             onClick={() => setBookmarksPanelOpen(!bookmarksPanelOpen)}
             title="Bladwijzers / inhoudsopgave van de documenten"
           >
@@ -322,7 +322,7 @@ export default function Toolbar({ zoomPct, onZoomIn, onZoomOut, onZoomReset, onZ
           {/* Vergelijken is dagelijks werk (concept naast definitief), dus altijd in beeld. */}
           <button
             type="button"
-            className="sidebar-btn"
+            className="sidebar-btn tone-violet"
             disabled={groups.length < 1}
             onClick={openCompare}
             title="Twee documenten (of versies) naast elkaar vergelijken"
@@ -335,7 +335,7 @@ export default function Toolbar({ zoomPct, onZoomIn, onZoomOut, onZoomReset, onZ
         <SidebarSection title="Documenten" collapsed={collapsed}>
           <button
             type="button"
-            className="sidebar-btn"
+            className="sidebar-btn tone-violet"
             disabled={!activeGroup}
             onClick={() => setSmartDialogOpen(true)}
             title="Slimme documenten: ordenen (hernoemen, sorteren, splitsen, dossier), opschonen (lege pagina's, scans, comprimeren) en eruit halen (Markdown, Word, Excel, CSV)"
@@ -346,7 +346,7 @@ export default function Toolbar({ zoomPct, onZoomIn, onZoomOut, onZoomReset, onZ
 
           <button
             type="button"
-            className="sidebar-btn"
+            className="sidebar-btn tone-blue"
             onClick={() => setTemplatesDialogOpen(true)}
             title="Documentsjablonen: Word-sjablonen met {variabelen} invullen en genereren naar Word of PDF"
           >
@@ -356,7 +356,7 @@ export default function Toolbar({ zoomPct, onZoomIn, onZoomOut, onZoomReset, onZ
 
           <button
             type="button"
-            className="sidebar-btn"
+            className="sidebar-btn tone-green"
             onClick={() => setSigningDialogOpen(true)}
             title="Ondertekenen: zelf tekenen of een tweede partij laten tekenen, verzenden en herinneren"
           >
@@ -367,7 +367,7 @@ export default function Toolbar({ zoomPct, onZoomIn, onZoomOut, onZoomReset, onZ
           {fullToolbar && (
             <button
               type="button"
-              className="sidebar-btn"
+              className="sidebar-btn tone-red"
               disabled={!activeGroup}
               onClick={() => setPrivacyScanOpen(true)}
               title="Privacy-scan (AVG): vind BSN, IBAN, e-mail en telefoon om te redigeren"
@@ -510,7 +510,7 @@ export default function Toolbar({ zoomPct, onZoomIn, onZoomOut, onZoomReset, onZ
           <SidebarSection title="Delen" collapsed={collapsed}>
             <button
               type="button"
-              className="sidebar-btn"
+              className="sidebar-btn tone-teal"
               disabled={!activeGroup}
               onClick={() => void import('../lib/remarkableActions').then((m) => m.shareActiveToRemarkable())}
               title="Deel het actieve document met je reMarkable-cloud (map &quot;PDF Studio&quot;)"
@@ -520,7 +520,7 @@ export default function Toolbar({ zoomPct, onZoomIn, onZoomOut, onZoomReset, onZ
             </button>
             <button
               type="button"
-              className="sidebar-btn"
+              className="sidebar-btn tone-teal"
               disabled={!activeGroup}
               onClick={() =>
                 activeGroup &&
@@ -533,7 +533,7 @@ export default function Toolbar({ zoomPct, onZoomIn, onZoomOut, onZoomReset, onZ
             </button>
             <button
               type="button"
-              className="sidebar-btn"
+              className="sidebar-btn tone-teal"
               disabled={!activeGroup || busyExport !== null}
               onClick={() => void saveActiveToOneDrive()}
               title="Sla het actieve document op in je OneDrive-map (synct automatisch)"
@@ -543,7 +543,7 @@ export default function Toolbar({ zoomPct, onZoomIn, onZoomOut, onZoomReset, onZ
             </button>
             <button
               type="button"
-              className="sidebar-btn"
+              className="sidebar-btn tone-teal"
               disabled={!activeGroup || busyExport !== null}
               onClick={() => void mailActivePdf()}
               title="Open een nieuw Outlook-bericht met het actieve document als bijlage"
@@ -557,7 +557,7 @@ export default function Toolbar({ zoomPct, onZoomIn, onZoomOut, onZoomReset, onZ
         <SidebarSection title="Extra" collapsed={collapsed}>
           <button
             type="button"
-            className="sidebar-btn"
+            className="sidebar-btn tone-red"
             onClick={() => setTrashPanelOpen(true)}
             title="Prullenbak: verwijderde pagina's terughalen"
           >
@@ -567,7 +567,7 @@ export default function Toolbar({ zoomPct, onZoomIn, onZoomOut, onZoomReset, onZ
           {fullToolbar && (
             <button
               type="button"
-              className="sidebar-btn"
+              className="sidebar-btn tone-slate"
               onClick={toggleTheme}
               title={theme === 'dark' ? 'Licht thema' : 'Donker thema'}
             >
@@ -578,7 +578,7 @@ export default function Toolbar({ zoomPct, onZoomIn, onZoomOut, onZoomReset, onZ
           {fullToolbar && (
             <button
               type="button"
-              className="sidebar-btn"
+              className="sidebar-btn tone-slate"
               onClick={() => setShortcutsOpen(true)}
               title="Sneltoetsen-overzicht (?)"
             >
@@ -603,7 +603,7 @@ export default function Toolbar({ zoomPct, onZoomIn, onZoomOut, onZoomReset, onZ
       <div className="sidebar__footer">
         <button
           type="button"
-          className="sidebar-btn"
+          className="sidebar-btn tone-blue"
           disabled={!activeGroup || busyExport !== null}
           onClick={() => void exportActivePdf()}
           title="Exporteer het actieve document als PDF"
@@ -613,7 +613,7 @@ export default function Toolbar({ zoomPct, onZoomIn, onZoomOut, onZoomReset, onZ
         </button>
         <button
           type="button"
-          className="sidebar-btn sidebar-btn--primary"
+          className="sidebar-btn sidebar-btn--primary tone-blue"
           disabled={!groups.length || busyExport !== null}
           onClick={() => void exportAllZip()}
           title="Exporteer alles als zip (Ctrl+E)"
@@ -621,7 +621,7 @@ export default function Toolbar({ zoomPct, onZoomIn, onZoomOut, onZoomReset, onZ
           <IconArchive size={15} />
           <span className="sidebar-btn__label">{busyExport === 'zip' ? 'Bezig…' : 'Exporteer zip'}</span>
         </button>
-        <button type="button" className="sidebar-btn" onClick={() => setPreferencesOpen(true)} title="Voorkeuren">
+        <button type="button" className="sidebar-btn tone-slate" onClick={() => setPreferencesOpen(true)} title="Voorkeuren">
           <IconSettings size={15} />
           <span className="sidebar-btn__label">Voorkeuren</span>
         </button>

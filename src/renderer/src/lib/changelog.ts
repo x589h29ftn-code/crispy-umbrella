@@ -4,6 +4,19 @@
  */
 export const APP_CHANGELOG: { version: string; items: string[] }[] = [
   {
+    version: '1.17.0',
+    items: [
+      'De hele app heeft een professioneler jasje gekregen, met de opbouw van programma\'s als Acrobat en Nitro als voorbeeld: rustige grijstinten als ondergrond, wit papier en witte panelen, één blauw accent en fijnere randen in plaats van harde lijnen',
+      'Gekleurde pictogrammen per soort gereedschap, zoals in de gereedschapslijst van Acrobat: markeren en commentaar okergeel, tekenen en vormen paars, formulier en bladwijzers turquoise, redigeren en prullenbak rood, opslaan en ondertekenen groen, en de rest blauw of grijs. Zo herken je een knop aan zijn kleur voordat je de tekst leest',
+      'Het actieve gereedschap is nu een zacht accentvlak met een streepje ernaast in plaats van een vol blauw blok — beter leesbaar en rustiger in beeld',
+      'Nieuwe letterinstelling: op Windows gebruikt de app nu Segoe UI Variable (het lettertype van Windows 11 zelf), met vaste maten voor kopjes, knoppen en hints in plaats van een eigen maat per onderdeel. Cijfers in de paginateller, zoom en statusbalk hebben een vaste breedte, zodat er niets meer verspringt tijdens het scrollen',
+      'Fijnere lijnen in de pictogrammen (1,6 in plaats van 1,8 pixel) en een vaste hoogte voor de knoppen, keuzelijsten en invoervelden in de balken, zodat alles op één lijn staat',
+      'Tabbladen zitten in een rustige band met een accentstreep onder het actieve tabblad; de documentbalk, miniaturenstrook en gereedschapskolom hebben een fijne scheidingslijn in plaats van een schaduw',
+      'Slanke schuifbalken in plaats van de brede standaardbalken van Windows, en een zachte accentkleur voor geselecteerde tekst',
+      'Ook in het donkere thema is alles nagelopen: de knopkleuren zijn dieper gemaakt zodat witte tekst er goed op leesbaar blijft. Gemeten leesbaarheid (contrast) van de belangrijkste teksten: 17,9 en 14,7 voor de zijbalk, 6,6 en 4,7 voor de primaire knop — allemaal ruim boven de norm van 4,5'
+    ]
+  },
+  {
     version: '1.16.0',
     items: [
       'Een groot document opent ruim vier keer zo snel. De miniaturenstrook tekende bij het openen álle pagina\'s, ook de tweeënnegentig die je niet ziet; nu worden ze pas getekend als ze in beeld komen. Gemeten op een document van 100 pagina\'s met een viermaal vertraagde processor: openen ging van 9,0 naar 2,2 seconden, en er worden nog 9 miniaturen getekend in plaats van 100',

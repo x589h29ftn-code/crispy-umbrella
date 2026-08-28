@@ -396,10 +396,13 @@ export default function SmartDialog(): JSX.Element | null {
 
   const TOOL_GROUPS: {
     title: string
+    /** Kleurtint van de pictogrammen in deze groep. */
+    tone: string
     tools: { key: Tab; label: string; hint: string; icon: JSX.Element; blocked?: string }[]
   }[] = [
     {
       title: 'Ordenen',
+      tone: 'blue',
       tools: [
         {
           key: 'rename',
@@ -433,6 +436,7 @@ export default function SmartDialog(): JSX.Element | null {
     },
     {
       title: 'Opschonen',
+      tone: 'teal',
       tools: [
         {
           key: 'blank',
@@ -459,6 +463,7 @@ export default function SmartDialog(): JSX.Element | null {
     },
     {
       title: 'Afwerken',
+      tone: 'amber',
       tools: [
         {
           key: 'watermark',
@@ -471,6 +476,7 @@ export default function SmartDialog(): JSX.Element | null {
     },
     {
       title: 'Eruit halen',
+      tone: 'green',
       tools: [
         {
           key: 'markdown',
@@ -524,7 +530,7 @@ export default function SmartDialog(): JSX.Element | null {
                   <button
                     key={tool.key}
                     type="button"
-                    className={`smart-rail__item${tab === tool.key ? ' smart-rail__item--active' : ''}`}
+                    className={`smart-rail__item tone-${group.tone}${tab === tool.key ? ' smart-rail__item--active' : ''}`}
                     disabled={Boolean(tool.blocked)}
                     title={tool.blocked ?? tool.hint}
                     aria-current={tab === tool.key}

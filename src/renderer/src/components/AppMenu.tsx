@@ -129,18 +129,18 @@ export default function AppMenu(): JSX.Element {
       {open && (
         <div className="dropdown-menu sidebar__flyout app-menu__panel" onClick={(e) => e.stopPropagation()}>
           <div className="app-menu__section">Bestand</div>
-          <button type="button" className="app-menu__item" onClick={() => run(() => void openFiles())}>
+          <button type="button" className="app-menu__item tone-blue" onClick={() => run(() => void openFiles())}>
             <IconFolderOpen size={15} />
             <span>Openen…</span>
             <span className="app-menu__key">Ctrl+O</span>
           </button>
-          <button type="button" className="app-menu__item" onClick={() => run(() => void combineFiles())}>
+          <button type="button" className="app-menu__item tone-blue" onClick={() => run(() => void combineFiles())}>
             <IconFile size={15} />
             <span>Bestanden combineren…</span>
           </button>
           <button
             type="button"
-            className="app-menu__item"
+            className="app-menu__item tone-violet"
             disabled={!hasDoc}
             onClick={() => run(goSplit)}
           >
@@ -149,7 +149,7 @@ export default function AppMenu(): JSX.Element {
           </button>
           <button
             type="button"
-            className="app-menu__item"
+            className="app-menu__item tone-violet"
             disabled={!hasDoc}
             onClick={() => run(() => setSmartDialogOpen(true, 'split'))}
           >
@@ -158,7 +158,7 @@ export default function AppMenu(): JSX.Element {
           </button>
           <button
             type="button"
-            className="app-menu__item"
+            className="app-menu__item tone-blue"
             disabled={!hasDoc}
             onClick={() => run(() => activeGroup && setDocPropertiesOpen(activeGroup.id))}
           >
@@ -173,7 +173,7 @@ export default function AppMenu(): JSX.Element {
                 <button
                   key={r.path}
                   type="button"
-                  className="app-menu__item app-menu__item--recent"
+                  className="app-menu__item app-menu__item--recent tone-slate"
                   title={r.path}
                   onClick={() =>
                     run(() =>
@@ -195,7 +195,7 @@ export default function AppMenu(): JSX.Element {
           <div className="app-menu__section">Opslaan &amp; afdrukken</div>
           <button
             type="button"
-            className="app-menu__item"
+            className="app-menu__item tone-green"
             disabled={!hasDoc || busy}
             onClick={() => run(() => void saveActiveToSource())}
           >
@@ -205,7 +205,7 @@ export default function AppMenu(): JSX.Element {
           </button>
           <button
             type="button"
-            className="app-menu__item"
+            className="app-menu__item tone-green"
             disabled={!hasDoc || busy}
             onClick={() => run(() => void exportActivePdf())}
           >
@@ -214,7 +214,7 @@ export default function AppMenu(): JSX.Element {
           </button>
           <button
             type="button"
-            className="app-menu__item"
+            className="app-menu__item tone-green"
             disabled={!groups.length || busy}
             onClick={() => run(() => void exportAllZip())}
           >
@@ -224,7 +224,7 @@ export default function AppMenu(): JSX.Element {
           </button>
           <button
             type="button"
-            className="app-menu__item"
+            className="app-menu__item tone-green"
             disabled={!hasDoc || busy}
             onClick={() => run(() => void saveActiveToOneDrive())}
           >
@@ -233,7 +233,7 @@ export default function AppMenu(): JSX.Element {
           </button>
           <button
             type="button"
-            className="app-menu__item"
+            className="app-menu__item tone-green"
             disabled={!hasDoc}
             onClick={() => run(() => void import('../lib/printActions').then((m) => m.printActiveGroup()))}
           >
@@ -246,7 +246,7 @@ export default function AppMenu(): JSX.Element {
           <div className="app-menu__section">Delen &amp; ondertekenen</div>
           <button
             type="button"
-            className="app-menu__item"
+            className="app-menu__item tone-teal"
             disabled={!hasDoc || busy}
             onClick={() => run(() => void mailActivePdf())}
           >
@@ -255,7 +255,7 @@ export default function AppMenu(): JSX.Element {
           </button>
           <button
             type="button"
-            className="app-menu__item"
+            className="app-menu__item tone-blue"
             disabled={!hasDoc}
             onClick={() =>
               run(() =>
@@ -269,7 +269,7 @@ export default function AppMenu(): JSX.Element {
           </button>
           <button
             type="button"
-            className="app-menu__item"
+            className="app-menu__item tone-teal"
             disabled={!hasDoc}
             onClick={() =>
               run(() => void import('../lib/remarkableActions').then((m) => m.shareActiveToRemarkable()))
@@ -278,20 +278,20 @@ export default function AppMenu(): JSX.Element {
             <IconRemarkable size={15} />
             <span>Delen met reMarkable</span>
           </button>
-          <button type="button" className="app-menu__item" onClick={() => run(() => setSigningDialogOpen(true))}>
+          <button type="button" className="app-menu__item tone-teal" onClick={() => run(() => setSigningDialogOpen(true))}>
             <IconStamp size={15} />
             <span>Ondertekenen…</span>
           </button>
 
           <div className="app-menu__divider" />
           <div className="app-menu__section">Gereedschap</div>
-          <button type="button" className="app-menu__item" onClick={() => run(() => setTemplatesDialogOpen(true))}>
+          <button type="button" className="app-menu__item tone-blue" onClick={() => run(() => setTemplatesDialogOpen(true))}>
             <IconForm size={15} />
             <span>Sjablonen…</span>
           </button>
           <button
             type="button"
-            className="app-menu__item"
+            className="app-menu__item tone-violet"
             disabled={!groups.length}
             onClick={() => run(() => openCompare())}
           >
@@ -300,7 +300,7 @@ export default function AppMenu(): JSX.Element {
           </button>
           <button
             type="button"
-            className="app-menu__item"
+            className="app-menu__item tone-red"
             disabled={!hasDoc}
             onClick={() => run(() => setPrivacyScanOpen(true))}
           >
@@ -309,7 +309,7 @@ export default function AppMenu(): JSX.Element {
           </button>
           <button
             type="button"
-            className="app-menu__item"
+            className="app-menu__item tone-violet"
             disabled={!hasDoc}
             onClick={() => run(() => setSmartDialogOpen(true))}
           >
@@ -318,7 +318,7 @@ export default function AppMenu(): JSX.Element {
           </button>
           <button
             type="button"
-            className="app-menu__item"
+            className="app-menu__item tone-violet"
             disabled={!hasDoc}
             onClick={() => run(() => setSmartDialogOpen(true, 'markdown'))}
           >
@@ -327,44 +327,44 @@ export default function AppMenu(): JSX.Element {
           </button>
           <button
             type="button"
-            className="app-menu__item"
+            className="app-menu__item tone-violet"
             disabled={!hasDoc}
             onClick={() => run(() => setSmartDialogOpen(true, 'compress'))}
           >
             <IconCompress size={15} />
             <span>Comprimeren (kleiner maken)…</span>
           </button>
-          <button type="button" className="app-menu__item" onClick={() => run(() => setSearchOpen(true))}>
+          <button type="button" className="app-menu__item tone-slate" onClick={() => run(() => setSearchOpen(true))}>
             <IconSearch size={15} />
             <span>Zoeken</span>
             <span className="app-menu__key">Ctrl+F</span>
           </button>
-          <button type="button" className="app-menu__item" onClick={() => run(() => setCommentsPanelOpen(true))}>
+          <button type="button" className="app-menu__item tone-amber" onClick={() => run(() => setCommentsPanelOpen(true))}>
             <IconComment size={15} />
             <span>Opmerkingen</span>
           </button>
-          <button type="button" className="app-menu__item" onClick={() => run(() => setBookmarksPanelOpen(true))}>
+          <button type="button" className="app-menu__item tone-slate" onClick={() => run(() => setBookmarksPanelOpen(true))}>
             <IconBookmark size={15} />
             <span>Bladwijzers</span>
           </button>
 
           <div className="app-menu__divider" />
           <div className="app-menu__section">Instellingen</div>
-          <button type="button" className="app-menu__item" onClick={() => run(() => setPreferencesOpen(true))}>
+          <button type="button" className="app-menu__item tone-slate" onClick={() => run(() => setPreferencesOpen(true))}>
             <IconSettings size={15} />
             <span>Voorkeuren…</span>
             <span className="app-menu__key">Ctrl+K</span>
           </button>
-          <button type="button" className="app-menu__item" onClick={() => run(() => setShortcutsOpen(true))}>
+          <button type="button" className="app-menu__item tone-slate" onClick={() => run(() => setShortcutsOpen(true))}>
             <IconKeyboard size={15} />
             <span>Sneltoetsen</span>
             <span className="app-menu__key">?</span>
           </button>
-          <button type="button" className="app-menu__item" onClick={() => run(() => toggleTheme())}>
+          <button type="button" className="app-menu__item tone-slate" onClick={() => run(() => toggleTheme())}>
             {theme === 'dark' ? <IconSun size={15} /> : <IconMoon size={15} />}
             <span>{theme === 'dark' ? 'Licht thema' : 'Donker thema'}</span>
           </button>
-          <button type="button" className="app-menu__item" onClick={() => run(() => setTrashPanelOpen(true))}>
+          <button type="button" className="app-menu__item tone-slate" onClick={() => run(() => setTrashPanelOpen(true))}>
             <IconTrash size={15} />
             <span>Prullenbak</span>
           </button>

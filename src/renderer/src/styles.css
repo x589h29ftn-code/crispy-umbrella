@@ -1,24 +1,43 @@
+/* ---------------------------------------------------------------------------
+   Ontwerpwaarden. Eén plek voor kleur, letter, ruimte en schaduw, zodat de app
+   overal hetzelfde oogt. De opzet volgt hoe professionele PDF-programma's
+   (Acrobat, Nitro) eruitzien: een rustige grijstint als ondergrond, wit papier
+   en panelen, één blauw accent, en gekleurde pictogrammen per soort gereedschap.
+   --------------------------------------------------------------------------- */
 :root {
   color-scheme: dark;
-  --bg: #141416;
-  --panel: #1c1c1f;
-  --panel-2: #232327;
-  --panel-hover: #2b2b30;
-  --border: #313136;
+  --bg: #121317;
+  --panel: #1a1c21;
+  --panel-2: #212429;
+  --panel-3: #262a31;
+  --panel-hover: #2a2e35;
+  --border: #2f333b;
+  --border-strong: #3c414a;
   /* Hoogte van de bovenste rij: tabbalk en de kop van de zijbalk lopen gelijk. */
   --topbar-h: 38px;
-  --border-soft: rgba(255, 255, 255, 0.06);
-  --text: #f2f2f3;
-  --text-dim: #9a9aa1;
-  --accent: #4f8cff;
-  --accent-hover: #3f7be0;
-  --accent-tint: rgba(79, 140, 255, 0.12);
-  --danger: #ff5f57;
+  --border-soft: rgba(255, 255, 255, 0.07);
+  --text: #eceef2;
+  --text-dim: #98a0ad;
+  --accent: #5b96ff;
+  --accent-solid: #2f6fe0;
+  --accent-hover: #4a86f5;
+  --accent-tint: rgba(91, 150, 255, 0.16);
+  --danger: #ff6b63;
   --dot-color: rgba(255, 255, 255, 0.05);
-  --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.3);
-  --shadow-md: 0 4px 16px rgba(0, 0, 0, 0.4);
-  --shadow-lg: 0 12px 32px rgba(0, 0, 0, 0.45);
-  --shadow-page: 0 2px 8px rgba(0, 0, 0, 0.35);
+  --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.35);
+  --shadow-md: 0 6px 20px rgba(0, 0, 0, 0.42);
+  --shadow-lg: 0 18px 44px rgba(0, 0, 0, 0.5);
+  --shadow-page: 0 1px 3px rgba(0, 0, 0, 0.4), 0 8px 24px rgba(0, 0, 0, 0.35);
+
+  /* Pictogramkleuren per soort gereedschap (Acrobat/Nitro-stijl: een gekleurd
+     pictogram met een gewone tekstkleur ernaast). */
+  --tone-blue: #6ea8ff;
+  --tone-amber: #e3ab48;
+  --tone-violet: #a98cf7;
+  --tone-teal: #45c2b4;
+  --tone-red: #ff8078;
+  --tone-green: #5fc98a;
+  --tone-slate: #98a0ad;
 
   --space-1: 4px;
   --space-2: 8px;
@@ -28,31 +47,77 @@
   --space-6: 32px;
   --radius-sm: 6px;
   --radius-md: 10px;
-  --radius-lg: 16px;
+  --radius-lg: 14px;
+
+  /* Lettergroottes: één trap, zodat kopjes, knoppen en hints niet elk hun
+     eigen maat kiezen. */
+  --fs-xs: 11px;
+  --fs-sm: 12px;
+  --fs-md: 13px;
+  --fs-lg: 15px;
+  --fs-xl: 17px;
+  /* Vaste hoogte voor knoppen, keuzelijsten en invoervelden in de balken. */
+  --control-h: 30px;
 
   font-family:
-    -apple-system, 'Segoe UI', Roboto, Inter, Helvetica, Arial, sans-serif;
+    'Segoe UI Variable Text', 'Segoe UI', -apple-system, BlinkMacSystemFont, Inter, Roboto, Helvetica, Arial,
+    system-ui, sans-serif;
+  font-size: var(--fs-md);
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
 }
 
 :root[data-theme='light'] {
   color-scheme: light;
-  --bg: #eef0f4;
+  --bg: #f3f4f7;
   --panel: #ffffff;
-  --panel-2: #f1f2f5;
-  --panel-hover: #e4e6ea;
-  --border: #dde0e5;
-  --border-soft: rgba(20, 24, 32, 0.06);
-  --text: #1c1d20;
-  --text-dim: #6b6f76;
-  --accent: #2f6fe0;
-  --accent-hover: #2660c9;
-  --accent-tint: rgba(47, 111, 224, 0.08);
-  --danger: #d33a32;
-  --dot-color: rgba(0, 0, 0, 0.06);
-  --shadow-sm: 0 1px 2px rgba(30, 34, 44, 0.06);
-  --shadow-md: 0 6px 20px rgba(30, 34, 44, 0.1);
-  --shadow-lg: 0 16px 40px rgba(30, 34, 44, 0.16);
-  --shadow-page: 0 2px 10px rgba(30, 34, 44, 0.12);
+  --panel-2: #f7f8fa;
+  --panel-3: #eef1f6;
+  --panel-hover: #eceff4;
+  --border: #e2e5ec;
+  --border-strong: #ccd2dc;
+  --border-soft: rgba(16, 24, 40, 0.06);
+  --text: #14171c;
+  --text-dim: #5f6773;
+  --accent: #1f63d6;
+  --accent-solid: #1b57c0;
+  --accent-hover: #1a55ba;
+  --accent-tint: rgba(31, 99, 214, 0.1);
+  --danger: #c8322c;
+  --dot-color: rgba(0, 0, 0, 0.055);
+  --shadow-sm: 0 1px 2px rgba(16, 24, 40, 0.06);
+  --shadow-md: 0 4px 14px rgba(16, 24, 40, 0.1);
+  --shadow-lg: 0 18px 44px rgba(16, 24, 40, 0.18);
+  --shadow-page: 0 1px 3px rgba(16, 24, 40, 0.1), 0 8px 22px rgba(16, 24, 40, 0.1);
+
+  --tone-blue: #1f63d6;
+  --tone-amber: #b0770f;
+  --tone-violet: #6a3fd0;
+  --tone-teal: #0f766e;
+  --tone-red: #c8322c;
+  --tone-green: #12794b;
+  --tone-slate: #5a6472;
+}
+
+/* Kleur van het pictogram in een knop; standaard volgt het de tekstkleur. */
+.tone-blue { --icon-tone: var(--tone-blue); }
+.tone-amber { --icon-tone: var(--tone-amber); }
+.tone-violet { --icon-tone: var(--tone-violet); }
+.tone-teal { --icon-tone: var(--tone-teal); }
+.tone-red { --icon-tone: var(--tone-red); }
+.tone-green { --icon-tone: var(--tone-green); }
+.tone-slate { --icon-tone: var(--tone-slate); }
+
+/* Cijfers in balken en lijsten met vaste breedte: dan springt een teller niet
+   heen en weer bij het scrollen. */
+.statusbar,
+.editor-center__pageinput,
+.editor-center__pagetotal,
+.editor-center__zoomselect,
+.toolbar__zoom-pct,
+.compare-side__position,
+.change-item__values {
+  font-variant-numeric: tabular-nums;
 }
 
 * {
@@ -295,8 +360,9 @@ body {
 }
 
 .pill-btn--primary {
-  background: var(--accent);
-  color: white;
+  background: var(--accent-solid, var(--accent));
+  color: #fff;
+  font-weight: 600;
 }
 
 .pill-btn--primary:hover:not(:disabled) {
@@ -1695,8 +1761,9 @@ body.is-dragging .selection-bar {
 }
 
 .sidebar-btn--primary {
-  background: var(--accent);
+  background: var(--accent-solid, var(--accent));
   color: #fff;
+  font-weight: 600;
 }
 
 .sidebar-btn--primary:hover:not(:disabled) {
@@ -6390,7 +6457,7 @@ button.group-row__date:hover {
 }
 
 .editor-center__zoomselect {
-  width: 116px;
+  width: 126px;
   padding: 4px 6px;
   border: 1px solid var(--border);
   border-radius: var(--radius-sm);
@@ -6418,6 +6485,7 @@ button.group-row__date:hover {
 .editor-tools__hint--muted {
   padding-top: 4px;
   padding-bottom: 4px;
+  font-size: var(--fs-xs);
 }
 
 .editor-center__viewselect {
@@ -6434,4 +6502,222 @@ button.group-row__date:hover {
 
 .editor-center__viewselect:focus {
   border-color: var(--accent);
+}
+
+/* ---------------------------------------------------------------------------
+   Afwerking van knoppen, lijsten en pictogrammen (professionele uitstraling).
+   Gekleurde pictogrammen met een gewone tekstkleur ernaast, één vaste hoogte
+   voor de bedieningselementen in de balken, en een duidelijk gemarkeerd
+   actief gereedschap.
+   --------------------------------------------------------------------------- */
+.sidebar-btn svg,
+.editor-tools__btn svg,
+.smart-rail__icon svg,
+.app-menu__item svg {
+  color: var(--icon-tone, currentColor);
+}
+
+.sidebar-btn,
+.editor-tools__btn {
+  color: var(--text);
+  font-size: var(--fs-md);
+  padding: 7px 10px;
+  gap: 9px;
+}
+
+.sidebar-btn:hover:not(:disabled),
+.editor-tools__btn:hover {
+  background: var(--panel-hover);
+  color: var(--text);
+}
+
+/* Actief gereedschap: zacht accentvlak met een streep links, zoals in Acrobat
+   — leesbaarder dan een volvlak in de accentkleur. */
+.editor-tools__btn--active {
+  position: relative;
+  background: var(--accent-tint);
+  color: var(--text);
+  font-weight: 600;
+}
+
+.editor-tools__btn--active::before {
+  content: '';
+  position: absolute;
+  left: 0;
+  top: 6px;
+  bottom: 6px;
+  width: 3px;
+  border-radius: 0 3px 3px 0;
+  background: var(--accent);
+}
+
+.editor-tools__btn--active svg {
+  color: var(--icon-tone, var(--accent));
+}
+
+.sidebar-btn--active {
+  background: var(--accent-tint);
+  color: var(--text);
+  font-weight: 600;
+}
+
+/* Sneltoetslabel in de gereedschapslijst: rustiger dan een volle toets. */
+.editor-tools__key {
+  color: var(--text-dim);
+  border-color: var(--border);
+  background: var(--panel-2);
+}
+
+/* Bedieningselementen in de balken op één hoogte. */
+.editor-center__viewselect,
+.editor-center__zoomselect,
+.editor-center__pageinput {
+  height: var(--control-h);
+}
+
+.editor-center__bar .pill-btn--icon {
+  width: var(--control-h);
+  height: var(--control-h);
+}
+
+.pill-btn {
+  border-radius: var(--radius-sm);
+  font-size: var(--fs-sm);
+  padding: 6px 11px;
+  border: 1px solid transparent;
+}
+
+.pill-btn:hover:not(:disabled) {
+  border-color: var(--border);
+}
+
+.pill-btn--primary,
+.pill-btn--primary:hover:not(:disabled) {
+  border-color: transparent;
+}
+
+/* Kopjes in panelen: klein, rustig, met ruimte eromheen. */
+.editor-tools__title,
+.editor-rail__title,
+.compare-side__title {
+  font-size: var(--fs-xs);
+  letter-spacing: 0.06em;
+}
+
+/* ---------- Tabbladen: rustige band met een accentstreep onder het actieve
+     tabblad (zoals in Acrobat), in plaats van een los gekleurd blokje. -------- */
+.tab-strip {
+  background: var(--panel-2);
+  box-shadow: inset 0 -1px 0 var(--border);
+}
+
+.tab-strip__tab {
+  position: relative;
+  background: transparent;
+  border-radius: var(--radius-sm) var(--radius-sm) 0 0;
+  font-size: var(--fs-sm);
+}
+
+.tab-strip__tab--active {
+  background: var(--panel);
+  color: var(--text);
+  box-shadow:
+    inset 0 -2px 0 var(--accent),
+    0 -1px 0 var(--border) inset;
+}
+
+/* Statusbalk: fijne scheiding en rustige tekst. */
+.statusbar {
+  border-top: 1px solid var(--border);
+  font-size: var(--fs-xs);
+}
+
+/* Panelen en dialogen: iets fijnere randen en zachtere hoeken. */
+.modal-card {
+  border: 1px solid var(--border);
+}
+
+.dropdown-menu {
+  border: 1px solid var(--border);
+  box-shadow: var(--shadow-md);
+}
+
+/* Miniaturenstrook: kop op dezelfde hoogte als de documentbalk. */
+.editor-rail__head {
+  border-bottom: 1px solid var(--border-soft);
+}
+
+/* Documentbalk: fijne onderrand in plaats van een schaduw. */
+.editor-center__bar {
+  box-shadow: none;
+  border-bottom: 1px solid var(--border);
+}
+
+/* Gereedschapskolom en miniaturenstrook krijgen een duidelijke scheiding met
+   het documentvlak ertussen. */
+.editor-tools {
+  border-left: 1px solid var(--border);
+}
+
+.editor-rail {
+  border-right: 1px solid var(--border);
+}
+
+/* ---------- Kleine afwerking: schuifbalken, selectie, uitgeschakelde knoppen -- */
+/* Slanke schuifbalken in plaats van de brede standaardbalk van Windows. */
+* {
+  scrollbar-width: thin;
+  scrollbar-color: var(--border-strong) transparent;
+}
+
+::-webkit-scrollbar {
+  width: 11px;
+  height: 11px;
+}
+
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+  background: var(--border-strong);
+  border: 3px solid transparent;
+  background-clip: padding-box;
+  border-radius: 999px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: var(--text-dim);
+  background-clip: padding-box;
+}
+
+::-webkit-scrollbar-corner {
+  background: transparent;
+}
+
+::selection {
+  background: var(--accent-tint);
+  color: var(--text);
+}
+
+button:disabled,
+select:disabled,
+input:disabled {
+  opacity: 0.45;
+  cursor: default;
+}
+
+/* Documentkaart: acties even groot als elders (30 px vak, 15 px pictogram). */
+.group-row__action svg {
+  width: 15px;
+  height: 15px;
+}
+
+/* Witte tekst op de primaire knop laten winnen van de algemene knoptekstkleur
+   hierboven (zelfde gewicht in CSS, dus dit moet erna staan). */
+.sidebar-btn--primary,
+.sidebar-btn--primary:hover:not(:disabled),
+.pill-btn--primary,
+.pill-btn--primary:hover:not(:disabled) {
+  color: #fff;
 }
